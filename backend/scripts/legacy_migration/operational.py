@@ -24,6 +24,7 @@ from .form_convert import (
     build_grid_schema_from_items,
     extract_answers,
     extract_standard_checks,
+    extract_standard_readings,
     merge_item_lists,
     parse_form,
 )
@@ -360,6 +361,27 @@ class OperationalWriter:
         }
         if any(notes.values()):
             fields["diagnostics"] = {key: value or "" for key, value in notes.items()}
+        readings = extract_standard_readings(report.get("tests") or "")
+        if readings:
+            safety = readings.get("electrical_safety", {})
+            battery = readings.get("battery", {})
+            pm_kit = readings.get("pm_kit", {})
+
+            def row(name: str, first: str, second: str) -> dict[str, str]:
+                return {"name": name, "set_value": first, "read_value": second, "unit": "", "status": "na", "notes": ""}
+
+            # The report's table shows rows 0-2 of measurements as the Set/Read,
+            # Battery and PM Kit boxes; the printout reads the electrical row by
+            # name and battery / pm_kit directly, so both are filled.
+            fields["measurements"] = [
+                row("Electrical leakage", safety.get("set", ""), safety.get("read", "")),
+                row("Battery", battery.get("replaced_on", ""), battery.get("due", "")),
+                row("PM Kit", pm_kit.get("replaced_on", ""), pm_kit.get("due", "")),
+            ]
+            if battery:
+                fields["battery"] = {"replaced_on": battery.get("replaced_on", ""), "due": battery.get("due", "")}
+            if pm_kit:
+                fields["pm_kit"] = {"replaced_on": pm_kit.get("replaced_on", ""), "due": pm_kit.get("due", "")}
         return fields
 
     def _ensure_default_form(self, target: Connection) -> None:
@@ -435,6 +457,8 @@ class OperationalWriter:
                         "label": item["label"],
                         "raw_options": list(item.get("raw_options", [])),
                     }
+                    if item.get("report_field"):
+                        bucket[name]["report_field"] = item["report_field"]
                 else:
                     existing = bucket[name]
                     if item["kind"] == "radio":

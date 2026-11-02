@@ -20,6 +20,7 @@ guaranteed to use the same field keys.
 """
 from __future__ import annotations
 
+import re
 from html.parser import HTMLParser
 from typing import Any
 
@@ -48,8 +49,14 @@ NOTE_CAPTIONS = {
     "biomed notes", "reported problem", "problem found", "corrective action taken",
     "summary", "set title",
 }
-# The legacy notes block's own text inputs (Reported Problem / Problem Found).
-NOTE_INPUT_NAMES = {"temp_r_fault", "temp_p_fault"}
+# The legacy notes block's own text boxes (Reported Problem, Problem Found,
+# Corrective action taken, Summary), named or identified only by their id.
+NOTE_INPUT_NAMES = {"temp_r_fault", "temp_p_fault", "temp_c_fault", "temp_summary"}
+# The standard table's own reading boxes: Set / Read on the Electrical Safety
+# row, Replaced on / Due on the Battery and PM Kit rows. The report's table
+# has the same boxes, so these belong to it as well.
+READING_ROWS = {"electrical_safety", "battery", "pm_kit"}
+READING_LABELS = {"set": "set", "read": "read", "replaced on": "replaced_on", "due": "due"}
 # A label longer than this does not fit beside its box in a half-width cell.
 LONG_INPUT_LABEL = 18
 
@@ -59,12 +66,18 @@ def standard_check_key(label: str) -> str | None:
     return STANDARD_CHECKS.get("".join(ch for ch in (label or "").lower() if ch.isalnum()))
 
 
+def note_input_name(key: str) -> str | None:
+    """The legacy notes box a field key stands for, if it is one."""
+    name = key[len("id_"):] if key.startswith("id_") else key
+    return name if name in NOTE_INPUT_NAMES else None
+
+
 def _is_report_owned(item: dict[str, Any]) -> bool:
     """True for items the report screen already provides natively."""
     if item["kind"] == "heading":
         return item["label"].strip().lower() in NOTE_CAPTIONS
     if item["kind"] == "input":
-        return item.get("name") in NOTE_INPUT_NAMES
+        return bool(item.get("report_field")) or note_input_name(item.get("name") or "") is not None
     return item["kind"] == "radio" and standard_check_key(item["label"]) is not None
 
 
@@ -104,17 +117,38 @@ class _FormParser(HTMLParser):
          "checked": "pass" | None}          # only meaningful for reports
     """
 
-    def __init__(self) -> None:
+    def __init__(self, duplicate_ids: set[str] | None = None) -> None:
         super().__init__(convert_charrefs=True)
+        # Element ids used more than once in the page cannot key a field.
+        self._duplicate_ids = duplicate_ids or set()
+        self._table_index = -1
+        self._row_index = -1
         self.items: list[dict[str, Any]] = []
         self._by_name: dict[str, dict[str, Any]] = {}
         self._order: list[str] = []
         self._last_label = ""
         self._text_buf: list[str] = []
         self._capture_depth = 0
+        # Column tracking, so a reading box knows its column's header
+        # ("Set", "Actual") in measurement tables.
+        self._column = -1
+        self._row_texts: dict[int, str] = {}
+        self._header: dict[int, str] = {}
+        self._cell_depth = 0
 
     # -- text capture (td / th / heading cells) --------------------------------
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "table":
+            self._header = {}
+            self._table_index += 1
+            self._row_index = -1
+        elif tag == "tr":
+            self._column = -1
+            self._row_texts = {}
+            self._row_index += 1
+        if tag in ("td", "th"):
+            self._column += 1
+            self._cell_depth += 1
         if tag in ("td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "label"):
             self._capture_depth += 1
             self._text_buf = []
@@ -126,17 +160,33 @@ class _FormParser(HTMLParser):
             self._handle_input(dict(attrs))
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "tr":
+            # The row naming Pass/Fail is a table's header row.
+            words = {text.lower() for text in self._row_texts.values()}
+            if {"pass", "fail"} <= words:
+                self._header = dict(self._row_texts)
+            return
         if tag in ("td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "label"):
             if self._capture_depth > 0:
                 self._capture_depth -= 1
             text = " ".join("".join(self._text_buf).split()).strip()
             self._text_buf = []
+            if tag in ("td", "th"):
+                self._cell_depth = max(0, self._cell_depth - 1)
+                if text or self._column not in self._row_texts:
+                    self._row_texts[self._column] = text
             if not text:
                 return
             if tag in ("h1", "h2", "h3", "h4", "h5", "h6", "strong"):
                 # Section heading: only keep if it is not a stray column header.
                 if text.lower() not in _HEADER_WORDS and len(text) > 1:
-                    self.items.append({"kind": "heading", "label": text})
+                    heading = {"kind": "heading", "label": text}
+                    if self._cell_depth > 0:
+                        # Bold text in a table cell may be the caption of a
+                        # box in the same row; remember where it was.
+                        heading["_row"] = (self._table_index, self._row_index)
+                        self._row_texts[self._column] = text
+                    self.items.append(heading)
                 return
             # A normal cell's text becomes the label for the next input group.
             if text.lower() not in _HEADER_WORDS:
@@ -149,9 +199,12 @@ class _FormParser(HTMLParser):
     # -- inputs ----------------------------------------------------------------
     def _handle_input(self, attrs: dict[str, str | None]) -> None:
         name = (attrs.get("name") or "").strip()
+        input_type = (attrs.get("type") or "text").strip().lower()
+        if input_type in ("text", "number", ""):
+            self._handle_text_input(name, (attrs.get("id") or "").strip(), (attrs.get("value") or "").strip())
+            return
         if not name:
             return
-        input_type = (attrs.get("type") or "text").strip().lower()
         value = (attrs.get("value") or "").strip()
         checked = "checked" in attrs
 
@@ -172,26 +225,61 @@ class _FormParser(HTMLParser):
                 item["raw_options"].append(value)
             if checked and value:
                 item["checked"] = value
-        elif input_type in ("text", "number", ""):
-            item = self._by_name.get(name)
-            if item is None:
-                item = {
-                    "name": name,
-                    "kind": "input",
-                    "label": self._last_label or f"Field {name}",
-                    "raw_options": [],
-                    "value": value or None,
-                }
-                self._by_name[name] = item
-                self._order.append(name)
-                self.items.append(item)
-            elif value:
-                item["value"] = value
+
+    def _handle_text_input(self, name: str, element_id: str, value: str) -> None:
+        """One field per text box.
+
+        Measurement tables gave every row's Set box the same name and left the
+        Actual boxes unnamed, so keying by name alone merged all the Set
+        readings into one field and dropped the Actual ones. A box keeps its
+        name when that is free (so existing answers stay attached), otherwise
+        it is keyed by its element id, or where the page repeats that id (every
+        row's Note box shared one), by its table, row and column. Those keys
+        carry a prefix so they can never collide with a question's name. A
+        completed report saves the same page, so its answers land on the same
+        keys.
+        """
+        if name and name not in self._by_name:
+            key = name
+        elif element_id and element_id not in self._duplicate_ids:
+            key = f"id_{element_id}"
+        elif self._column >= 0:
+            key = f"pos_t{self._table_index}_r{self._row_index}_c{self._column}"
+        else:
+            return
+        if key in self._by_name:
+            return
+        label = self._last_label or f"Field {key}"
+        row_name = self._row_texts.get(0, "")
+        captioned = bool(self.items) and self.items[-1].get("kind") == "heading" \
+            and self.items[-1].get("_row") == (self._table_index, self._row_index)
+        if captioned:
+            # A bold caption in this row ("Asset Tag#", "Make") names this box;
+            # it is the box's label, not a section heading.
+            label = self.items.pop()["label"].strip().rstrip(":").strip() or label
+        elif (label.strip().rstrip(":").strip().lower() in READING_LABELS
+                and row_name and row_name.lower() != label.lower()):
+            # A bare "Read:" or "Due" says which reading, not which test.
+            label = f"{row_name} – {label.strip().rstrip(':').strip()}"
+        column = self._header.get(self._column, "")
+        if not captioned and column and column.lower() not in _HEADER_WORDS and column.lower() != label.lower():
+            label = f"{label} \u2013 {column}"
+        item = {"name": key, "kind": "input", "label": label, "raw_options": [], "value": value or None}
+        row_owner = standard_check_key(self._row_texts.get(0, ""))
+        reading = READING_LABELS.get(self._last_label.strip().rstrip(":").strip().lower())
+        if row_owner in READING_ROWS and reading:
+            item["report_field"] = (row_owner, reading)
+        self._by_name[key] = item
+        self._order.append(key)
+        self.items.append(item)
 
 
 def parse_form(html: str) -> list[dict[str, Any]]:
     """Parse legacy form/report HTML into ordered items + headings."""
-    parser = _FormParser()
+    counts: dict[str, int] = {}
+    for match in re.finditer(r"""\bid\s*=\s*['"]([^'"]+)['"]""", html or ""):
+        counts[match.group(1).strip()] = counts.get(match.group(1).strip(), 0) + 1
+    parser = _FormParser({element_id for element_id, count in counts.items() if count > 1})
     try:
         parser.feed(html or "")
     except Exception:
@@ -315,6 +403,8 @@ def merge_item_lists(
                 "label": item["label"],
                 "raw_options": list(item.get("raw_options", [])),
             }
+            if item.get("report_field"):
+                extra_by_name[name]["report_field"] = item["report_field"]
             extra_order.append(name)
         else:
             merged = extra_by_name[name]
@@ -335,7 +425,11 @@ def merge_item_lists(
                         item["raw_options"].append(option)
         merged_items.append(item)
 
-    drifted = [extra_by_name[name] for name in extra_order if name not in base_names]
+    # A box keyed by its position ("pos_") is only reliable within the page
+    # layout it came from, so one seen only in completed reports is not added;
+    # its value stays in the stored legacy report.
+    drifted = [extra_by_name[name] for name in extra_order
+               if name not in base_names and not name.startswith("pos_")]
     if drifted:
         merged_items.append({"kind": "heading", "label": "Additional recorded items"})
         merged_items.extend(drifted)
@@ -479,6 +573,21 @@ def extract_standard_checks(tests_html: str) -> dict[str, str]:
         if key and value in ("pass", "fail", "na"):
             checks[key] = value
     return checks
+
+
+def extract_standard_readings(tests_html: str) -> dict[str, dict[str, str]]:
+    """The standard table's readings from a legacy report.
+
+    ``{"electrical_safety": {"set": .., "read": ..}, "battery": {"replaced_on": .., "due": ..}, ...}``,
+    only for boxes that were filled in.
+    """
+    readings: dict[str, dict[str, str]] = {}
+    for item in parse_form(tests_html or ""):
+        field = item.get("report_field")
+        value = (item.get("value") or "").strip()
+        if field and value:
+            readings.setdefault(field[0], {})[field[1]] = value
+    return readings
 
 
 def build_grid_schema(html: str, title: str, legacy_id: int) -> dict[str, Any]:

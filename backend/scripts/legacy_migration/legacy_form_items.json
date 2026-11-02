@@ -1,0 +1,9934 @@
+{
+ "2": {
+  "title": "Aspirator",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "15",
+    "kind": "radio",
+    "label": "Suction Increase",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "16",
+    "kind": "radio",
+    "label": "Suction Off",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "17",
+    "kind": "radio",
+    "label": "Suction Decrease",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "18",
+    "kind": "radio",
+    "label": "Constant Suction",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "19",
+    "kind": "radio",
+    "label": "Intermittent Suction",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "3": {
+  "title": "C Arm Table",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "15",
+    "kind": "radio",
+    "label": "Height UP",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "16",
+    "kind": "radio",
+    "label": "Trendelenburg",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "17",
+    "kind": "radio",
+    "label": "Height Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "117",
+    "kind": "radio",
+    "label": "Reverse Trendelenburg",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "18",
+    "kind": "radio",
+    "label": "Trendelenburg",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "119",
+    "kind": "radio",
+    "label": "Longitudinal Travel",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "0019",
+    "kind": "radio",
+    "label": "Reverse Trendelenburg",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "0119",
+    "kind": "radio",
+    "label": "Longitudinal travel",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "0219",
+    "kind": "radio",
+    "label": "Reverse Longitudinal travel",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "0319",
+    "kind": "radio",
+    "label": "Lateral tilt",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "0419",
+    "kind": "radio",
+    "label": "Reverse Lateral tilt",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "4": {
+  "title": "Defibrillator",
+  "items": []
+ },
+ "5": {
+  "title": "Stretcher",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "15",
+    "kind": "radio",
+    "label": "Back Lift",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "16",
+    "kind": "radio",
+    "label": "Brakes Front",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "17",
+    "kind": "radio",
+    "label": "Knee Lift",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "117",
+    "kind": "radio",
+    "label": "Brakes Back",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "18",
+    "kind": "radio",
+    "label": "Steer",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "118",
+    "kind": "radio",
+    "label": "RT Side Rails",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "19",
+    "kind": "radio",
+    "label": "Head Lift",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "119",
+    "kind": "radio",
+    "label": "LT Side Rail",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "223",
+    "kind": "radio",
+    "label": "Foot Lift",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "6": {
+  "title": "Vital Sign Monitor",
+  "items": []
+ },
+ "7": {
+  "title": "Skanray SkanC DropOff Checklist",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "LT Monitor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "LT Monitor",
+    "raw_options": []
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "RT Monitor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "RT Monitor",
+    "raw_options": []
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Workstation Cart",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "Workstation Cart",
+    "raw_options": []
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Power Cord",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_7",
+    "kind": "input",
+    "label": "Power Cord",
+    "raw_options": []
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Hand Switch",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_8",
+    "kind": "input",
+    "label": "Hand Switch",
+    "raw_options": []
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "Foot Switch",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_9",
+    "kind": "input",
+    "label": "Foot Switch",
+    "raw_options": []
+   },
+   {
+    "name": "14",
+    "kind": "radio",
+    "label": "Skin spacer",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_10",
+    "kind": "input",
+    "label": "Skin spacer",
+    "raw_options": []
+   },
+   {
+    "name": "15",
+    "kind": "radio",
+    "label": "RT Wheel Cover",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_11",
+    "kind": "input",
+    "label": "RT Wheel Cover",
+    "raw_options": []
+   },
+   {
+    "name": "16",
+    "kind": "radio",
+    "label": "LT Wheel Cover",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_12",
+    "kind": "input",
+    "label": "LT Wheel Cover",
+    "raw_options": []
+   },
+   {
+    "name": "17",
+    "kind": "radio",
+    "label": "Nose Cover",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_13",
+    "kind": "input",
+    "label": "Nose Cover",
+    "raw_options": []
+   },
+   {
+    "name": "18",
+    "kind": "radio",
+    "label": "Main Frame C Arm",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_14",
+    "kind": "input",
+    "label": "Main Frame C Arm",
+    "raw_options": []
+   }
+  ]
+ },
+ "8": {
+  "title": "Skanray SkanC Packing Checklist",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "LT Monitor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "LT Monitor",
+    "raw_options": []
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "RT Monitor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "RT Monitor",
+    "raw_options": []
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Workstation Cart",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "Workstation Cart",
+    "raw_options": []
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Power Cord",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_7",
+    "kind": "input",
+    "label": "Power Cord",
+    "raw_options": []
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Hand Switch",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_8",
+    "kind": "input",
+    "label": "Hand Switch",
+    "raw_options": []
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "Foot Switch",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_9",
+    "kind": "input",
+    "label": "Foot Switch",
+    "raw_options": []
+   },
+   {
+    "name": "14",
+    "kind": "radio",
+    "label": "Skin spacer",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_10",
+    "kind": "input",
+    "label": "Skin spacer",
+    "raw_options": []
+   },
+   {
+    "name": "15",
+    "kind": "radio",
+    "label": "RT Wheel Cover",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_11",
+    "kind": "input",
+    "label": "RT Wheel Cover",
+    "raw_options": []
+   },
+   {
+    "name": "16",
+    "kind": "radio",
+    "label": "LT Wheel Cover",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_12",
+    "kind": "input",
+    "label": "LT Wheel Cover",
+    "raw_options": []
+   },
+   {
+    "name": "17",
+    "kind": "radio",
+    "label": "Nose Cover",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_13",
+    "kind": "input",
+    "label": "Nose Cover",
+    "raw_options": []
+   },
+   {
+    "name": "18",
+    "kind": "radio",
+    "label": "Main Frame C Arm",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_14",
+    "kind": "input",
+    "label": "Main Frame C Arm",
+    "raw_options": []
+   }
+  ]
+ },
+ "9": {
+  "title": "General",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "id_20",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "13": {
+  "title": "Anesthesia Machine",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "name": "15",
+    "kind": "radio",
+    "label": "Regulator",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "16",
+    "kind": "radio",
+    "label": "Pressure Leak Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "17",
+    "kind": "radio",
+    "label": "Hose",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "117",
+    "kind": "radio",
+    "label": "NR Valve Check",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "18",
+    "kind": "radio",
+    "label": "High Pressure Check",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "118",
+    "kind": "radio",
+    "label": "Pressure Gauge",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "19",
+    "kind": "radio",
+    "label": "O2 Flow, NO2 and Air Flow",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "119",
+    "kind": "radio",
+    "label": "POP Off Valve",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "0019",
+    "kind": "radio",
+    "label": "Performance Verification",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "00119",
+    "kind": "radio",
+    "label": "Air Intake",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "1119",
+    "kind": "radio",
+    "label": "Low O2 Alarm",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "22119",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3319",
+    "kind": "radio",
+    "label": "Hypoxic Guard",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "44119",
+    "kind": "radio",
+    "label": "Installed Date",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5519",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Vaporizer Verification: N/A"
+   },
+   {
+    "name": "id_7",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_8",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_9",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_10",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_11",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_12",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_13",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_14",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_15",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_16",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_17",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_18",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_19",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_20",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_21",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_22",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_23",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_24",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_25",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_26",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_27",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_28",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_29",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_30",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_31",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_32",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "id_33",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Anesthesia Ventilator: N/A"
+   },
+   {
+    "name": "id_34",
+    "kind": "input",
+    "label": "PM KIT",
+    "raw_options": []
+   },
+   {
+    "name": "id_35",
+    "kind": "input",
+    "label": "PM KIT",
+    "raw_options": []
+   },
+   {
+    "name": "id_36",
+    "kind": "input",
+    "label": "PM KIT",
+    "raw_options": []
+   },
+   {
+    "name": "id_37",
+    "kind": "input",
+    "label": "PM KIT",
+    "raw_options": []
+   },
+   {
+    "name": "id_38",
+    "kind": "input",
+    "label": "PM KIT",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "14": {
+  "title": "C Arm",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "General Information"
+   },
+   {
+    "name": "id_7",
+    "kind": "input",
+    "label": "Asset Tag#",
+    "raw_options": []
+   },
+   {
+    "name": "id_8",
+    "kind": "input",
+    "label": "Make",
+    "raw_options": []
+   },
+   {
+    "name": "id_9",
+    "kind": "input",
+    "label": "Model",
+    "raw_options": []
+   },
+   {
+    "name": "id_10",
+    "kind": "input",
+    "label": "System",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Hardware Configuration:"
+   },
+   {
+    "kind": "heading",
+    "label": "II Size:"
+   },
+   {
+    "kind": "heading",
+    "label": "Software Configuration:"
+   },
+   {
+    "name": "id_11",
+    "kind": "input",
+    "label": "Hours on System",
+    "raw_options": []
+   },
+   {
+    "name": "id_12",
+    "kind": "input",
+    "label": "Software Version",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Frame Rate (fps):"
+   },
+   {
+    "name": "id_13",
+    "kind": "input",
+    "label": "Image Storage Capacity (200, 5,000 Etc.)",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Cosmetic Condition:"
+   },
+   {
+    "name": "id_14",
+    "kind": "input",
+    "label": "Comments",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "C-Arm Range of Motion and Motor/Brake Functionality"
+   },
+   {
+    "name": "15",
+    "kind": "radio",
+    "label": "Horizontal Cross-Arm",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "16",
+    "kind": "radio",
+    "label": "Horizontal Cross-Arm",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_15",
+    "kind": "input",
+    "label": "Horizontal Cross-Arm – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "17",
+    "kind": "radio",
+    "label": "Vertical Column Lift",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "18",
+    "kind": "radio",
+    "label": "Vertical Column Lift",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_16",
+    "kind": "input",
+    "label": "Vertical Column Lift – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "19",
+    "kind": "radio",
+    "label": "Wig-Wag",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "20",
+    "kind": "radio",
+    "label": "Wig-Wag",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_17",
+    "kind": "input",
+    "label": "Wig-Wag – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "21",
+    "kind": "radio",
+    "label": "L-Arm Rotation",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "22",
+    "kind": "radio",
+    "label": "L-Arm Rotation",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_18",
+    "kind": "input",
+    "label": "L-Arm Rotation – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "23",
+    "kind": "radio",
+    "label": "C-arm Orbital Rotation",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "24",
+    "kind": "radio",
+    "label": "C-arm Orbital Rotation",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_19",
+    "kind": "input",
+    "label": "C-arm Orbital Rotation – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "25",
+    "kind": "radio",
+    "label": "Flip-Flop",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "26",
+    "kind": "radio",
+    "label": "Flip-Flop",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_20",
+    "kind": "input",
+    "label": "Flip-Flop – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "27",
+    "kind": "radio",
+    "label": "C- Brakes/Wheels",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "28",
+    "kind": "radio",
+    "label": "C- Brakes/Wheels",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_21",
+    "kind": "input",
+    "label": "C- Brakes/Wheels – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "29",
+    "kind": "radio",
+    "label": "Monitor Cart Brakes/Wheels",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "30",
+    "kind": "radio",
+    "label": "Monitor Cart Brakes/Wheels",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_22",
+    "kind": "input",
+    "label": "Monitor Cart Brakes/Wheels – Comments",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "General C-Arm Functionality"
+   },
+   {
+    "name": "31",
+    "kind": "radio",
+    "label": "All Lights, Displays, Buttons on C-",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_23",
+    "kind": "input",
+    "label": "All Lights, Displays, Buttons on C- – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "32",
+    "kind": "radio",
+    "label": "Collimator Iris Functionality",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_24",
+    "kind": "input",
+    "label": "Collimator Iris Functionality – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "33",
+    "kind": "radio",
+    "label": "Collimator Wedge Filter Functionality",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_25",
+    "kind": "input",
+    "label": "Collimator Wedge Filter Functionality – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "34",
+    "kind": "radio",
+    "label": "Interconnect Cable Condition/Functionality",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_26",
+    "kind": "input",
+    "label": "Interconnect Cable Condition/Functionality – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "35",
+    "kind": "radio",
+    "label": "All Lights, Displays, Buttons on Monitor Cart-",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_27",
+    "kind": "input",
+    "label": "All Lights, Displays, Buttons on Monitor Cart- – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "36",
+    "kind": "radio",
+    "label": "Monitor Functionality/Image Quality",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_28",
+    "kind": "input",
+    "label": "Monitor Functionality/Image Quality – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "37",
+    "kind": "radio",
+    "label": "Power Cable Condition/Functionality",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_29",
+    "kind": "input",
+    "label": "Power Cable Condition/Functionality – Comments",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "C-Arm Imaging Chain Functionality"
+   },
+   {
+    "name": "38",
+    "kind": "radio",
+    "label": "Fluoro Mode Functionality",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_30",
+    "kind": "input",
+    "label": "Fluoro Mode Functionality – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "39",
+    "kind": "radio",
+    "label": "Boost Fluoro Mode Functionality",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_31",
+    "kind": "input",
+    "label": "Boost Fluoro Mode Functionality – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "40",
+    "kind": "radio",
+    "label": "Pulsed Fluoro Functionality",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_32",
+    "kind": "input",
+    "label": "Pulsed Fluoro Functionality – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "41",
+    "kind": "radio",
+    "label": "Camera Function, Rotation, Reversal",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_33",
+    "kind": "input",
+    "label": "Camera Function, Rotation, Reversal – Comments",
+    "raw_options": []
+   },
+   {
+    "name": "42",
+    "kind": "radio",
+    "label": "Imaging Artifacts in any of the Above",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_34",
+    "kind": "input",
+    "label": "Imaging Artifacts in any of the Above – Comments",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Enabed Software Options"
+   },
+   {
+    "name": "id_35",
+    "kind": "input",
+    "label": "Cine",
+    "raw_options": []
+   },
+   {
+    "name": "id_36",
+    "kind": "input",
+    "label": "Please list any other options:",
+    "raw_options": []
+   },
+   {
+    "name": "id_37",
+    "kind": "input",
+    "label": "Please list any other options:",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Accessories Present:"
+   },
+   {
+    "name": "id_38",
+    "kind": "input",
+    "label": "Working",
+    "raw_options": []
+   },
+   {
+    "name": "id_39",
+    "kind": "input",
+    "label": "Skin Spacer",
+    "raw_options": []
+   },
+   {
+    "name": "id_40",
+    "kind": "input",
+    "label": "Service Manual",
+    "raw_options": []
+   },
+   {
+    "name": "id_41",
+    "kind": "input",
+    "label": "Operator Manual",
+    "raw_options": []
+   },
+   {
+    "name": "id_42",
+    "kind": "input",
+    "label": "Testing Phantom",
+    "raw_options": []
+   },
+   {
+    "name": "id_43",
+    "kind": "input",
+    "label": "Backup Software",
+    "raw_options": []
+   },
+   {
+    "name": "id_44",
+    "kind": "input",
+    "label": "Sample Patient Films",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "15": {
+  "title": "",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column202",
+    "kind": "radio",
+    "label": "BiPolar Cut",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "BiPolar Cut – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "BiPolar Coag",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "BiPolar Coag – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "MonoPolar Cut",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "MonoPolar Cut – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column215",
+    "kind": "radio",
+    "label": "MonoPolar Coag",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "MonoPolar Coag – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column216",
+    "kind": "radio",
+    "label": "Foot Switch",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r6_c4",
+    "kind": "input",
+    "label": "Foot Switch – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "935": {
+  "title": "AED",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Self Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Self Test – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Battery – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Adult Pad",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Adult Pad – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Neonatal Pad",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "Neonatal Pad – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "936": {
+  "title": "RF Generator",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Port 1 Burn",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Port 1 Burn – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Port 2 Burn",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Port 2 Burn – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Port 3 Burn",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Port 3 Burn – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Port 4 Burn",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "Port 4 Burn – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column217",
+    "kind": "radio",
+    "label": "Foot Switch",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r6_c4",
+    "kind": "input",
+    "label": "Foot Switch – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "937": {
+  "title": "Agent Gas Module",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "No2",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "No2 – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Sevo",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Sevo – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Iso",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Iso – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Deso",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "Deso – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "938": {
+  "title": "Surgical Table",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Floor Lock",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Floor Lock – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column261",
+    "kind": "radio",
+    "label": "Floor Unlock",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r2_c9",
+    "kind": "input",
+    "label": "Floor Unlock – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Orient Normal",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Orient Normal – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column262",
+    "kind": "radio",
+    "label": "Orient Reverse",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c9",
+    "kind": "input",
+    "label": "Orient Reverse – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Trend",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Trend – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column263",
+    "kind": "radio",
+    "label": "Reverse Trend",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c9",
+    "kind": "input",
+    "label": "Reverse Trend – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Height Up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "Height Up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column264",
+    "kind": "radio",
+    "label": "Height Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c9",
+    "kind": "input",
+    "label": "Height Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column215",
+    "kind": "radio",
+    "label": "Back Up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r6_c4",
+    "kind": "input",
+    "label": "Back Up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column265",
+    "kind": "radio",
+    "label": "Back Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r6_c9",
+    "kind": "input",
+    "label": "Back Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column216",
+    "kind": "radio",
+    "label": "Leg Up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r7_c4",
+    "kind": "input",
+    "label": "Leg Up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column266",
+    "kind": "radio",
+    "label": "Leg Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r7_c9",
+    "kind": "input",
+    "label": "Leg Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column217",
+    "kind": "radio",
+    "label": "Flex",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r8_c4",
+    "kind": "input",
+    "label": "Flex – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column267",
+    "kind": "radio",
+    "label": "Reflex",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r8_c9",
+    "kind": "input",
+    "label": "Reflex – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column2110",
+    "kind": "radio",
+    "label": "Level",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r9_c4",
+    "kind": "input",
+    "label": "Level – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column2610",
+    "kind": "radio",
+    "label": "Brakes",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r9_c9",
+    "kind": "input",
+    "label": "Brakes – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column2111",
+    "kind": "radio",
+    "label": "Casters",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r10_c4",
+    "kind": "input",
+    "label": "Casters – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column2611",
+    "kind": "radio",
+    "label": "Power Coard",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r10_c9",
+    "kind": "input",
+    "label": "Power Coard – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "939": {
+  "title": "Hospital Bed",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Brake Lock",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Brake Lock – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column261",
+    "kind": "radio",
+    "label": "Brake Unlock",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r2_c9",
+    "kind": "input",
+    "label": "Brake Unlock – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Height up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Height up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column262",
+    "kind": "radio",
+    "label": "Height Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c9",
+    "kind": "input",
+    "label": "Height Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Back Up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Back Up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column263",
+    "kind": "radio",
+    "label": "Back Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c9",
+    "kind": "input",
+    "label": "Back Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Leg Up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "Leg Up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column264",
+    "kind": "radio",
+    "label": "Leg Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c9",
+    "kind": "input",
+    "label": "Leg Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column215",
+    "kind": "radio",
+    "label": "Recylener Mode",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r6_c4",
+    "kind": "input",
+    "label": "Recylener Mode – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column265",
+    "kind": "radio",
+    "label": "Normal Mode",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r6_c9",
+    "kind": "input",
+    "label": "Normal Mode – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column216",
+    "kind": "radio",
+    "label": "Side Rail Controlls",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r7_c4",
+    "kind": "input",
+    "label": "Side Rail Controlls – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column266",
+    "kind": "radio",
+    "label": "Weight Scale",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r7_c9",
+    "kind": "input",
+    "label": "Weight Scale – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column217",
+    "kind": "radio",
+    "label": "CPR Mode",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r8_c4",
+    "kind": "input",
+    "label": "CPR Mode – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column267",
+    "kind": "radio",
+    "label": "Nurse Call",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r8_c9",
+    "kind": "input",
+    "label": "Nurse Call – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "940": {
+  "title": "Surgical Lights",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Arm Up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Arm Up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column261",
+    "kind": "radio",
+    "label": "Arm Up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r2_c9",
+    "kind": "input",
+    "label": "Arm Up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Arm Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Arm Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column262",
+    "kind": "radio",
+    "label": "Arm Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c9",
+    "kind": "input",
+    "label": "Arm Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Hold Position",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Hold Position – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column263",
+    "kind": "radio",
+    "label": "Hold Position",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c9",
+    "kind": "input",
+    "label": "Hold Position – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Brightness Increass",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "Brightness Increass – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column264",
+    "kind": "radio",
+    "label": "Brightness Increase",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c9",
+    "kind": "input",
+    "label": "Brightness Increase – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column215",
+    "kind": "radio",
+    "label": "Brightness Decrease",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r6_c4",
+    "kind": "input",
+    "label": "Brightness Decrease – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column265",
+    "kind": "radio",
+    "label": "Brightness Decrease",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r6_c9",
+    "kind": "input",
+    "label": "Brightness Decrease – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column216",
+    "kind": "radio",
+    "label": "Luminescences",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r7_c4",
+    "kind": "input",
+    "label": "Luminescences – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column266",
+    "kind": "radio",
+    "label": "Luminescence",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r7_c9",
+    "kind": "input",
+    "label": "Luminescence – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "941": {
+  "title": "EKG",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Trunk Cable",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column251",
+    "kind": "radio",
+    "label": "Fun Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Fun Test",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "EKG Lead wires",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column252",
+    "kind": "radio",
+    "label": "Fun Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c8",
+    "kind": "input",
+    "label": "Fun Test",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Lead wire clips",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column253",
+    "kind": "radio",
+    "label": "Fun Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c8",
+    "kind": "input",
+    "label": "Fun Test",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Printer",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column254",
+    "kind": "radio",
+    "label": "Fun Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c8",
+    "kind": "input",
+    "label": "Fun Test",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Set Title"
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "942": {
+  "title": "Freezer & Refrigerator",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Door Gasket",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Door Gasket – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column261",
+    "kind": "radio",
+    "label": "Defrost",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r2_c9",
+    "kind": "input",
+    "label": "Defrost – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "30 °C",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "30 °C – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column262",
+    "kind": "radio",
+    "label": "-80 °C",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c9",
+    "kind": "input",
+    "label": "-80 °C – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "15 °C",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "15 °C – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column263",
+    "kind": "radio",
+    "label": "-40 °C",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c9",
+    "kind": "input",
+    "label": "-40 °C – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "0 °C",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "0 °C – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column264",
+    "kind": "radio",
+    "label": "-10 °C",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c9",
+    "kind": "input",
+    "label": "-10 °C – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "943": {
+  "title": "Exam Light",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Arm Hold Position",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Arm Hold Position – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Brightnes",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Brightnes – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Casters",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Casters – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Wall Mount",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "Wall Mount – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "944": {
+  "title": "Exam Table",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Back Up",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Back Up – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Back Down",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Back Down – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Foot Step",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Foot Step – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column214",
+    "kind": "radio",
+    "label": "Heater",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r5_c4",
+    "kind": "input",
+    "label": "Heater – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "945": {
+  "title": "Otoscope",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column211",
+    "kind": "radio",
+    "label": "Ear Pease",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Ear Pease – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column212",
+    "kind": "radio",
+    "label": "Eye Pease",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r3_c4",
+    "kind": "input",
+    "label": "Eye Pease – Note",
+    "raw_options": []
+   },
+   {
+    "name": "column213",
+    "kind": "radio",
+    "label": "Brightnes",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "pos_t1_r4_c4",
+    "kind": "input",
+    "label": "Brightnes – Note",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "949": {
+  "title": "Aspirator 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column311",
+    "kind": "radio",
+    "label": "Suction Increase",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "950": {
+  "title": "C Arm Table 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "951": {
+  "title": "Defibrillator 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column3111",
+    "kind": "radio",
+    "label": "EKG Cable",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3112",
+    "kind": "radio",
+    "label": "SpO2 Sensor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3113",
+    "kind": "radio",
+    "label": "Co2 Sensor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3114",
+    "kind": "radio",
+    "label": "Hard Paddles",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3115",
+    "kind": "radio",
+    "label": "Disposable Pads",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Defibrillator Record"
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "5",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c1",
+    "kind": "input",
+    "label": "50",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c1",
+    "kind": "input",
+    "label": "100",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r5_c1",
+    "kind": "input",
+    "label": "200",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r6_c1",
+    "kind": "input",
+    "label": "300",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r7_c1",
+    "kind": "input",
+    "label": "Max",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Pacing Record"
+   },
+   {
+    "name": "pos_t4_r2_c1",
+    "kind": "input",
+    "label": "0",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t4_r3_c1",
+    "kind": "input",
+    "label": "40",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t4_r4_c1",
+    "kind": "input",
+    "label": "100",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t4_r5_c1",
+    "kind": "input",
+    "label": "80",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t4_r6_c1",
+    "kind": "input",
+    "label": "120",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t4_r7_c1",
+    "kind": "input",
+    "label": "Max",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "952": {
+  "title": "Stretcher 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column311",
+    "kind": "radio",
+    "label": "Back Lift",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "953": {
+  "title": "Vital Sign Monitor 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column311",
+    "kind": "radio",
+    "label": "EKG Cable",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "EKG Set",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c2",
+    "kind": "input",
+    "label": "EKG Set",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c1",
+    "kind": "input",
+    "label": "SpO2",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c2",
+    "kind": "input",
+    "label": "bp",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c1",
+    "kind": "input",
+    "label": "NIBP",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c2",
+    "kind": "input",
+    "label": "bpm",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r5_c1",
+    "kind": "input",
+    "label": "Co2",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r5_c2",
+    "kind": "input",
+    "label": "mmHG",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "954": {
+  "title": "Skanray SkanC DropOff Checklist 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Set Title"
+   },
+   {
+    "name": "column311",
+    "kind": "radio",
+    "label": "LT Monitor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "LT Monitor",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r3_c4",
+    "kind": "input",
+    "label": "RT Monitor",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r4_c4",
+    "kind": "input",
+    "label": "Workstation Cart",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r5_c4",
+    "kind": "input",
+    "label": "Power Cord",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r6_c4",
+    "kind": "input",
+    "label": "Hand Switch",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r7_c4",
+    "kind": "input",
+    "label": "Foot Switch",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r8_c4",
+    "kind": "input",
+    "label": "Skin spacer",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r9_c4",
+    "kind": "input",
+    "label": "RT Wheel Cover",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r10_c4",
+    "kind": "input",
+    "label": "LT Wheel Cover",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r11_c4",
+    "kind": "input",
+    "label": "Nose Cover",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r12_c4",
+    "kind": "input",
+    "label": "Main Frame C Arm",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "955": {
+  "title": "Skanray SkanC Packing Checklist 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Set Title"
+   },
+   {
+    "name": "column311",
+    "kind": "radio",
+    "label": "LT Monitor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "LT Monitor",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r3_c4",
+    "kind": "input",
+    "label": "RT Monitor",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r4_c4",
+    "kind": "input",
+    "label": "Workstation Cart",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r5_c4",
+    "kind": "input",
+    "label": "Power Cord",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r6_c4",
+    "kind": "input",
+    "label": "Hand Switch",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r7_c4",
+    "kind": "input",
+    "label": "Foot Switch",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r8_c4",
+    "kind": "input",
+    "label": "Skin spacer",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r9_c4",
+    "kind": "input",
+    "label": "RT Wheel Cover",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r10_c4",
+    "kind": "input",
+    "label": "LT Wheel Cover",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r11_c4",
+    "kind": "input",
+    "label": "Nose Cover",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t2_r12_c4",
+    "kind": "input",
+    "label": "Main Frame C Arm",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "956": {
+  "title": "General 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "957": {
+  "title": "Anesthesia Machine 1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "name": "column312",
+    "kind": "radio",
+    "label": "Regulator",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column352",
+    "kind": "radio",
+    "label": "Pressure Leak Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Vaporizer Verification: N/A"
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c1",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c2",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c3",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c4",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c5",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c6",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c7",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r2_c8",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c0",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c1",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c2",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c3",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c4",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c5",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c6",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c7",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r3_c8",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c0",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c1",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c2",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c3",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c4",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c5",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c6",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c7",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "name": "pos_t3_r4_c8",
+    "kind": "input",
+    "label": "Leak Check",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Anesthesia Ventilator: N/A"
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "958": {
+  "title": "Patient Monitor1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Set Title"
+   },
+   {
+    "name": "column311",
+    "kind": "radio",
+    "label": "EKG Cable",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "fav_language",
+    "kind": "input",
+    "label": "EKG Set – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn3611",
+    "kind": "input",
+    "label": "EKG Set – Actual",
+    "raw_options": []
+   },
+   {
+    "name": "column3122",
+    "kind": "radio",
+    "label": "EKG Leads",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn352",
+    "kind": "input",
+    "label": "SpO2 – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn3612",
+    "kind": "input",
+    "label": "SpO2 – Actual",
+    "raw_options": []
+   },
+   {
+    "name": "column3123",
+    "kind": "radio",
+    "label": "SpO2 Cable",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn353",
+    "kind": "input",
+    "label": "NIBP – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn3613",
+    "kind": "input",
+    "label": "NIBP – Actual",
+    "raw_options": []
+   },
+   {
+    "name": "column3124",
+    "kind": "radio",
+    "label": "SpO2 Sensor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn354",
+    "kind": "input",
+    "label": "Co2 – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn3614",
+    "kind": "input",
+    "label": "Co2 – Actual",
+    "raw_options": []
+   },
+   {
+    "name": "column3125",
+    "kind": "radio",
+    "label": "NIBP Hose",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3126",
+    "kind": "radio",
+    "label": "NIBP Cuff",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column319",
+    "kind": "radio",
+    "label": "Temp Sensor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "959": {
+  "title": "Patient Monitor1",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "960": {
+  "title": "testing form",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Set Title"
+   },
+   {
+    "name": "column3111",
+    "kind": "radio",
+    "label": "testing 2",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3112",
+    "kind": "radio",
+    "label": "testing 3",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3113",
+    "kind": "radio",
+    "label": "testing 4",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3114",
+    "kind": "radio",
+    "label": "testing 5",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3115",
+    "kind": "radio",
+    "label": "testing 6",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3116",
+    "kind": "radio",
+    "label": "testing 7",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3117",
+    "kind": "radio",
+    "label": "testing 8",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "961": {
+  "title": "Autoclave(New)",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column3111",
+    "kind": "radio",
+    "label": "Door Gasket",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3511",
+    "kind": "radio",
+    "label": "Reservoir Tank",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3112",
+    "kind": "radio",
+    "label": "Air Filter",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3512",
+    "kind": "radio",
+    "label": "Heat Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3113",
+    "kind": "radio",
+    "label": "Chamber Mash",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3513",
+    "kind": "radio",
+    "label": "Sterilization Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3114",
+    "kind": "radio",
+    "label": "Chamber Clean",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3514",
+    "kind": "radio",
+    "label": "Dry Test",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Only for Ritter M Series"
+   },
+   {
+    "name": "column4111",
+    "kind": "radio",
+    "label": "Door Switch",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn4511",
+    "kind": "input",
+    "label": "Open Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn4711",
+    "kind": "input",
+    "label": "Door Switch – Read",
+    "raw_options": []
+   },
+   {
+    "name": "column4112",
+    "kind": "radio",
+    "label": "Door Switch",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn4512",
+    "kind": "input",
+    "label": "Closed Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn4712",
+    "kind": "input",
+    "label": "Door Switch – Read",
+    "raw_options": []
+   },
+   {
+    "name": "column4113",
+    "kind": "radio",
+    "label": "Line Voltage",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn4513",
+    "kind": "input",
+    "label": "Line Voltage – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn4713",
+    "kind": "input",
+    "label": "Line Voltage – Read",
+    "raw_options": []
+   },
+   {
+    "name": "column4114",
+    "kind": "radio",
+    "label": "Thermostat",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn4514",
+    "kind": "input",
+    "label": "Thermostat – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn4714",
+    "kind": "input",
+    "label": "Thermostat – Read",
+    "raw_options": []
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ },
+ "962": {
+  "title": "Vital Sign Monitor (New)",
+  "items": [
+   {
+    "name": "1",
+    "kind": "radio",
+    "label": "Physical Insp.",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "2",
+    "kind": "radio",
+    "label": "Cleaning",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "3",
+    "kind": "radio",
+    "label": "Display",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "4",
+    "kind": "radio",
+    "label": "Lubrication",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "5",
+    "kind": "radio",
+    "label": "Functional",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "6",
+    "kind": "radio",
+    "label": "Calibration",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "7",
+    "kind": "radio",
+    "label": "Electrical Safety",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_1",
+    "kind": "input",
+    "label": "Electrical Safety – Set",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "set"
+    ]
+   },
+   {
+    "name": "id_2",
+    "kind": "input",
+    "label": "Electrical Safety – Read",
+    "raw_options": [],
+    "report_field": [
+     "electrical_safety",
+     "read"
+    ]
+   },
+   {
+    "name": "11",
+    "kind": "radio",
+    "label": "Battery",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_3",
+    "kind": "input",
+    "label": "Battery – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_4",
+    "kind": "input",
+    "label": "Battery – Due",
+    "raw_options": [],
+    "report_field": [
+     "battery",
+     "due"
+    ]
+   },
+   {
+    "name": "13",
+    "kind": "radio",
+    "label": "PM Kit",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_5",
+    "kind": "input",
+    "label": "PM Kit – Replaced on",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "replaced_on"
+    ]
+   },
+   {
+    "name": "id_6",
+    "kind": "input",
+    "label": "PM Kit – Due",
+    "raw_options": [],
+    "report_field": [
+     "pm_kit",
+     "due"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Functional Test"
+   },
+   {
+    "name": "column3111",
+    "kind": "radio",
+    "label": "EKG Cable",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn3511",
+    "kind": "input",
+    "label": "EKG Set – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn3611",
+    "kind": "input",
+    "label": "EKG Set – Actual",
+    "raw_options": []
+   },
+   {
+    "name": "column3112",
+    "kind": "radio",
+    "label": "EKG Leads",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn3512",
+    "kind": "input",
+    "label": "SpO2 – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn3612",
+    "kind": "input",
+    "label": "SpO2 – Actual",
+    "raw_options": []
+   },
+   {
+    "name": "column3113",
+    "kind": "radio",
+    "label": "SpO2 Cable",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn3513",
+    "kind": "input",
+    "label": "NIBP – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn3613",
+    "kind": "input",
+    "label": "NIBP – Actual",
+    "raw_options": []
+   },
+   {
+    "name": "column3114",
+    "kind": "radio",
+    "label": "SpO2 Sensor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "id_incolumn3514",
+    "kind": "input",
+    "label": "Co2 – Set",
+    "raw_options": []
+   },
+   {
+    "name": "id_incolumn3614",
+    "kind": "input",
+    "label": "Co2 – Actual",
+    "raw_options": []
+   },
+   {
+    "name": "column3115",
+    "kind": "radio",
+    "label": "NIBP Hose",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3116",
+    "kind": "radio",
+    "label": "NIBP Cuff",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "name": "column3117",
+    "kind": "radio",
+    "label": "Temp Sensor",
+    "raw_options": [
+     "pass",
+     "fail",
+     "na"
+    ]
+   },
+   {
+    "kind": "heading",
+    "label": "Biomed Notes"
+   },
+   {
+    "name": "id_temp_r_fault",
+    "kind": "input",
+    "label": "Reported Problem",
+    "raw_options": []
+   },
+   {
+    "name": "temp_p_fault",
+    "kind": "input",
+    "label": "Problem Found",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_c_fault",
+    "kind": "input",
+    "label": "Corrective action taken",
+    "raw_options": []
+   },
+   {
+    "name": "id_temp_summary",
+    "kind": "input",
+    "label": "Summary",
+    "raw_options": []
+   }
+  ]
+ }
+}
