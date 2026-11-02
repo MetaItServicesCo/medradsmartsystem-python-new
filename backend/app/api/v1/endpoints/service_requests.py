@@ -6,7 +6,8 @@ from typing import Any, Optional
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
@@ -71,7 +72,10 @@ from app.utils.list_search import (
 )
 from app.utils.upload_security import protected_upload_path
 from app.utils.payment_proofs import (
+    REVIEWABLE_EXTRACTION_STATUSES,
+    card_claim_details,
     delete_payment_proof_file,
+    new_card_claim,
     normalize_non_card_method,
     payment_proof_response,
     payment_proof_sha256,
@@ -1107,8 +1111,13 @@ def update_service_invoice(
                 status_code=403,
                 detail="Facility users can pay invoices but cannot edit invoice contents",
             )
-        if requested_paid < _money(invoice.amount_paid):
-            raise HTTPException(status_code=400, detail="Recorded payments cannot be reduced")
+        if requested_paid != _money(invoice.amount_paid):
+            # A customer cannot set what they have paid: a card payment is
+            # reported through Billing and counts once staff verify it.
+            raise HTTPException(
+                status_code=409,
+                detail="Report the payment through Billing; the invoice updates once an Admin or Super Admin verifies it",
+            )
         if requested_paid > _money(invoice.total_amount):
             raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice total")
         # Status is derived from the resulting balance; clients cannot select
@@ -2738,6 +2747,91 @@ def _apply_quotation_payment_locked(
     return db_payment
 
 
+def _require_quotation_payable(quotation: ServiceRequestQuotation, payment_amount: Decimal) -> QuotationAuthorization:
+    """The quotation's live authorization, if ``payment_amount`` can be paid now."""
+    if quotation.status not in {"authorized", "partially_paid"}:
+        raise HTTPException(status_code=409, detail="Only an authorized quotation can be paid")
+
+    authorization = next(
+        (item for item in (quotation.authorizations or []) if item.status == "authorized"),
+        None,
+    )
+    if not authorization:
+        raise HTTPException(status_code=409, detail="Quotation payment must be authorized first")
+    if _money(authorization.authorized_amount) != _money(quotation.amount):
+        raise HTTPException(status_code=409, detail="Authorization no longer matches the quotation amount")
+
+    paid_to_date = sum(
+        (_money(payment.amount) for payment in (quotation.payments or []) if payment.status == "completed"),
+        Decimal("0"),
+    ).quantize(Decimal("0.01"))
+    remaining_balance = max((_money(quotation.amount) - paid_to_date).quantize(Decimal("0.01")), Decimal("0"))
+    if remaining_balance <= Decimal("0"):
+        raise HTTPException(status_code=409, detail="This quotation is already fully paid")
+    if payment_amount > remaining_balance:
+        raise HTTPException(status_code=400, detail=f"Payment cannot exceed the remaining balance of ${remaining_balance}")
+    return authorization
+
+
+def _submit_quotation_card_claim(
+    db: Session,
+    quotation: ServiceRequestQuotation,
+    payment_in: QuotationPaymentCreate,
+    payment_amount: Decimal,
+    user: User,
+) -> JSONResponse:
+    _require_quotation_payable(quotation, payment_amount)
+    if payment_in.payment_method != "credit_card":
+        raise HTTPException(
+            status_code=409,
+            detail="Upload payment proof for non-card payments; the quotation will update after Admin or Super Admin approval",
+        )
+    enforce_rate_limit(
+        bucket="authenticated-payment-proof-upload",
+        identity=f"user:{user.id}",
+        limit=10,
+        window_seconds=60,
+        message="Too many payment submissions. Please wait before trying again.",
+    )
+    card_brand, card_last4 = card_claim_details(None, payment_in.account_last_four)
+    claim = (
+        db.query(PaymentProof)
+        .filter(
+            PaymentProof.service_quotation_id == quotation.id,
+            PaymentProof.submitted_by_id == user.id,
+            PaymentProof.stored_filename.is_(None),
+            PaymentProof.claimed_amount == payment_amount,
+            PaymentProof.status == "pending_verification",
+        )
+        .first()
+    )
+    if not claim:
+        claim = new_card_claim(submitted_by_id=user.id, amount=payment_amount, notes=payment_in.notes,
+                               card_brand=card_brand, card_last4=card_last4, service_quotation_id=quotation.id)
+        db.add(claim)
+        db.flush()
+        _append_quotation_ledger(
+            db,
+            quotation,
+            "card_payment_claim_submitted",
+            user,
+            channel="facility_self_service",
+            amount=payment_amount,
+            details={"proof_id": claim.id, "card_last4": card_last4},
+        )
+        notify_admins(
+            db,
+            title="Card payment awaiting verification",
+            message=f"{quotation.quotation_number}: card payment of ${payment_amount} reported; confirm it in Square before approving",
+            notification_type="billing",
+            link_url=f"/billing?search={quotation.quotation_number}",
+            actor_id=user.id,
+        )
+        db.commit()
+        db.refresh(claim)
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(payment_proof_response(claim)))
+
+
 @router.post("/quotations/{quotation_id}/payments", response_model=QuotationPaymentResponse, status_code=status.HTTP_201_CREATED)
 def create_quotation_payment(
     quotation_id: int,
@@ -2780,6 +2874,11 @@ def create_quotation_payment(
     if payment_amount <= Decimal("0"):
         raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
 
+    if not _is_internal_service_user(current_user):
+        # A customer saying they paid by card moves no money: the claim waits
+        # for staff to confirm the charge, and the quotation changes only then.
+        return _submit_quotation_card_claim(db, db_quotation, payment_in, payment_amount, current_user)
+
     from uuid import uuid4
     from app.utils.payment_idempotency import (
         get_or_create_operation,
@@ -2811,27 +2910,7 @@ def create_quotation_payment(
             return _payment_dict(existing_payment)
         raise HTTPException(status_code=409, detail="The payment was already recorded")
 
-    if db_quotation.status not in {"authorized", "partially_paid"}:
-        raise HTTPException(status_code=409, detail="Only an authorized quotation can be paid")
-
-    authorization = next(
-        (item for item in (db_quotation.authorizations or []) if item.status == "authorized"),
-        None,
-    )
-    if not authorization:
-        raise HTTPException(status_code=409, detail="Quotation payment must be authorized first")
-    if _money(authorization.authorized_amount) != _money(db_quotation.amount):
-        raise HTTPException(status_code=409, detail="Authorization no longer matches the quotation amount")
-
-    paid_to_date = sum(
-        (_money(payment.amount) for payment in (db_quotation.payments or []) if payment.status == "completed"),
-        Decimal("0"),
-    ).quantize(Decimal("0.01"))
-    remaining_balance = max((_money(db_quotation.amount) - paid_to_date).quantize(Decimal("0.01")), Decimal("0"))
-    if remaining_balance <= Decimal("0"):
-        raise HTTPException(status_code=409, detail="This quotation is already fully paid")
-    if payment_amount > remaining_balance:
-        raise HTTPException(status_code=400, detail=f"Payment cannot exceed the remaining balance of ${remaining_balance}")
+    authorization = _require_quotation_payable(db_quotation, payment_amount)
 
     if payment_in.payment_method in {"ach", "mbmts_ach", "cheque", "bank_transfer"}:
         raise HTTPException(
@@ -3027,7 +3106,7 @@ def approve_quotation_payment_proof(
         return payment_proof_response(proof, include_ocr_text=True)
     if proof.status != "pending_verification" or not proof.service_quotation_id:
         raise HTTPException(status_code=409, detail=f"This {proof.status} proof cannot be approved here")
-    if proof.extraction_status not in {"completed", "failed"}:
+    if proof.extraction_status not in REVIEWABLE_EXTRACTION_STATUSES:
         raise HTTPException(status_code=409, detail="OCR processing is still in progress. Review the proof when processing finishes")
     quotation = (
         db.query(ServiceRequestQuotation)
@@ -3049,6 +3128,7 @@ def approve_quotation_payment_proof(
         payment_method=proof.payment_method,
         amount=proof.claimed_amount,
         notes=payload.notes or proof.notes or f"Approved payment proof #{proof.id}",
+        account_last_four=proof.card_last4,
     )
     payment = _apply_quotation_payment_locked(
         db,

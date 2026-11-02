@@ -22,9 +22,13 @@ export interface PaymentProof {
   payment_method: string
   claimed_amount: number
   notes?: string | null
-  original_filename: string
-  mime_type: string
-  file_size: number
+  original_filename: string | null
+  mime_type: string | null
+  file_size: number | null
+  /** A card payment a customer reported: no document, only the card's brand and last four. */
+  is_card_claim?: boolean
+  card_brand?: string | null
+  card_last4?: string | null
   status: 'pending_verification' | 'approved' | 'rejected' | string
   extraction_status: 'queued' | 'processing' | 'retry' | 'completed' | 'failed' | 'cancelled' | string
   extraction_attempt_count: number
@@ -42,9 +46,13 @@ export interface PaymentProof {
   reviewed_by_name?: string | null
   reviewed_at?: string | null
   review_notes?: string | null
-  file_url: string
+  file_url: string | null
   created_at: string
 }
+
+/** A customer's card payment is not recorded at once: the server answers with a claim awaiting verification. */
+export const isPendingCardClaim = (result: unknown): boolean =>
+  Boolean(result && typeof result === 'object' && (result as { is_card_claim?: boolean }).is_card_claim)
 
 export interface InvoicePaymentEvidenceItem {
   id: string

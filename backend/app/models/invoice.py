@@ -156,10 +156,13 @@ class PaymentReceiptDelivery(Base):
 
 
 class PaymentProof(Base):
-    """Private proof and review state for a non-card payment.
+    """Private proof and review state for a payment a customer reports.
 
     A proof targets either an invoice or a service quotation. OCR output is
     advisory only; money moves only after an internal approver accepts it.
+    A card payment a customer reports is a proof with no document (a "card
+    claim"): it carries the card brand and last four instead, and is never
+    sent to OCR.
     """
 
     __tablename__ = "payment_proofs"
@@ -187,12 +190,14 @@ class PaymentProof(Base):
     payment_method = Column(String(40), nullable=False, index=True)
     claimed_amount = Column(Numeric(10, 2), nullable=False)
     notes = Column(Text, nullable=True)
-    original_filename = Column(String(255), nullable=False)
-    stored_filename = Column(String(255), nullable=False, unique=True)
+    original_filename = Column(String(255), nullable=True)
+    stored_filename = Column(String(255), nullable=True, unique=True)
     storage_backend = Column(String(16), nullable=False, default="local", index=True)
-    mime_type = Column(String(100), nullable=False)
-    file_size = Column(Integer, nullable=False)
-    sha256 = Column(String(64), nullable=False, index=True)
+    mime_type = Column(String(100), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    sha256 = Column(String(64), nullable=True, index=True)
+    card_brand = Column(String(40), nullable=True)
+    card_last4 = Column(String(4), nullable=True)
     status = Column(String(32), nullable=False, default="pending_verification", index=True)
     extraction_status = Column(String(24), nullable=False, default="queued", index=True)
     extraction_attempt_count = Column(Integer, nullable=False, default=0)

@@ -56,9 +56,11 @@ def invoice_payment_evidence_response(
     for proof in getattr(invoice, "payment_proofs", None) or []:
         if proof.invoice_transaction_id:
             proof_transaction_ids.add(int(proof.invoice_transaction_id))
+        # A card payment a customer reported has no document, only the card it named.
+        has_file = bool(getattr(proof, "stored_filename", True))
         item = {
             "id": f"proof-{proof.id}",
-            "evidence_type": "uploaded_proof",
+            "evidence_type": "uploaded_proof" if has_file else "card_payment_claim",
             "status": proof.status,
             "amount": proof.claimed_amount,
             "currency": "USD",
@@ -68,16 +70,16 @@ def invoice_payment_evidence_response(
                 if getattr(proof, "invoice_transaction", None)
                 else None
             ),
-            "card_brand": None,
-            "card_last4": None,
+            "card_brand": getattr(proof, "card_brand", None),
+            "card_last4": getattr(proof, "card_last4", None),
             "occurred_at": proof.reviewed_at or proof.created_at,
             "submitted_at": proof.created_at,
             "submitted_by_name": _name(getattr(proof, "submitted_by", None)),
             "reviewed_at": proof.reviewed_at,
             "reviewed_by_name": _name(getattr(proof, "reviewed_by", None)),
-            "proof_id": proof.id,
+            "proof_id": proof.id if has_file else None,
             "proof_filename": proof.original_filename,
-            "proof_file_url": f"/billing/payment-proofs/{proof.id}/file",
+            "proof_file_url": f"/billing/payment-proofs/{proof.id}/file" if has_file else None,
             "receipt_delivery_status": None,
         }
         if include_internal_review:

@@ -2945,8 +2945,13 @@ def update_rental_invoice(
                 status_code=403,
                 detail="Facility users can pay invoices but cannot edit invoice contents",
             )
-        if requested_paid < _money(invoice.amount_paid):
-            raise HTTPException(status_code=400, detail="Recorded payments cannot be reduced")
+        if requested_paid != _money(invoice.amount_paid):
+            # A customer cannot set what they have paid: a card payment is
+            # reported through Billing and counts once staff verify it.
+            raise HTTPException(
+                status_code=409,
+                detail="Report the payment through Billing; the invoice updates once an Admin or Super Admin verifies it",
+            )
         if requested_paid > _money(invoice.total_amount):
             raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice total")
         update_data.pop("status", None)

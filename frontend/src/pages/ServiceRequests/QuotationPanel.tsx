@@ -35,6 +35,7 @@ import {
   type LineItemCreate,
   type QuotationPaymentCreate,
 } from '@/api/serviceRequests'
+import { isPendingCardClaim } from '@/api/billing'
 import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
@@ -86,6 +87,8 @@ const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
 const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled, canEdit, queryKey }: Props) => {
   const queryClient = useQueryClient()
   const user = useAuthStore(state => state.user)
+  // Staff record a card payment taken on a terminal; a customer's is verified first.
+  const isInternalCardRecorder = user?.role === 'superadmin' || (user?.role === 'admin' && !user.facility_id)
   const [createOpen, setCreateOpen] = useState(false)
   const [editQuotationId, setEditQuotationId] = useState<number | null>(null)
   const [payOpen, setPayOpen] = useState<number | null>(null)
@@ -174,7 +177,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
   const payMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: QuotationPaymentCreate }) => createQuotationPayment(id, data),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setPayOpen(null)
       resetPayForm()
       await Promise.all([
@@ -189,7 +192,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
         queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['notifications-header'] }),
       ])
-      toast.success('Payment recorded and billing updated')
+      toast.success(isPendingCardClaim(result) ? 'Card payment submitted for verification; the balance updates once an Admin confirms it' : 'Payment recorded and billing updated')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
   })
@@ -894,7 +897,9 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
               <TextField size="small" label="Cardholder Name" value={ccName} onChange={e => setCcName(e.target.value)} fullWidth />
               {/* Full card numbers and security codes never enter this system (PCI): last four only. */}
               <TextField size="small" label="Last 4 Digits" value={ccLast4} onChange={e => setCcLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} fullWidth inputProps={{ inputMode: 'numeric', maxLength: 4 }} placeholder="1234" />
-              <Typography sx={{ fontSize: '0.75rem', color: '#475569' }}>This records a card payment taken through Square or a card terminal. Never enter the full card number, expiry or security code here.</Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: '#475569' }}>{isInternalCardRecorder
+                ? 'This records a card payment taken through Square or a card terminal. Never enter the full card number, expiry or security code here.'
+                : 'Your card payment will be verified by our team before the invoice shows as paid. Never enter the full card number, expiry or security code here.'}</Typography>
             </Box>
           )}
 

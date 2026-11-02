@@ -74,6 +74,7 @@ import {
   rejectInvoicePaymentProof,
   retryPaymentProofOcr,
   submitInvoicePaymentProof,
+  isPendingCardClaim,
   type PaymentProof,
   type InvoicePaymentEvidenceItem,
 } from '@/api/billing'
@@ -896,10 +897,12 @@ const Billing = () => {
 
   const servicePayMut = useMutation({
     mutationFn: ({ item, data }: { item: BillingItem; data: QuotationPaymentCreate }) => createQuotationPayment(item.id, data),
-    onSuccess: (_, variables) => {
-      toast.success('Payment recorded')
+    onSuccess: (result, variables) => {
+      const claimed = isPendingCardClaim(result)
+      toast.success(claimed ? 'Card payment submitted for verification; the balance updates once an Admin confirms it' : 'Payment recorded')
       closePayDialog()
       invalidateBilling()
+      queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] })
       publishBillingActivity(variables.item, 'Payment recorded in the billing ledger.')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to record payment'),
@@ -944,9 +947,10 @@ const Billing = () => {
         card_last4: cardLast4,
       })
     },
-    onSuccess: (_, variables) => {
-      toast.success('Invoice payment updated')
+    onSuccess: (result, variables) => {
+      toast.success(isPendingCardClaim(result) ? 'Card payment submitted for verification; the balance updates once an Admin confirms it' : 'Invoice payment updated')
       closePayDialog()
+      queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] })
       invalidateBilling()
       queryClient.invalidateQueries({ queryKey: ['invoice-payment-evidence'] })
       publishBillingActivity(variables.item, 'Invoice payment updated in the billing ledger.')
@@ -2016,7 +2020,8 @@ const Billing = () => {
                   ['Written amount', proof.extracted_data?.written_amount],
                   ['Memo', proof.extracted_data?.memo],
                 ].filter((detail): detail is [string, string] => Boolean(detail[1]))
-                const extractionReady = ['completed', 'failed'].includes(proof.extraction_status || 'completed')
+                const cardClaim = Boolean(proof.is_card_claim)
+                const extractionReady = ['completed', 'failed', 'not_applicable'].includes(proof.extraction_status || 'completed')
                 return (
                   <Card key={proof.id} variant="outlined" sx={{ p: 2, borderRadius: '16px', borderColor: proof.mismatch_flags.length ? '#F59E0B88' : '#CBD5E1' }}>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
@@ -2043,6 +2048,16 @@ const Billing = () => {
                         }}
                       />
                     </Box>
+                    {cardClaim ? (
+                      <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '12px', bgcolor: '#FFFBEB', border: '1px solid #F59E0B55', display: 'grid', gap: 0.5 }}>
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#334155' }}>
+                          Card reported: {proof.card_last4 ? `${proof.card_brand || 'Card'} ending ${proof.card_last4}` : 'no card details given'}
+                        </Typography>
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#B45309' }}>
+                          No money has been recorded. Approve only after finding this charge in Square or on the card terminal.
+                        </Typography>
+                      </Box>
+                    ) : (
                     <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '12px', bgcolor: '#F1F5F9', display: 'grid', gap: 0.5 }}>
                       {!extractionReady && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -2125,6 +2140,7 @@ const Billing = () => {
                         </Box>
                       )}
                     </Box>
+                    )}
                     {proof.status === 'pending_verification' ? (
                       <TextField
                         size="small"
@@ -2140,25 +2156,29 @@ const Billing = () => {
                       </Typography>
                     ) : null}
                     <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
-                      <Button
-                        variant="outlined"
-                        startIcon={<VisibilityOutlinedIcon />}
-                        onClick={() => openPaymentProofFile(proof.id, proof.original_filename).catch(() => toast.error('Could not open payment proof'))}
-                        sx={{ fontWeight: 900 }}
-                      >
-                        View proof
-                      </Button>
+                      {!cardClaim && (
+                        <Button
+                          variant="outlined"
+                          startIcon={<VisibilityOutlinedIcon />}
+                          onClick={() => openPaymentProofFile(proof.id, proof.original_filename || 'payment-proof').catch(() => toast.error('Could not open payment proof'))}
+                          sx={{ fontWeight: 900 }}
+                        >
+                          View proof
+                        </Button>
+                      )}
                       {proof.status === 'pending_verification' && (
                         <>
-                          <Button
-                            variant="outlined"
-                            startIcon={<RestartAltIcon />}
-                            disabled={retryProofOcrMut.isPending || !extractionReady}
-                            onClick={() => retryProofOcrMut.mutate(proof.id)}
-                            sx={{ fontWeight: 900 }}
-                          >
-                            Retry OCR
-                          </Button>
+                          {!cardClaim && (
+                            <Button
+                              variant="outlined"
+                              startIcon={<RestartAltIcon />}
+                              disabled={retryProofOcrMut.isPending || !extractionReady}
+                              onClick={() => retryProofOcrMut.mutate(proof.id)}
+                              sx={{ fontWeight: 900 }}
+                            >
+                              Retry OCR
+                            </Button>
+                          )}
                           <Button
                             color="error"
                             variant="outlined"
@@ -2254,7 +2274,9 @@ const Billing = () => {
                 </TextField>
                 <TextField size="small" label="Last 4 Digits" value={ccLast4} onChange={e => setCcLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} sx={{ flex: 1 }} inputProps={{ inputMode: 'numeric', maxLength: 4 }} placeholder="1234" />
               </Box>
-              <Typography sx={{ fontSize: 12, color: '#475569' }}>This records a card payment taken through Square or a card terminal. Never enter the full card number, expiry or security code here.</Typography>
+              <Typography sx={{ fontSize: 12, color: '#475569' }}>{isInternalBillingAdmin
+                ? 'This records a card payment taken through Square or a card terminal. Never enter the full card number, expiry or security code here.'
+                : 'Your card payment will be verified by our team before the invoice shows as paid. Never enter the full card number, expiry or security code here.'}</Typography>
             </Box>
           )}
 

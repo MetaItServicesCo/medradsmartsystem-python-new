@@ -39,6 +39,61 @@ ALLOWED_PAYMENT_PROOF_MIMES = {
 }
 NON_CARD_METHODS = frozenset({"ach", "mbmts_ach", "cheque", "check", "bank_transfer"})
 
+# A card payment a customer reports moves no money by itself: it is recorded as
+# a claim, with no document and no OCR, and counts only once an Admin or Super
+# Admin has confirmed the charge in Square or on the card terminal.
+CARD_CLAIM_METHOD = "credit_card"
+CARD_CLAIM_EXTRACTION_STATUS = "not_applicable"
+CARD_CLAIM_BRANDS = {
+    "visa": "Visa",
+    "mastercard": "Mastercard",
+    "american express": "American Express",
+    "amex": "American Express",
+    "discover": "Discover",
+}
+REVIEWABLE_EXTRACTION_STATUSES = frozenset({"completed", "failed", CARD_CLAIM_EXTRACTION_STATUS})
+
+
+def is_card_claim(proof: PaymentProof) -> bool:
+    return not proof.stored_filename
+
+
+def card_claim_details(card_brand: Optional[str], card_last4: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """The brand and last four a customer gave, validated; never a full card number."""
+    last4 = "".join(character for character in (card_last4 or "") if character.isdigit()) or None
+    if card_last4 and (last4 is None or len(last4) != 4):
+        raise HTTPException(status_code=422, detail="Card last four must contain exactly four digits")
+    brand = CARD_CLAIM_BRANDS.get((card_brand or "").strip().lower(), "Card") if card_brand and last4 else None
+    return brand, last4
+
+
+def new_card_claim(
+    *,
+    submitted_by_id: int,
+    amount: Decimal,
+    notes: Optional[str],
+    card_brand: Optional[str],
+    card_last4: Optional[str],
+    invoice_id: Optional[int] = None,
+    service_quotation_id: Optional[int] = None,
+) -> PaymentProof:
+    return PaymentProof(
+        invoice_id=invoice_id,
+        service_quotation_id=service_quotation_id,
+        submitted_by_id=submitted_by_id,
+        payment_method=CARD_CLAIM_METHOD,
+        claimed_amount=amount,
+        notes=notes,
+        storage_backend="none",
+        card_brand=card_brand,
+        card_last4=card_last4,
+        status="pending_verification",
+        extraction_status=CARD_CLAIM_EXTRACTION_STATUS,
+        extracted_data={},
+        mismatch_flags=[],
+        requires_manual_review=True,
+    )
+
 
 def _detect_payment_proof_mime(data: bytes) -> str:
     """Use libmagic when available, with strict signatures as a portable fallback."""
@@ -664,7 +719,10 @@ def payment_proof_response(proof: PaymentProof, *, include_ocr_text: bool = Fals
         "review_notes": proof.review_notes,
         "invoice_transaction_id": proof.invoice_transaction_id,
         "quotation_payment_id": proof.quotation_payment_id,
-        "file_url": f"/api/v1/billing/payment-proofs/{proof.id}/file",
+        "file_url": None if is_card_claim(proof) else f"/api/v1/billing/payment-proofs/{proof.id}/file",
+        "is_card_claim": is_card_claim(proof),
+        "card_brand": proof.card_brand,
+        "card_last4": proof.card_last4,
         "created_at": proof.created_at,
         "updated_at": proof.updated_at,
     }

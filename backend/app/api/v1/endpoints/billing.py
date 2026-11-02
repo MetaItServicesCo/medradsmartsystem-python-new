@@ -48,12 +48,17 @@ from app.utils.sales_inventory import (
     fulfill_sales_invoice_inventory,
 )
 from app.utils.payment_proofs import (
+    NON_CARD_METHODS,
+    REVIEWABLE_EXTRACTION_STATUSES,
+    card_claim_details,
     delete_payment_proof_file,
+    is_card_claim,
     load_payment_proof,
     normalize_non_card_method,
     payment_proof_response,
     payment_proof_sha256,
     read_and_validate_payment_proof,
+    new_card_claim,
     store_encrypted_payment_proof,
 )
 from app.utils.rate_limit import enforce_rate_limit
@@ -339,10 +344,73 @@ def approve_invoice(
     }
 
 
+def _submit_invoice_card_claim(db: Session, invoice: Invoice, payload: InvoicePaymentCreate, user: User) -> Any:
+    method = (payload.payment_method or "").strip().lower().replace(" ", "_")
+    if method in NON_CARD_METHODS:
+        raise HTTPException(
+            status_code=409,
+            detail="Upload payment proof for non-card payments; the invoice will update after Admin or Super Admin approval",
+        )
+    if "card" not in method and "square" not in method:
+        raise HTTPException(status_code=400, detail="Pay by card, or upload proof of an ACH, cheque or bank transfer payment")
+    enforce_rate_limit(
+        bucket="authenticated-payment-proof-upload",
+        identity=f"user:{user.id}",
+        limit=10,
+        window_seconds=60,
+        message="Too many payment submissions. Please wait before trying again.",
+    )
+    amount = _money(payload.amount).quantize(Decimal("0.01"))
+    balance = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
+    if amount > balance:
+        raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice balance")
+    card_brand, card_last4 = card_claim_details(payload.card_brand, payload.card_last4)
+    duplicate = (
+        db.query(PaymentProof)
+        .filter(
+            PaymentProof.invoice_id == invoice.id,
+            PaymentProof.submitted_by_id == user.id,
+            PaymentProof.stored_filename.is_(None),
+            PaymentProof.claimed_amount == amount,
+            PaymentProof.status == "pending_verification",
+        )
+        .first()
+    )
+    if duplicate:
+        return payment_proof_response(duplicate)
+    claim = new_card_claim(submitted_by_id=user.id, amount=amount, notes=payload.notes,
+                           card_brand=card_brand, card_last4=card_last4, invoice_id=invoice.id)
+    db.add(claim)
+    db.flush()
+    card = f"{card_brand or 'Card'} ending {card_last4}" if card_last4 else "Card"
+    add_invoice_transaction(
+        db,
+        invoice,
+        "card_payment_claim_submitted",
+        0,
+        "credit_card",
+        f"{card} payment of ${amount} reported (claim #{claim.id}); pending verification",
+        user,
+        "CLM",
+    )
+    notify_admins(
+        db,
+        title="Card payment awaiting verification",
+        message=f"{invoice.invoice_number}: card payment of ${amount} reported; confirm it in Square before approving",
+        notification_type="billing",
+        link_url=f"/billing?search={invoice.invoice_number}",
+        actor_id=user.id,
+    )
+    db.commit()
+    db.refresh(claim)
+    return payment_proof_response(claim)
+
+
 @router.post("/invoices/{invoice_id}/payments")
 def record_invoice_payment(
     invoice_id: int,
     payload: InvoicePaymentCreate,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -364,6 +432,11 @@ def record_invoice_payment(
     require_invoice_approved(invoice)
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    if is_facility_billing_user(current_user):
+        # A customer saying they paid moves no money: the claim waits for staff
+        # to confirm the charge, and the invoice changes only on approval.
+        response.status_code = 202
+        return _submit_invoice_card_claim(db, invoice, payload, current_user)
     operation_key = payload.idempotency_key or f"legacy-manual-invoice-{invoice.id}-{uuid4()}"
     fingerprint = payment_fingerprint(
         "manual_invoice_payment",
@@ -665,6 +738,8 @@ def download_payment_proof(
     if not proof:
         raise HTTPException(status_code=404, detail="Payment proof not found")
     _require_payment_proof_access(db, current_user, proof)
+    if is_card_claim(proof):
+        raise HTTPException(status_code=404, detail="A card payment claim has no document")
     data = load_payment_proof(proof)
     safe_name = "".join(
         character for character in proof.original_filename
@@ -732,7 +807,7 @@ def approve_payment_proof(
         return payment_proof_response(proof, include_ocr_text=True)
     if proof.status != "pending_verification":
         raise HTTPException(status_code=409, detail=f"A {proof.status} payment proof cannot be approved")
-    if proof.extraction_status not in {"completed", "failed"}:
+    if proof.extraction_status not in REVIEWABLE_EXTRACTION_STATUSES:
         raise HTTPException(status_code=409, detail="OCR processing is still in progress. Review the proof when processing finishes")
     if not proof.invoice_id:
         raise HTTPException(status_code=409, detail="Use the service quotation review endpoint for this proof")
@@ -750,6 +825,8 @@ def approve_payment_proof(
         payment_method=proof.payment_method,
         notes=payload.notes or proof.notes or f"Approved payment proof #{proof.id}",
         user=current_user,
+        card_brand=proof.card_brand,
+        card_last4=proof.card_last4,
     )
     db.flush()
     proof.status = "approved"
