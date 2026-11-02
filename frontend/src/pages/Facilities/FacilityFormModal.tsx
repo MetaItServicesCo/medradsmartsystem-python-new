@@ -69,6 +69,11 @@ const INHERITANCE_OPTIONS = ['Full', 'Partial', 'None']
 const INSTALLMENT_OPTIONS = ['Monthly', 'Quarterly', 'Annual', 'One-time']
 const PAYMENT_OPTIONS = ['Credit Card', 'Wire Transfer', 'Check', 'ACH']
 
+// Several preferred methods are stored in the one text column, comma separated,
+// so the facility view and PDF export show them as they are.
+const splitPaymentMethods = (value?: string | null) =>
+  (value || '').split(',').map(method => method.trim()).filter(Boolean)
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -457,11 +462,30 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
                 </Grid>
 
                 <Grid item xs={12} sm={6}>
-                  <Controller name="payment_method" control={control} render={({ field }) => (
-                    <TextField {...field} value={field.value || ''} select fullWidth label="Preferred Payment Method">
-                      {PAYMENT_OPTIONS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
-                    </TextField>
-                  )} />
+                  <Controller name="payment_method" control={control} render={({ field }) => {
+                    const selected = splitPaymentMethods(field.value)
+                    // A saved method outside the list (e.g. from older records) stays selectable, so editing never drops it.
+                    const options = [...PAYMENT_OPTIONS, ...selected.filter(m => !PAYMENT_OPTIONS.includes(m))]
+                    return (
+                      <TextField
+                        name={field.name} inputRef={field.ref} onBlur={field.onBlur}
+                        value={selected} select fullWidth label="Preferred Payment Method"
+                        onChange={e => {
+                          const value = e.target.value as unknown as string[] | string
+                          const picked = typeof value === 'string' ? splitPaymentMethods(value) : value
+                          field.onChange(options.filter(o => picked.includes(o)).join(', '))
+                        }}
+                        SelectProps={{ multiple: true, renderValue: v => (v as string[]).join(', ') }}
+                      >
+                        {options.map(o => (
+                          <MenuItem key={o} value={o}>
+                            <Checkbox size="small" checked={selected.includes(o)} sx={{ p: 0, mr: 1 }} />
+                            {o}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    )
+                  }} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Controller name="delivery_email" control={control} render={({ field }) => (
