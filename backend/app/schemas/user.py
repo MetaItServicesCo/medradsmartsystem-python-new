@@ -52,6 +52,8 @@ class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     password: Optional[str] = None
+    # Required, and checked, whenever ``password`` is changed.
+    current_password: Optional[str] = None
 
     _password_policy = field_validator("password")(_validate_password)
 

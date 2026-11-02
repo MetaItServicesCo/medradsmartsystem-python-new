@@ -47,7 +47,7 @@ const Login = () => {
           full_name: fullName,
           role: 'employee'
         })
-        setSuccess('Account created! You can now sign in.')
+        setSuccess('Account created. An administrator will approve it before you can sign in.')
         setIsSignUp(false)
         setPassword('')
       } else {

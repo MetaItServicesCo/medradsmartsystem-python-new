@@ -6,15 +6,21 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.base import get_db
-from app.core.security import create_access_token, decode_token, password_token_version, verify_password
+from app.core.security import (
+    create_access_token, decode_token, get_password_hash, password_token_version, verify_password,
+)
 from app.models.user import User
 from app.utils.logging import log_activity
+from app.utils.notifications import create_notifications
 from app.utils.rate_limit import check_rate_limit, clear_rate_limit, enforce_rate_limit, request_ip
 from app.utils.token_revocation import revoke_access_token
 
 logger = logging.getLogger("medrad.auth")
 
 router = APIRouter()
+# Checked against when the username does not exist, so an unknown name costs
+# the same bcrypt work as a wrong password and cannot be told apart by timing.
+_UNKNOWN_USER_HASH = get_password_hash("unknown-user-timing-equaliser")
 logout_token_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
 
 @router.post("/login")
@@ -49,7 +55,8 @@ def login(
     )
     user = db.query(User).filter(func.lower(User.username) == normalized_username).first()
     
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    password_ok = verify_password(form_data.password, user.hashed_password if user else _UNKNOWN_USER_HASH)
+    if not user or not password_ok:
         if user:
             user.failed_login_attempts = int(user.failed_login_attempts or 0) + 1
             db.commit()
@@ -81,6 +88,13 @@ def login(
             detail="Incorrect username or password"
         )
     
+    if not user.is_active and user.last_login is None and not user.is_locked:
+        # Only someone who knows the password learns this: a sign-up that has
+        # not been approved yet.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is awaiting approval by an administrator"
+        )
     if not user.is_active or user.is_locked:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -174,11 +188,26 @@ def register(
         # Public callers can never self-select an elevated role. Privileged
         # roles are assigned only through the protected user-management API.
         role=UserRole.EMPLOYEE,
-        is_active=True
+        # A stranger who signs up reaches nothing until a Super Admin or HR
+        # Manager approves the account (Users > Activate) and sets its role.
+        is_active=False,
     )
     db.add(db_user)
     log_activity(db, "users", -1, "REGISTER", db_user) # -1 temporarily as ID not yet generated
+    db.flush()
+    approvers = db.query(User.id).filter(
+        User.is_active.is_(True), User.role.in_([UserRole.SUPERADMIN, UserRole.HR_MANAGER])
+    ).all()
+    create_notifications(
+        db,
+        user_ids=[approver.id for approver in approvers],
+        title="New sign-up awaiting approval",
+        message=f"{db_user.full_name or db_user.username} ({db_user.email}) signed up. Activate the account in Users to give access.",
+        notification_type="user",
+        link_url="/users",
+    )
     db.commit()
     db.refresh(db_user)
-    
-    return {"message": "User successfully registered", "user_id": db_user.id}
+
+    return {"message": "Account created. An administrator must approve it before you can sign in.",
+            "user_id": db_user.id, "pending_approval": True}

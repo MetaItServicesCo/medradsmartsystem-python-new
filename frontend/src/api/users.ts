@@ -90,6 +90,8 @@ export interface UpdateOwnProfilePayload {
   full_name?: string
   phone?: string
   password?: string
+  /** Required by the server whenever ``password`` is changed. */
+  current_password?: string
 }
 
 export const resolveUploadUrl = (url?: string | null): string | undefined => {

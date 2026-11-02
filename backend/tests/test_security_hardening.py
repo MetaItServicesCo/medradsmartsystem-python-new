@@ -148,6 +148,9 @@ def test_public_registration_cannot_self_assign_privileged_role(monkeypatch) -> 
         def first(self):
             return None
 
+        def all(self):
+            return []
+
     class DatabaseStub:
         created = None
 
@@ -158,6 +161,9 @@ def test_public_registration_cannot_self_assign_privileged_role(monkeypatch) -> 
             self.created = obj
             obj.id = 77
 
+        def flush(self):
+            return None
+
         def commit(self):
             return None
 
@@ -165,6 +171,7 @@ def test_public_registration_cannot_self_assign_privileged_role(monkeypatch) -> 
             return None
 
     monkeypatch.setattr(auth_endpoint, "enforce_rate_limit", lambda **_: None)
+    monkeypatch.setattr(auth_endpoint, "create_notifications", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(auth_endpoint, "log_activity", lambda *_args, **_kwargs: None)
     db = DatabaseStub()
 
@@ -182,6 +189,7 @@ def test_public_registration_cannot_self_assign_privileged_role(monkeypatch) -> 
 
     assert result["user_id"] == 77
     assert db.created.role == UserRole.EMPLOYEE
+    assert db.created.is_active is False and result["pending_approval"] is True
 
 
 def test_logout_revocation_uses_the_token_jti_until_expiry(monkeypatch) -> None:

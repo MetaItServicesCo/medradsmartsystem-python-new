@@ -34,6 +34,7 @@ const Profile = () => {
     full_name: '',
     email: '',
     phone: '',
+    current_password: '',
     password: '',
     confirm_password: '',
   })
@@ -50,6 +51,7 @@ const Profile = () => {
       full_name: profile.full_name || '',
       email: profile.email || '',
       phone: formatUSPhoneInput(profile.phone || ''),
+      current_password: '',
       password: '',
       confirm_password: '',
     })
@@ -61,7 +63,7 @@ const Profile = () => {
     onSuccess: (updated) => {
       setUser(updated)
       queryClient.setQueryData(['current-user-profile'], updated)
-      setForm((prev) => ({ ...prev, password: '', confirm_password: '' }))
+      setForm((prev) => ({ ...prev, current_password: '', password: '', confirm_password: '' }))
       setMessage({ type: 'success', text: 'Profile updated successfully.' })
     },
     onError: (error: any) => {
@@ -89,12 +91,16 @@ const Profile = () => {
       setMessage({ type: 'error', text: 'Password confirmation does not match.' })
       return
     }
+    if (form.password && !form.current_password) {
+      setMessage({ type: 'error', text: 'Enter your current password to set a new one.' })
+      return
+    }
 
     updateMutation.mutate({
       full_name: form.full_name.trim(),
       email: form.email.trim(),
       phone: formatUSPhoneInput(form.phone.trim()),
-      ...(form.password ? { password: form.password } : {}),
+      ...(form.password ? { password: form.password, current_password: form.current_password } : {}),
     })
   }
 
@@ -232,6 +238,11 @@ const Profile = () => {
                 </Grid>
                 <Grid item xs={12}>
                   <Divider sx={{ my: 1 }} />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField label="Current password" type="password" fullWidth autoComplete="current-password"
+                    helperText="Needed only when setting a new password"
+                    value={form.current_password} onChange={(e) => setForm((prev) => ({ ...prev, current_password: e.target.value }))} />
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField label="New password" type="password" fullWidth value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} />

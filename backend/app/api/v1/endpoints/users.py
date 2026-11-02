@@ -19,7 +19,7 @@ from app.schemas.user import (
     UserProfileUpdate, UserRoleUpdate, UserSearchResponse, FacilityBrief,
     UserPermissionsUpdate, PermissionCatalogResponse,
 )
-from app.core.security import create_access_token, get_password_hash, password_token_version
+from app.core.security import create_access_token, get_password_hash, password_token_version, verify_password
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notification
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
@@ -176,6 +176,12 @@ def update_own_profile(
 ) -> Any:
     """Allow any authenticated user to update their own profile details."""
     update_data = profile_in.model_dump(exclude_unset=True)
+    if update_data.get("password"):
+        # Someone using a session left open, or a stolen token, must not be
+        # able to lock the owner out by choosing a new password.
+        current_password = update_data.get("current_password") or ""
+        if not current_password or not verify_password(current_password, current_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Your current password is incorrect")
     if "email" in update_data and update_data["email"] != current_user.email:
         existing = crud_user.get_by_email(db, email=update_data["email"])
         if existing and existing.id != current_user.id:
@@ -273,6 +279,7 @@ def create_user(
     current_user: User = Depends(require_module_access("users")),
 ) -> Any:
     """Create a new user (requires users.add permission)."""
+    _require_can_manage(current_user, user_in.role or UserRole.EMPLOYEE.value)
     # Check for duplicate username or email
     existing = crud_user.get_by_username(db, username=user_in.username)
     if existing:
@@ -327,6 +334,25 @@ def _filter_by_role(query, role: str):
     if role == UserRole.TECHNICIAN.value:
         return query.filter(or_(User.role == UserRole.TECHNICIAN, User.is_technician.is_(True)))
     return query.filter(User.role == role)
+
+
+# Accounts that can manage everyone else. Only a Super Admin may create one,
+# grant or remove these roles, or change, reset, deactivate or delete such an
+# account; otherwise anyone who manages users (an HR Manager) could promote
+# themselves or take over a Super Admin by resetting its password.
+PRIVILEGED_ROLES = {UserRole.SUPERADMIN.value, UserRole.ADMIN.value}
+
+
+def _role_value(role: Any) -> Optional[str]:
+    return role.value if hasattr(role, "value") else role
+
+
+def _require_can_manage(actor: User, *roles: Any) -> None:
+    """Refuse unless ``actor`` may manage accounts holding (or being given) ``roles``."""
+    if _role_value(actor.role) == UserRole.SUPERADMIN.value:
+        return
+    if any(_role_value(role) in PRIVILEGED_ROLES for role in roles if role):
+        raise HTTPException(status_code=403, detail="Only a Super Admin can manage Super Admin and Admin accounts")
 
 
 def _technician_flag_for(role: str, requested: Optional[bool], current: bool) -> bool:
@@ -555,6 +581,7 @@ def update_user(
     db_user = crud_user.get(db, id=user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_can_manage(current_user, db_user.role, user_in.role)
 
     # Check for duplicate username/email if being changed
     if user_in.username and user_in.username != db_user.username:
@@ -649,6 +676,7 @@ def deactivate_user(
     db_user = crud_user.get(db, id=user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_can_manage(current_user, db_user.role)
     if db_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
 
@@ -678,6 +706,7 @@ def delete_user(
     db_user = crud_user.get(db, id=user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_can_manage(current_user, db_user.role)
     if db_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
 
@@ -743,6 +772,7 @@ def activate_user(
     db_user = crud_user.get(db, id=user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_can_manage(current_user, db_user.role)
 
     db_user.is_active = True
     db.commit()
