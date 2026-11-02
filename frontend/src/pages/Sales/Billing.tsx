@@ -176,14 +176,9 @@ const methodLabel = (value?: string | null) => {
   return value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
 }
 
-const detectCardBrand = (cardNumber: string) => {
-  const digits = cardNumber.replace(/\D/g, '')
-  if (/^4/.test(digits)) return 'Visa'
-  if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(digits)) return 'Mastercard'
-  if (/^3[47]/.test(digits)) return 'American Express'
-  if (/^(6011|65|64[4-9])/.test(digits)) return 'Discover'
-  return 'Card'
-}
+// Full card numbers and security codes never enter this system (PCI): a card
+// payment is recorded by brand and last four digits only.
+const CARD_BRANDS = ['Visa', 'Mastercard', 'American Express', 'Discover']
 
 const billingTypeLabel = (item: BillingItem) => {
   if (item.source === 'service') {
@@ -502,9 +497,8 @@ const Billing = () => {
   const [payAmount, setPayAmount] = useState('')
   const [payNotes, setPayNotes] = useState('')
   const [ccName, setCcName] = useState('')
-  const [ccNumber, setCcNumber] = useState('')
-  const [ccExpiry, setCcExpiry] = useState('')
-  const [ccCvv, setCcCvv] = useState('')
+  const [ccBrand, setCcBrand] = useState('')
+  const [ccLast4, setCcLast4] = useState('')
   const [payBankName, setPayBankName] = useState('')
   const [payAcctLast4, setPayAcctLast4] = useState('')
   const [payRoutingLast4, setPayRoutingLast4] = useState('')
@@ -1074,9 +1068,8 @@ const Billing = () => {
     setPayAmount('')
     setPayNotes('')
     setCcName('')
-    setCcNumber('')
-    setCcExpiry('')
-    setCcCvv('')
+    setCcBrand('')
+    setCcLast4('')
     setPayBankName('')
     setPayAcctLast4('')
     setPayRoutingLast4('')
@@ -1193,22 +1186,20 @@ const Billing = () => {
         notes,
       }
       if (actualMethod === 'credit_card') {
-        const digits = ccNumber.replace(/\s/g, '')
-        data.account_last_four = digits.slice(-4) || undefined
+        data.account_last_four = ccLast4 || undefined
         data.bank_name = ccName || undefined
       }
       servicePayMut.mutate({ item: payOpen, data })
       return
     }
 
-    const cardDigits = ccNumber.replace(/\D/g, '')
     invoicePayMut.mutate({
       item: payOpen,
       amount,
       method: actualMethod,
       notes,
-      cardBrand: detectCardBrand(cardDigits),
-      cardLast4: cardDigits.slice(-4) || undefined,
+      cardBrand: ccBrand || undefined,
+      cardLast4: ccLast4 || undefined,
     })
   }
 
@@ -2256,18 +2247,14 @@ const Billing = () => {
             <Box sx={{ display: 'grid', gap: 1.5, p: 2, bgcolor: '#EFF6FF', borderRadius: '14px', border: '1px solid rgba(29,78,216,0.12)' }}>
               <Typography sx={{ fontWeight: 900, color: '#1D4ED8' }}>Credit Card Details</Typography>
               <TextField size="small" label="Cardholder Name" value={ccName} onChange={e => setCcName(e.target.value)} fullWidth />
-              <TextField size="small" label="Card Number" value={ccNumber} onChange={e => {
-                const value = e.target.value.replace(/\D/g, '').slice(0, 16)
-                setCcNumber(value.replace(/(\d{4})(?=\d)/g, '$1 ').trim())
-              }} fullWidth inputProps={{ maxLength: 19 }} placeholder="0000 0000 0000 0000" />
               <Box sx={{ display: 'flex', gap: 1.5 }}>
-                <TextField size="small" label="Expiry (MM/YY)" value={ccExpiry} onChange={e => {
-                  let value = e.target.value.replace(/\D/g, '').slice(0, 4)
-                  if (value.length > 2) value = `${value.slice(0, 2)}/${value.slice(2)}`
-                  setCcExpiry(value)
-                }} sx={{ flex: 1 }} inputProps={{ maxLength: 5 }} placeholder="MM/YY" />
-                <TextField size="small" label="CVV" value={ccCvv} onChange={e => setCcCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} sx={{ flex: 1 }} inputProps={{ maxLength: 4 }} placeholder="123" />
+                <TextField select size="small" label="Card Brand" value={ccBrand} onChange={e => setCcBrand(e.target.value)} sx={{ flex: 1 }}>
+                  <MenuItem value="">Not recorded</MenuItem>
+                  {CARD_BRANDS.map(brand => <MenuItem key={brand} value={brand}>{brand}</MenuItem>)}
+                </TextField>
+                <TextField size="small" label="Last 4 Digits" value={ccLast4} onChange={e => setCcLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} sx={{ flex: 1 }} inputProps={{ inputMode: 'numeric', maxLength: 4 }} placeholder="1234" />
               </Box>
+              <Typography sx={{ fontSize: 12, color: '#475569' }}>This records a card payment taken through Square or a card terminal. Never enter the full card number, expiry or security code here.</Typography>
             </Box>
           )}
 

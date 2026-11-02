@@ -60,7 +60,6 @@ const emptyForm = {
   name_on_card: '',
   card_last_four: '',
   phone: '',
-  security_code: '',
   title: '',
   expiration: '',
 }
@@ -204,31 +203,23 @@ const CreditCardAuthorizationDialog = ({
             <FormCell label="Name On Card">
               <TextField size="small" placeholder="Name On Card" value={form.name_on_card} onChange={e => setForm(prev => ({ ...prev, name_on_card: e.target.value }))} />
             </FormCell>
-            <FormCell label={secureRequestMode ? 'Last 4 Digits' : 'Card Number'}>
+            {/* Full card numbers and security codes are never typed into this system (PCI): last four only. */}
+            <FormCell label="Last 4 Digits">
               <TextField
                 size="small"
-                placeholder={secureRequestMode ? 'Last 4 only' : 'Card Number'}
+                placeholder="Last 4 only"
                 value={form.card_last_four}
-                onChange={e => setForm(prev => ({
-                  ...prev,
-                  card_last_four: secureRequestMode
-                    ? e.target.value.replace(/\D/g, '').slice(0, 4)
-                    : e.target.value,
-                }))}
-                inputProps={secureRequestMode ? { inputMode: 'numeric', maxLength: 4 } : undefined}
+                onChange={e => setForm(prev => ({ ...prev, card_last_four: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                inputProps={{ inputMode: 'numeric', maxLength: 4 }}
               />
             </FormCell>
             <FormCell label="PH#">
               <TextField size="small" placeholder="Phone Number" value={form.phone} onChange={e => setForm(prev => ({ ...prev, phone: formatUSPhoneInput(e.target.value) }))} />
             </FormCell>
-            <FormCell label={secureRequestMode ? 'Security' : 'Security Code'}>
-              {secureRequestMode ? (
-                <Typography sx={{ color: '#64748B', fontSize: 12 }}>
-                  Never collect or store CVV
-                </Typography>
-              ) : (
-                <TextField size="small" placeholder="Security Code" value={form.security_code} onChange={e => setForm(prev => ({ ...prev, security_code: e.target.value }))} />
-              )}
+            <FormCell label="Security">
+              <Typography sx={{ color: '#64748B', fontSize: 12 }}>
+                Never collect or store CVV
+              </Typography>
             </FormCell>
             <FormCell label="Title">
               <TextField size="small" placeholder="Title" value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
@@ -243,7 +234,7 @@ const CreditCardAuthorizationDialog = ({
           <Typography sx={{ fontStyle: 'italic', color: '#475569', fontSize: 12 }}>
             {secureRequestMode
               ? 'Send the secure link for customer authorization. If authorization is received by phone, record only the card brand and last four digits. Never enter a full card number or security code.'
-              : 'Note: 3.5% CC processing fee will be added to the charged amount. Full card number and security code are not stored in this system.'}
+              : 'Note: 3.5% CC processing fee will be added to the charged amount. Record only the card brand and last four digits. Never enter a full card number or security code.'}
           </Typography>
         </Box>
       </DialogContent>

@@ -115,9 +115,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   const [payRoutingLast4, setPayRoutingLast4] = useState('')
   // Credit Card
   const [ccName, setCcName] = useState('')
-  const [ccNumber, setCcNumber] = useState('')
-  const [ccExpiry, setCcExpiry] = useState('')
-  const [ccCvv, setCcCvv] = useState('')
+  const [ccLast4, setCcLast4] = useState('')
 
   // ACH sub-choice
   const [achChoice, setAchChoice] = useState<'ach' | 'mbmts_ach'>('ach')
@@ -260,7 +258,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     setPayMethod('credit_card'); setPayAmount(''); setPayNotes('')
     setPayProofFile(null)
     setPayBankName(''); setPayAcctLast4(''); setPayRoutingLast4('')
-    setCcName(''); setCcNumber(''); setCcExpiry(''); setCcCvv('')
+    setCcName(''); setCcLast4('')
     setAchChoice('ach')
   }
 
@@ -416,8 +414,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       notes: payNotes || undefined,
     }
     if (actualMethod === 'credit_card') {
-      const cardDigits = ccNumber.replace(/\s/g, '')
-      data.account_last_four = cardDigits.slice(-4) || undefined
+      data.account_last_four = ccLast4 || undefined
       data.bank_name = ccName || undefined
     }
     payMut.mutate({ id: quotationId, data })
@@ -895,18 +892,9 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, p: 2, bgcolor: '#EFF6FF', borderRadius: '12px', border: '1px solid rgba(29,78,216,0.12)' }}>
               <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: '#1D4ED8' }}>Credit Card Details</Typography>
               <TextField size="small" label="Cardholder Name" value={ccName} onChange={e => setCcName(e.target.value)} fullWidth />
-              <TextField size="small" label="Card Number" value={ccNumber} onChange={e => {
-                const v = e.target.value.replace(/\D/g, '').slice(0, 16)
-                setCcNumber(v.replace(/(\d{4})(?=\d)/g, '$1 ').trim())
-              }} fullWidth inputProps={{ maxLength: 19 }} placeholder="0000 0000 0000 0000" />
-              <Box sx={{ display: 'flex', gap: 1.5 }}>
-                <TextField size="small" label="Expiry (MM/YY)" value={ccExpiry} onChange={e => {
-                  let v = e.target.value.replace(/\D/g, '').slice(0, 4)
-                  if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2)
-                  setCcExpiry(v)
-                }} sx={{ flex: 1 }} inputProps={{ maxLength: 5 }} placeholder="MM/YY" />
-                <TextField size="small" label="CVV" value={ccCvv} onChange={e => setCcCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} sx={{ flex: 1 }} inputProps={{ maxLength: 4 }} placeholder="123" />
-              </Box>
+              {/* Full card numbers and security codes never enter this system (PCI): last four only. */}
+              <TextField size="small" label="Last 4 Digits" value={ccLast4} onChange={e => setCcLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} fullWidth inputProps={{ inputMode: 'numeric', maxLength: 4 }} placeholder="1234" />
+              <Typography sx={{ fontSize: '0.75rem', color: '#475569' }}>This records a card payment taken through Square or a card terminal. Never enter the full card number, expiry or security code here.</Typography>
             </Box>
           )}
 

@@ -206,6 +206,35 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def validate_square_configuration(self):
+        """Refuse to start with Square settings that do not belong together.
+
+        Square issues separate credentials for its sandbox and production. A
+        sandbox application ID on production (or the reverse) would load the
+        card form against one Square account while charging through another,
+        so every card payment would fail; the app must not start that way.
+        """
+        environment = self.SQUARE_ENVIRONMENT.strip().lower()
+        if environment not in {"sandbox", "production"}:
+            raise ValueError("SQUARE_ENVIRONMENT must be 'sandbox' or 'production'")
+        application_id = self.SQUARE_APPLICATION_ID.strip()
+        if application_id:
+            is_sandbox_id = application_id.startswith("sandbox-")
+            if environment == "production" and is_sandbox_id:
+                raise ValueError("SQUARE_APPLICATION_ID is a sandbox ID but SQUARE_ENVIRONMENT is production")
+            if environment == "sandbox" and not is_sandbox_id:
+                raise ValueError("SQUARE_APPLICATION_ID is a production ID but SQUARE_ENVIRONMENT is sandbox")
+        if environment == "production" and self.is_production and self.SQUARE_ACCESS_TOKEN.strip():
+            # Live payments are confirmed by signed webhooks as well as by the
+            # payment response, so a lost response can never leave a real charge
+            # unrecorded.
+            if not self.SQUARE_WEBHOOK_SIGNATURE_KEY.strip():
+                raise ValueError("SQUARE_WEBHOOK_SIGNATURE_KEY is required for production Square payments")
+            if not self.SQUARE_WEBHOOK_NOTIFICATION_URL.strip().startswith("https://"):
+                raise ValueError("SQUARE_WEBHOOK_NOTIFICATION_URL must be an HTTPS URL for production Square payments")
+        return self
+
+    @model_validator(mode="after")
     def validate_production_security(self):
         if not self.is_production:
             return self
