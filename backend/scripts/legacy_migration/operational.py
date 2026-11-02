@@ -23,6 +23,7 @@ from sqlalchemy.engine import Connection
 from .form_convert import (
     build_grid_schema_from_items,
     extract_answers,
+    extract_standard_checks,
     merge_item_lists,
     parse_form,
 )
@@ -129,6 +130,23 @@ _INSERT_DEFAULTS: dict[str, dict[str, Any]] = {
         "refund_status": "none",
         "refunded_amount": Decimal("0"),
     },
+}
+
+
+# The generated template for migrated inspections without a device form. It
+# uses the report's built-in sections, the same shape as the app's own default
+# form, so those inspections open as the standard report.
+LEGACY_REPORT_SCHEMA = {
+    "version": 1,
+    "source": SOURCE_SYSTEM,
+    "title": "Legacy Clinical Engineering Report",
+    "sections": [
+        {"key": "checks", "label": "Inspection Checks"},
+        {"key": "diagnostics", "label": "Biomed Notes"},
+        {"key": "measurements", "label": "Measurements"},
+        {"key": "compliance", "label": "Compliance Certification"},
+        {"key": "billing", "label": "Billing"},
+    ],
 }
 
 
@@ -321,6 +339,29 @@ class OperationalWriter:
                 _decimal(row.get("rent_per_day")),
             )
 
+    @staticmethod
+    def _report_fields(report: dict[str, Any]) -> dict[str, Any]:
+        """The report's own fields, filled from a legacy report's columns.
+
+        The checklist's standard nine checks go to the report's Inspection
+        Report table and the legacy notes to its Biomed Notes, which is where
+        the report screen shows them; nothing is invented for a value the
+        legacy report did not record.
+        """
+        fields: dict[str, Any] = {}
+        checks = extract_standard_checks(report.get("tests") or "")
+        if checks:
+            fields["checks"] = checks
+        notes = {
+            "reported_problem": _clean(report.get("r_fault")),
+            "problem_found": _clean(report.get("f_fault")),
+            "corrective_action_taken": _clean(report.get("action")),
+            "summary": _clean(report.get("summary")),
+        }
+        if any(notes.values()):
+            fields["diagnostics"] = {key: value or "" for key, value in notes.items()}
+        return fields
+
     def _ensure_default_form(self, target: Connection) -> None:
         table = self.tables["inspection_forms"]
         existing = target.execute(
@@ -338,17 +379,7 @@ class OperationalWriter:
             {
                 "name": "Legacy Clinical Engineering Report",
                 "description": "Imported report template for legacy facility asset inspections.",
-                "schema": {
-                    "version": 1,
-                    "source": SOURCE_SYSTEM,
-                    "sections": [
-                        "tests",
-                        "observations",
-                        "corrective_actions",
-                        "recommendations",
-                        "billing",
-                    ],
-                },
+                "schema": LEGACY_REPORT_SCHEMA,
                 "created_at": now,
                 "updated_at": now,
             },
@@ -1148,6 +1179,7 @@ class OperationalWriter:
                         legacy_id, insp_parts, insp_kits, insp_images
                     )
                 )
+                form_data.update(self._report_fields(report or {}))
                 # Fold the completed checklist answers into the native grid
                 # value map so the migrated form opens with them populated.
                 if report.get("tests"):
@@ -1183,7 +1215,9 @@ class OperationalWriter:
                         or report.get("f_fault"),
                         "inspection_scope": "facility_inventory",
                         "inspection_frequency": "legacy",
-                        "compliance_requirement": report.get("tests"),
+                        # The raw checklist HTML is kept in legacy_report;
+                        # it is not a compliance standard.
+                        "compliance_requirement": None,
                         "is_instant": False,
                         "created_at": created_at,
                         "updated_at": _safe_datetime(row.get("updated_at"))

@@ -27,6 +27,47 @@ from typing import Any
 ANSWER_BLOCK_ID = "ans"
 GRID_COLUMNS = 2
 
+# The report screen always shows its own Inspection Report table with these
+# nine checks, and its own Biomed Notes boxes. Every legacy form repeated them,
+# so they are left out of the converted form (the answers go to the report's
+# own fields instead) rather than appearing twice.
+STANDARD_CHECKS = {
+    "physicalinsp": "physical_inspection",
+    "physicalinspection": "physical_inspection",
+    "cleaning": "cleaning",
+    "display": "display",
+    "lubrication": "lubrication",
+    "functional": "functional",
+    "calibration": "calibration",
+    "electricalsafety": "electrical_safety",
+    "battery": "battery",
+    "pmkit": "pm_kit",
+}
+# Captions of the legacy notes block, plus the builder's untitled placeholder.
+NOTE_CAPTIONS = {
+    "biomed notes", "reported problem", "problem found", "corrective action taken",
+    "summary", "set title",
+}
+# The legacy notes block's own text inputs (Reported Problem / Problem Found).
+NOTE_INPUT_NAMES = {"temp_r_fault", "temp_p_fault"}
+# A label longer than this does not fit beside its box in a half-width cell.
+LONG_INPUT_LABEL = 18
+
+
+def standard_check_key(label: str) -> str | None:
+    """The report's own check key for a legacy item label, if it is one."""
+    return STANDARD_CHECKS.get("".join(ch for ch in (label or "").lower() if ch.isalnum()))
+
+
+def _is_report_owned(item: dict[str, Any]) -> bool:
+    """True for items the report screen already provides natively."""
+    if item["kind"] == "heading":
+        return item["label"].strip().lower() in NOTE_CAPTIONS
+    if item["kind"] == "input":
+        return item.get("name") in NOTE_INPUT_NAMES
+    return item["kind"] == "radio" and standard_check_key(item["label"]) is not None
+
+
 # Column-header words that are never real item labels.
 _HEADER_WORDS = {"test", "pass", "fail", "n/a", "na", "result", "check", ""}
 
@@ -195,6 +236,20 @@ def _radio_cell(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _input_cell(item: dict[str, Any]) -> dict[str, Any]:
+    if len(item["label"] or "") > LONG_INPUT_LABEL:
+        # The label is drawn on one line beside its box, so a long one gets the
+        # whole row instead of spilling into the neighbouring cell.
+        return {
+            "id": f"item_{item['name']}",
+            "label": "",
+            "type": "text",
+            "blocks": [{
+                "id": ANSWER_BLOCK_ID, "type": "input", "label": item["label"],
+                "inline": True, "layout": "inline", "width": 460, "height": 40,
+            }],
+            "rowSpan": 1, "colSpan": GRID_COLUMNS, "width": 480, "height": 80,
+            "align": "left", "verticalAlign": "middle", "hidden": False,
+        }
     return {
         "id": f"item_{item['name']}",
         "label": "",
@@ -291,6 +346,8 @@ def build_grid_schema_from_items(
     items: list[dict[str, Any]], title: str, legacy_id: int
 ) -> dict[str, Any]:
     """Return the ``inspection_forms.schema`` JSON for parsed/merged items."""
+    had_items = any(item["kind"] != "heading" for item in items)
+    items = _without_report_owned(items)
     rows: list[list[dict[str, Any]]] = []
     current: list[dict[str, Any]] = []
 
@@ -309,11 +366,18 @@ def build_grid_schema_from_items(
             rows.append([_heading_cell(item["label"], heading_index)])
             continue
         cell = _radio_cell(item) if kind == "radio" else _input_cell(item)
+        if cell["colSpan"] == GRID_COLUMNS:
+            flush()
+            rows.append([cell])
+            continue
         current.append(cell)
         if len(current) == GRID_COLUMNS:
             flush()
     flush()
 
+    if not rows and had_items:
+        # Everything this form held is already on the report itself.
+        rows = [[_heading_cell("No device-specific checks beyond the standard inspection.", 1)]]
     if not rows:
         # Empty/stub legacy form (e.g. ids 4 & 6): valid single-note grid.
         rows = [[{
@@ -342,6 +406,81 @@ def build_grid_schema_from_items(
     }
 
 
+def _without_report_owned(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop report-owned items, then any heading left with nothing under it."""
+    kept = [item for item in items if not _is_report_owned(item)]
+    result: list[dict[str, Any]] = []
+    for index, item in enumerate(kept):
+        if item["kind"] == "heading":
+            following = kept[index + 1] if index + 1 < len(kept) else None
+            if following is None or following["kind"] == "heading":
+                continue
+        result.append(item)
+    return result
+
+
+def _items_from_grid(cells: list[list[dict[str, Any]]]) -> list[dict[str, Any]] | None:
+    """Recover the item list a converted grid was built from (None if not one)."""
+    items: list[dict[str, Any]] = []
+    for row in cells:
+        for cell in row:
+            cell_id = str(cell.get("id") or "")
+            blocks = cell.get("blocks") or []
+            if not blocks:
+                return None
+            block = blocks[0]
+            if cell_id.startswith("section_"):
+                items.append({"kind": "heading", "label": str(block.get("label") or "")})
+            elif cell_id.startswith("item_") and cell_id != "item_note" and block.get("type") in ("radio", "input"):
+                items.append({
+                    "name": cell_id[len("item_"):],
+                    "kind": block["type"],
+                    "label": str(block.get("label") or ""),
+                    "raw_options": [str(o) for o in (block.get("options") or [])],
+                })
+            else:
+                return None
+    return items
+
+
+def clean_grid_schema(schema: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Rebuild an already-migrated legacy form without the report-owned items.
+
+    Only a form the migration produced and nobody has edited since
+    (``source == "legacy_pm_desc"``) is touched; anything else is returned
+    unchanged. Rebuilding through the same builder as the migration keeps cell
+    ids, and so every recorded answer key, exactly as they were. Returns the new
+    schema and the labels that were removed.
+    """
+    grid = (schema or {}).get("custom_grid") or {}
+    if (schema or {}).get("source") != "legacy_pm_desc" or not isinstance(grid.get("cells"), list):
+        return schema, []
+    items = _items_from_grid(grid["cells"])
+    if items is None or not any(item["kind"] != "heading" for item in items):
+        # Not a converted grid, or already reduced to its placeholder.
+        return schema, []
+    removed = [item["label"] for item in items if _is_report_owned(item)]
+    rebuilt = build_grid_schema_from_items(
+        items, schema.get("title") or grid.get("title") or "", schema.get("legacy_pm_desc_id"))
+    if rebuilt["custom_grid"]["cells"] == grid["cells"]:
+        return schema, []
+    return {**schema, "custom_grid": {**grid, **rebuilt["custom_grid"]}}, removed
+
+
+def extract_standard_checks(tests_html: str) -> dict[str, str]:
+    """The report's own check answers (``pass`` / ``fail`` / ``na``) from a legacy report."""
+    checks: dict[str, str] = {}
+    for item in parse_form(tests_html or ""):
+        if item["kind"] != "radio" or not item.get("checked"):
+            continue
+        key = standard_check_key(item["label"])
+        value = item["checked"].strip().lower()
+        value = "na" if value in ("n/a", "na") else value
+        if key and value in ("pass", "fail", "na"):
+            checks[key] = value
+    return checks
+
+
 def build_grid_schema(html: str, title: str, legacy_id: int) -> dict[str, Any]:
     """Convenience wrapper: parse a single form's HTML and build its schema."""
     return build_grid_schema_from_items(parse_form(html), title, legacy_id)
@@ -355,6 +494,8 @@ def extract_answers(tests_html: str) -> dict[str, str]:
     """
     answers: dict[str, str] = {}
     for item in parse_form(tests_html):
+        if _is_report_owned(item):
+            continue  # recorded in the report's own fields instead
         if item["kind"] == "radio" and item.get("checked"):
             answers[f"item_{item['name']}__{ANSWER_BLOCK_ID}"] = _option_label(item["checked"])
         elif item["kind"] == "input" and item.get("value"):
