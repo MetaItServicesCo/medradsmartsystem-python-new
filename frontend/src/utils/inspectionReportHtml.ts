@@ -391,11 +391,18 @@ const standardGridHtml = (inspection: InspectionReportLike) => {
   const data = reportData(inspection)
   const checks = data.checks || {}
   const measurements: any[] = data.measurements || []
-  const elec = measurements.find(m => /elec|leak|safety/i.test(String(m?.name || '')))
+  // With a custom (grid or canvas) form, the screen shows the built-in table
+  // whose Set/Read, Battery and PM Kit boxes are measurements rows 0, 1 and 2.
+  // In the standard report layout those rows are ordinary named measurements.
+  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  const builtInTable = Boolean(schema?.custom_grid || schema?.canvas_form?.elements?.length || data.custom_grid || data.formio_form)
+  const elec = measurements.find(m => /elec|leak|safety/i.test(String(m?.name || ''))) || (builtInTable ? measurements[0] : undefined)
   const read = elec ? [elec.read_value, elec.unit].filter(hasVal).join(' ') : ''
   const set = elec ? elec.set_value : ''
-  const battery = data.battery || {}
-  const pmKit = data.pm_kit || {}
+  const fromRow = (row: any) => (builtInTable && row ? { replaced_on: row.set_value, due: row.read_value } : {})
+  const pick = (stored: any, row: any) => (hasVal(stored?.replaced_on) || hasVal(stored?.due) ? stored : fromRow(row))
+  const battery = pick(data.battery, measurements[1])
+  const pmKit = pick(data.pm_kit, measurements[2])
 
   const rightRow = (index: number) => {
     if (index < RIGHT_CHECKS.length) {
@@ -492,18 +499,12 @@ const canvasAnswersHtml = (inspection: InspectionReportLike): string => {
   return rows ? `<table class="doc notes" style="margin-top:8px"><tbody>${rows}</tbody></table>` : ''
 }
 
-// The inspection section of a printed report. An app-built grid form prints
-// its own answers, as it always has. A migrated legacy form's nine standard
-// checks were moved out of the form into the report's own table, so it prints
-// that table and the form's device-specific answers, as it did before. Every
-// other report prints the standard table, followed by a canvas form's answers
-// when it has one.
-const gridHtml = (inspection: InspectionReportLike) => {
-  const custom = customGridHtml(inspection)
-  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
-  if (custom && schema?.source !== 'legacy_pm_desc') return custom
-  return standardGridHtml(inspection) + custom + canvasAnswersHtml(inspection)
-}
+// The inspection section of a printed report: what the report screen shows,
+// in the same order. The screen always shows the built-in table (the nine
+// checks, Set/Read, Battery and PM Kit) above any custom form, so the printout
+// does too, followed by the custom grid's or canvas form's answers.
+const gridHtml = (inspection: InspectionReportLike) =>
+  standardGridHtml(inspection) + customGridHtml(inspection) + canvasAnswersHtml(inspection)
 
 const biomedNotesHtml = (inspection: InspectionReportLike) => {
   const data = reportData(inspection)

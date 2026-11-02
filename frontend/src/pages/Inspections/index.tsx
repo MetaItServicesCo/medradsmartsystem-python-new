@@ -2099,7 +2099,7 @@ const Inspections = () => {
 
   const updateArrayReport = (section: 'parts' | 'test_equipment' | 'measurements' | 'photo_documentation', index: number, key: string, value: any) => {
     setReport((prev: any) => {
-      const next = [...prev[section]]
+      const next = [...(prev[section] || [])]
       next[index] = { ...next[index], [key]: value }
       return { ...prev, [section]: next }
     })

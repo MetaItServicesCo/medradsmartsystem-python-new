@@ -93,9 +93,35 @@ const appPrinted = print({
   form_schema: appGrid,
   form_data: { checks: {}, custom_grid_values: { item_101__ans: 'Pass' } },
 })
-ok('an app-built grid form prints exactly as before: its own answers only',
-  appPrinted.includes('EKG Cable') && !hasStandardTable(appPrinted))
+ok('an app-built grid form prints the built-in table the screen shows above it, then its answers',
+  hasStandardTable(appPrinted) && appPrinted.includes('EKG Cable')
+  && appPrinted.indexOf('Replaced on') < appPrinted.indexOf('EKG Cable'))
 ok('a standard report prints the standard table as before', hasStandardTable(print({ form_data: { checks: { cleaning: 'pass' } } })))
+
+// ── Battery / PM Kit "Replaced on / Due" ───────────────────────────────────
+const typed = print({
+  form_schema: appGrid,
+  form_data: {
+    checks: {},
+    measurements: [
+      { name: 'Electrical leakage', set_value: '0.5', read_value: '0.2', unit: 'mA' },
+      { name: 'Functional test', set_value: '2026-01-10', read_value: '2028-01-10' },
+      { set_value: '2026-02-01', read_value: '2027-02-01' },
+    ],
+  },
+})
+ok('Battery dates typed in the built-in table print', typed.includes('2026-01-10') && typed.includes('2028-01-10'))
+ok('PM Kit dates typed in the built-in table print', typed.includes('2026-02-01') && typed.includes('2027-02-01'))
+ok('the Set / Read reading prints', typed.includes('<b>0.5</b>') && typed.includes('0.2 mA'))
+const standardLayout = print({
+  form_data: { checks: {}, measurements: [
+    { name: 'Electrical leakage', set_value: '', read_value: '' },
+    { name: 'Functional test', set_value: 'OK', read_value: 'OK' },
+  ] },
+})
+ok('in the standard layout an ordinary measurement is not printed as Battery dates', !standardLayout.includes('<b>OK</b>'))
+const migratedFields = print({ form_schema: legacyGrid, form_data: { checks: {}, battery: { replaced_on: '2025-05-05', due: '2026-05-05' } } })
+ok('migrated Battery dates print from where the migration stored them', migratedFields.includes('2025-05-05') && migratedFields.includes('2026-05-05'))
 
 console.log()
 if (failures) {
