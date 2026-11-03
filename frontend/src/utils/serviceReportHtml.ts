@@ -217,8 +217,8 @@ const serviceSessionPageHtml = (session: any, index: number) => page(`
   </div>
   <div class="identity" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
     ${idBox('Technician', session.user || 'Technician')}
-    ${idBox('Start Time', fmtDateTime(session.start_time || session.clocked_in_at))}
-    ${idBox('End Time', fmtDateTime(session.end_time || session.clocked_out_at || session.timestamp))}
+    ${session.work_date ? idBox('Work Date', fmtDate(session.work_date)) : `${idBox('Start Time', fmtDateTime(session.start_time || session.clocked_in_at))}
+    ${idBox('End Time', fmtDateTime(session.end_time || session.clocked_out_at || session.timestamp))}`}
     ${session.break_minutes != null ? idBox('Break Time', `${numberValue(session.break_minutes)} min`) : ''}
     ${session.duration_hours != null ? idBox('Work Hours', `${numberValue(session.duration_hours).toFixed(2)} hrs`) : ''}
     ${session.total_mileage != null ? idBox('Mileage', `${numberValue(session.total_mileage).toFixed(2)} mi`) : ''}
@@ -319,11 +319,11 @@ const appendSessionHtml = (session: any, index: number) => {
     <div class="report-session">
       <div class="report-session-head">
         <strong>Session ${index + 1} — ${esc(session.user || 'Technician')}</strong>
-        <span>${esc(numberValue(session.duration_hours).toFixed(2))} hrs</span>
+        <span>${session.duration_hours != null ? `${esc(numberValue(session.duration_hours).toFixed(2))} hrs` : 'Hours not recorded'}</span>
       </div>
       <div class="report-times">
-        <div><b>Start Time</b><br>${esc(fmtDateTime(session.start_time || session.clocked_in_at) || '-')}</div>
-        <div><b>End Time</b><br>${esc(fmtDateTime(session.end_time || session.clocked_out_at || session.timestamp) || '-')}</div>
+        ${session.work_date ? `<div><b>Work Date</b><br>${esc(fmtDate(session.work_date) || '-')}</div>` : `<div><b>Start Time</b><br>${esc(fmtDateTime(session.start_time || session.clocked_in_at) || '-')}</div>
+        <div><b>End Time</b><br>${esc(fmtDateTime(session.end_time || session.clocked_out_at || session.timestamp) || '-')}</div>`}
         ${session.break_minutes != null ? `<div><b>Break Time</b><br>${esc(String(session.break_minutes))} min</div>` : ''}
         ${session.total_mileage != null ? `<div><b>Total Mileage</b><br>${esc(numberValue(session.total_mileage).toFixed(2))} mi</div>` : ''}
       </div>

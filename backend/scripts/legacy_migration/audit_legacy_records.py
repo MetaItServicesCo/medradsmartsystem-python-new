@@ -56,7 +56,18 @@ def _list(value: Any) -> list[Any]:
 
 
 def _raw(value: Any) -> bool:
-    return isinstance(value, str) and value.strip().startswith(RAW_LIST_MARKERS)
+    """Legacy list text left in a field: ``["Daniel"]``, ``[null]``, ``[null,"Replaced ..."]``."""
+    if not isinstance(value, str):
+        return False
+    text_value = value.strip()
+    if text_value.startswith(RAW_LIST_MARKERS):
+        return True
+    if text_value.startswith("[") and text_value.endswith("]"):
+        try:
+            return isinstance(json.loads(text_value), list)
+        except ValueError:
+            return False
+    return False
 
 
 def legacy_data(legacy) -> dict[str, Any]:
@@ -64,9 +75,10 @@ def legacy_data(legacy) -> dict[str, Any]:
         rows = lambda sql: [dict(r._mapping) for r in c.execute(text(sql))]  # noqa: E731
         data = {
             "invoices": rows("SELECT * FROM invoices"),
-            "payments": rows("SELECT invoice_id, paid_amount FROM partial_payments"),
+            "payments": rows("SELECT * FROM partial_payments ORDER BY id"),
             "logs": rows("SELECT invoice_no, action FROM invoice_logs"),
             "reports": rows("SELECT * FROM service_reports ORDER BY id"),
+            "services": {int(r["id"]): r for r in rows("SELECT id, user_name FROM services")},
             "activity_services": {r["service_id"] for r in rows("SELECT DISTINCT service_id FROM service_activities")},
             "charges": rows("SELECT * FROM inspection_charges ORDER BY id"),
         }
@@ -102,6 +114,12 @@ def audit_invoices(conn, data, report) -> None:
         {"mine": sorted(lr.MIGRATION_TRANSACTIONS)})}
     current = {int(r.id): r for r in conn.execute(text(
         "SELECT id, invoice_number, status, total_amount, amount_paid, balance_due, due_date FROM invoices"))}
+    ledger = collections.Counter()
+    for invoice_id, amount in conn.execute(text(
+            "SELECT invoice_id, amount FROM invoice_transactions WHERE transaction_type = 'payment' "
+            "AND description IN :mine").bindparams(bindparam("mine", expanding=True)),
+            {"mine": sorted(lr.MIGRATION_TRANSACTIONS)}):
+        ledger[int(invoice_id)] += lr.money(amount)
     for row in data["invoices"]:
         target = targets.get(int(row["id"]))
         if target is None or target not in current:
@@ -113,7 +131,7 @@ def audit_invoices(conn, data, report) -> None:
         paid, owed = expected
         now = current[target]
         status = lr.invoice_status(paid, lr.money(now.total_amount), now.due_date)
-        same = lr.money(now.amount_paid) == paid and lr.money(now.balance_due) == owed and str(now.status) == status
+        same = lr.money(now.amount_paid) == paid and lr.money(now.balance_due) == owed and str(now.status) == status             and (target in app_activity or lr.money(ledger[target]) == paid)
         if same:
             report["counts"]["invoices matching the legacy record"] += 1
             continue
@@ -130,42 +148,53 @@ def audit_invoices(conn, data, report) -> None:
         report["money"]["outstanding balance change"] += float(owed - lr.money(now.balance_due))
 
 
+def fallback_user(service: dict[str, Any] | None) -> str:
+    name = str((service or {}).get("user_name") or "").strip()
+    return name or "Legacy Technician"
+
+
+def expected_entries(legacy_id: int, reports: list[dict[str, Any]], data) -> list[dict[str, Any]]:
+    """What the service's history should hold for its legacy reports (JSON-normalised)."""
+    user = fallback_user(data["services"].get(legacy_id))
+    if legacy_id in data["activity_services"]:
+        entries = [lr.report_entry(r, user) for r in reports]
+    else:
+        entries = lr.session_entries(reports, user)
+    return json.loads(json.dumps(entries))
+
+
 def audit_services(conn, data, report) -> None:
     by_service = collections.defaultdict(list)
     for row in data["reports"]:
         by_service[int(row["service_id"])].append(row)
     targets = id_map(conn, "service_request")
     rows = {int(r.id): r for r in conn.execute(text(
-        "SELECT id, request_number, history, resolution_description, time_spent_hours FROM service_requests"))}
+        "SELECT id, request_number, history, resolution_description FROM service_requests"))}
     for legacy_id, target in targets.items():
         sr = rows.get(target)
         reports = by_service.get(legacy_id) or []
         if sr is None or not reports:
             continue
         history = _list(sr.history)
+        migrated = [e for e in history if lr.is_migrated_report_entry(e)]
+        expected = expected_entries(legacy_id, reports, data)
         problems = []
-        if legacy_id not in data["activity_services"]:
-            expected = [s for r in reports for s in lr.report_sessions(r)]
-            migrated = [e for e in history if e.get("action") == "technician_clock_out"
-                        and str((e.get("changes") or {}).get("session_id") or "").startswith("legacy-report-")]
+        if migrated != expected:
             if len(migrated) != len(expected):
-                problems.append(f"{len(migrated)} work session(s) shown, legacy recorded {len(expected)}")
-            for entry in migrated:
-                changes = entry.get("changes") or {}
-                if any(_raw(v) for v in (entry.get("user"), changes.get("diagnosis"), changes.get("work_done"), changes.get("notes"))):
-                    problems.append("legacy list text in a work session")
-                    break
-        elif any(_raw(e.get("user")) for e in history if e.get("action") == "legacy_service_report"):
-            problems.append("legacy list text as the technician of a service report entry")
+                problems.append(f"{len(migrated)} report entr(ies) shown, legacy recorded {len(expected)}")
+            if any(_raw(v) for e in migrated for v in (e.get("user"), *(e.get("changes") or {}).values())):
+                problems.append("legacy list text left in")
+            if not problems:
+                problems.append("work-session details differ")
         expected_summary = lr.resolution_summary(reports)
-        if (sr.resolution_description or None) != expected_summary and (
-                _raw(sr.resolution_description) or sr.resolution_description in (None, "")):
-            problems.append(f"resolution summary {sr.resolution_description!r} -> {expected_summary!r}")
-        elif (sr.resolution_description or None) != expected_summary:
-            report["counts"]["service resolution summaries changed in the app (not touched)"] += 1
+        if (sr.resolution_description or None) != expected_summary:
+            if _raw(sr.resolution_description) or sr.resolution_description in (None, ""):
+                problems.append(f"resolution summary {sr.resolution_description!r} -> {expected_summary!r}")
+            else:
+                report["counts"]["service resolution summaries changed in the app (not touched)"] += 1
         if problems:
             note(report, "service requests whose report differs from the legacy record",
-                 f"{sr.request_number}: " + "; ".join(dict.fromkeys(problems)))
+                 f"{sr.request_number}: " + "; ".join(problems))
         else:
             report["counts"]["service requests matching the legacy record"] += 1
 

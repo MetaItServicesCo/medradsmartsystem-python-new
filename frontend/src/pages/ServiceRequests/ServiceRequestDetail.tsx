@@ -118,6 +118,7 @@ const createWorkSessionId = () => {
 }
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
+  work_date: 'Work Date',
   start_time: 'Start Time',
   end_time: 'End Time',
   break_minutes: 'Break Time',
@@ -590,6 +591,11 @@ const ServiceRequestDetail = () => {
 
   const formatHistoryValue = (value: unknown, field?: string) => {
     if (value === null || value === undefined || value === '') return '---'
+    // A legacy session's day, kept as the date it is (never shifted by a time zone).
+    if (field === 'work_date' && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [year, month, day] = value.split('-').map(Number)
+      return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    }
     if (field && HISTORY_DATE_FIELDS.has(field) && typeof value === 'string') return formatDateTime(value)
     if (field === 'break_minutes') return `${Number(value || 0)} min`
     if (field === 'total_mileage') return `${Number(value || 0).toFixed(2)} mi`

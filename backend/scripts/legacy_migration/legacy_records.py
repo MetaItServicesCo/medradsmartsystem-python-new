@@ -133,6 +133,14 @@ def report_sessions(report: dict[str, Any]) -> list[dict[str, Any]]:
             "diagnosis": _entry(pick("fault")),
             "work_done": _entry(pick("action")),
         })
+    total = _hours(report.get("worked_hours"))
+    if not sessions and total:
+        # A few reports recorded only their total hours: one session holds them.
+        sessions.append({"technician": None, "work_date": None, "duration_hours": total,
+                         "diagnosis": None, "work_done": None})
+    elif len(sessions) == 1 and sessions[0]["duration_hours"] is None and total:
+        # A one-session report often kept its hours only in the total.
+        sessions[0]["duration_hours"] = total
     return sessions
 
 
@@ -163,3 +171,124 @@ def inspection_billing(charge: dict[str, Any]) -> dict[str, float]:
     work = money(charge.get("labour")) + money(charge.get("service")) + money(charge.get("travel"))
     others = money(charge.get("other")) + money(charge.get("tax")) - money(charge.get("discount"))
     return {"parts": float(parts), "inspection_charges": float(work), "others": float(others)}
+
+
+# --- what the migration should have written -------------------------------------------------------
+def jsonable(value: Any) -> Any:
+    """A legacy column value as JSON can store it (dates as ISO text, money as a number)."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Decimal):
+        return float(value)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _when(report: dict[str, Any]) -> Any:
+    return jsonable(report.get("updated_at") or report.get("created_at"))
+
+
+def session_entries(reports: list[dict[str, Any]], fallback_user: str) -> list[dict[str, Any]]:
+    """The service-history work sessions for legacy reports of a service with no activity records.
+
+    One entry per session the report recorded; the first keeps the session id
+    the migration gave the report, so nothing that already points at it moves.
+    """
+    entries = []
+    for report in reports:
+        for number, session in enumerate(report_sessions(report), 1):
+            entries.append({
+                "action": "technician_clock_out",
+                "user": session["technician"] or fallback_user,
+                "timestamp": _when(report),
+                "changes": {
+                    "session_id": f"legacy-report-{report['id']}" + ("" if number == 1 else f"-{number}"),
+                    "work_date": session["work_date"],
+                    "duration_hours": session["duration_hours"],
+                    "diagnosis": session["diagnosis"],
+                    "work_done": session["work_done"],
+                    "legacy_report_file": jsonable(report.get("file")),
+                    "po": jsonable(report.get("po")),
+                    "trips": jsonable(report.get("trips")),
+                    "trip_price": jsonable(report.get("trip_price")),
+                },
+            })
+    return entries
+
+
+def report_entry(report: dict[str, Any], fallback_user: str) -> dict[str, Any]:
+    """The history entry for a legacy report of a service whose sessions came from activity records."""
+    sessions = report_sessions(report)
+    joined = lambda key: "\n".join(s[key] for s in sessions if s[key]) or None  # noqa: E731
+    return {
+        "action": "legacy_service_report",
+        "user": technician_names(report) or fallback_user,
+        "timestamp": _when(report),
+        "changes": {
+            "legacy_report_id": int(report["id"]),
+            "diagnosis": joined("diagnosis"),
+            "work_done": joined("work_done"),
+            "worked_hours": jsonable(report.get("worked_hours")),
+            "legacy_report_file": jsonable(report.get("file")),
+            "po": jsonable(report.get("po")),
+            "trips": jsonable(report.get("trips")),
+            "trip_price": jsonable(report.get("trip_price")),
+            "mileage_amount": jsonable(report.get("milage_amount")),
+            "fixed_amount": jsonable(report.get("fixed_amount")),
+        },
+    }
+
+
+def is_migrated_report_entry(entry: dict[str, Any]) -> bool:
+    """A history entry the migration wrote from a legacy service report."""
+    changes = entry.get("changes") or {}
+    if entry.get("action") == "technician_clock_out":
+        return str(changes.get("session_id") or "").startswith("legacy-report-")
+    return entry.get("action") == "legacy_service_report" and "legacy_report_id" in changes
+
+
+def corrected_history(history: list[dict[str, Any]], expected: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """``history`` with the migration's report entries replaced by ``expected``, in their place.
+
+    Every entry the new app added stays exactly as it is.
+    """
+    result, placed = [], False
+    for entry in history:
+        if is_migrated_report_entry(entry):
+            if not placed:
+                result.extend(expected)
+                placed = True
+            continue
+        result.append(entry)
+    if not placed:
+        result.extend(expected)
+    return result
+
+
+def payment_rows(row: dict[str, Any], legacy_payments: list[dict[str, Any]], amount_paid: Decimal) -> list[dict[str, Any]]:
+    """The invoice's legacy payment ledger rows: its recorded payments, else one balance row."""
+    if amount_paid <= 0:
+        return []
+    recorded = [p for p in legacy_payments if money(p.get("paid_amount")) > 0]
+    if recorded and sum((money(p.get("paid_amount")) for p in recorded), Decimal("0.00")) == amount_paid:
+        return [{"amount": money(p.get("paid_amount")), "description": "Imported legacy partial payment",
+                 "when": p.get("paid_at") or p.get("created_at"), "method": _text(p.get("payment_type")) or None,
+                 "reference": _text(p.get("charge_id")) or None} for p in recorded]
+    return [{"amount": amount_paid, "description": "Imported legacy payment balance",
+             "when": row.get("paid_at") or row.get("updated_at") or row.get("created_at"), "method": None,
+             "reference": _text(row.get("charge_id")) or None}]
+
+
+def as_datetime(value: Any):
+    """A legacy timestamp (a datetime, or text such as ``2022-01-25 22:05:23``) as a datetime, else None."""
+    from datetime import datetime as _datetime
+    if value is None or isinstance(value, _datetime):
+        return value
+    if isinstance(value, date):
+        return _datetime(value.year, value.month, value.day)
+    text = _text(value)
+    try:
+        return _datetime.fromisoformat(text.replace("T", " ")[:19]) if text and not text.startswith("0000") else None
+    except ValueError:
+        return None

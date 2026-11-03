@@ -63,6 +63,7 @@ def _service_session_entries(sr: ServiceRequest) -> list[dict[str, Any]]:
             "user": entry.get("user") or (sr.assigned_technician.full_name if sr.assigned_technician else "Technician"),
             "timestamp": entry.get("timestamp"),
             "session_id": session_id,
+            "work_date": changes.get("work_date"),
             "start_time": changes.get("start_time") or changes.get("clocked_in_at"),
             "end_time": changes.get("end_time") or changes.get("clocked_out_at"),
             "break_minutes": changes.get("break_minutes"),

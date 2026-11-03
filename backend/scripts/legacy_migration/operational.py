@@ -20,6 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection
 
+from . import legacy_records
 from .form_convert import (
     alias_answers,
     build_grid_schema_from_items,
@@ -720,59 +721,16 @@ class OperationalWriter:
                     },
                 }
             )
+        # Legacy service reports hold their sessions as JSON lists, one entry per
+        # session (legacy_records); with activity records the sessions came from
+        # those, and each report is kept as one entry beside them.
+        fallback_user = _clean(service.get("user_name"), "Legacy Technician")
         if not activities:
-            for report in reports:
-                duration = _hours(report.get("worked_hours") or report.get("hours"))
-                total += duration
-                history.append(
-                    {
-                        "action": "technician_clock_out",
-                        "user": _clean(
-                            report.get("technician"),
-                            _clean(service.get("user_name"), "Legacy Technician"),
-                        ),
-                        "timestamp": _json_value(
-                            report.get("updated_at") or report.get("created_at")
-                        ),
-                        "changes": {
-                            "session_id": f"legacy-report-{report['id']}",
-                            "duration_hours": float(duration),
-                            "diagnosis": report.get("fault"),
-                            "work_done": report.get("action"),
-                            "notes": report.get("date"),
-                            "legacy_report_file": report.get("file"),
-                            "po": report.get("po"),
-                            "trips": report.get("trips"),
-                            "trip_price": report.get("trip_price"),
-                        },
-                    }
-                )
+            entries = legacy_records.session_entries(reports, fallback_user)
+            total += sum((Decimal(str(e["changes"]["duration_hours"] or 0)) for e in entries), Decimal("0"))
+            history.extend(entries)
         else:
-            for report in reports:
-                history.append(
-                    {
-                        "action": "legacy_service_report",
-                        "user": _clean(
-                            report.get("technician"),
-                            _clean(service.get("user_name"), "Legacy Technician"),
-                        ),
-                        "timestamp": _json_value(
-                            report.get("updated_at") or report.get("created_at")
-                        ),
-                        "changes": {
-                            "legacy_report_id": int(report["id"]),
-                            "diagnosis": report.get("fault"),
-                            "work_done": report.get("action"),
-                            "worked_hours": report.get("worked_hours"),
-                            "legacy_report_file": report.get("file"),
-                            "po": report.get("po"),
-                            "trips": report.get("trips"),
-                            "trip_price": report.get("trip_price"),
-                            "mileage_amount": _json_value(report.get("milage_amount")),
-                            "fixed_amount": _json_value(report.get("fixed_amount")),
-                        },
-                    }
-                )
+            history.extend(legacy_records.report_entry(report, fallback_user) for report in reports)
         for session in sessions:
             history.append(
                 {
@@ -853,8 +811,7 @@ class OperationalWriter:
                     "request_image_url": row.get("image"),
                     "priority": "MEDIUM",
                     "status": status,
-                    "resolution_description": latest_report.get("action")
-                    or latest_report.get("fault"),
+                    "resolution_description": legacy_records.resolution_summary(reports[legacy_id]),
                     "time_spent_hours": total_hours,
                     "total_cost": _money(charge.get("net_charges")),
                     "assigned_at": created_at if technician_id else None,
@@ -1209,7 +1166,9 @@ class OperationalWriter:
                             "other": "other",
                             "net_charges": "net_charges",
                         }.items()
-                    },
+                    }
+                    # The Parts / Inspection Charges / Others the report adds up.
+                    | (legacy_records.inspection_billing(charge) if charge else {}),
                 }
                 form_data.update(
                     self._inspection_detail(
@@ -1699,6 +1658,12 @@ class OperationalWriter:
                 paid = total
             if total > 0:
                 paid = min(paid, total)
+            # What the legacy payment records say (legacy_records); the rule above
+            # stays only for credit notes, zero totals and refunds it does not cover.
+            recorded = legacy_records.invoice_payment(
+                row, partials[legacy_id], [str(log.get("action") or "") for log in logs[_clean(row.get("invoice_no"))]])
+            if recorded is not None:
+                paid = recorded[0]
             work_order = _clean(row.get("invoice_order"))
             service_id = services_by_order.get(work_order)
             inspection_id = self.inspection_by_work_order.get(work_order)
@@ -1734,7 +1699,11 @@ class OperationalWriter:
                     "total_amount": total,
                     "amount_paid": paid,
                     "balance_due": max(total - paid, Decimal("0")),
-                    "status": self._invoice_status(row, paid, total),
+                    "status": (
+                        legacy_records.invoice_status(paid, total, _safe_date(row.get("due_date")) or issue_date)
+                        if recorded is not None
+                        else self._invoice_status(row, paid, total)
+                    ),
                     "issue_date": issue_date,
                     "due_date": due_date,
                     "payment_terms": "Legacy terms",
@@ -1761,7 +1730,15 @@ class OperationalWriter:
                 f"Imported legacy invoice {legacy_id}",
                 created_at,
             )
-            if partials[legacy_id]:
+            if recorded is not None:
+                for payment in legacy_records.payment_rows(row, partials[legacy_id], paid):
+                    self._transaction(
+                        target, invoice_id, facility_id, "payment", payment["amount"], payment["description"],
+                        legacy_records.as_datetime(payment["when"]) or created_at,
+                        payment["method"] or method, payment["reference"],
+                    )
+                    self.counts["invoice_payments"] += 1
+            elif partials[legacy_id]:
                 for payment in partials[legacy_id]:
                     self._transaction(
                         target,
@@ -1830,8 +1807,22 @@ class OperationalWriter:
         partials: dict[int, list[dict[str, Any]]] = defaultdict(list)
         for payment in self._rows(source, "SELECT * FROM partial_payments ORDER BY id"):
             partials[int(payment["invoice_id"])].append(payment)
+        log_actions: dict[str, list[str]] = defaultdict(list)
+        for log in self._rows(source, "SELECT invoice_no, action FROM invoice_logs"):
+            log_actions[_clean(log.get("invoice_no"))].append(str(log.get("action") or ""))
         invoice_table = self.tables["invoices"]
         tx_table = self.tables["invoice_transactions"]
+        mine = sorted(legacy_records.MIGRATION_TRANSACTIONS)
+        # An invoice paid or refunded in the new app keeps what the app recorded.
+        app_activity = {
+            int(invoice_id)
+            for (invoice_id,) in target.execute(
+                select(tx_table.c.invoice_id).distinct().where(
+                    tx_table.c.transaction_type.in_(["payment", "refund"]),
+                    ~tx_table.c.description.in_(mine) | tx_table.c.description.is_(None),
+                )
+            )
+        }
         for row in self._rows(source, "SELECT * FROM invoices ORDER BY id"):
             legacy_id = int(row["id"])
             invoice_id = self.maps["invoice"].get(legacy_id)
@@ -1840,6 +1831,61 @@ class OperationalWriter:
             total = _decimal(row.get("net_amount"))
             tax = _decimal(row.get("g_tax")) + _decimal(row.get("m_tax"))
             discount = _decimal(row.get("g_discount")) + _decimal(row.get("m_discount"))
+            # What the legacy payment records say (legacy_records); the rule
+            # below stays only for credit notes, zero totals and refunds.
+            recorded = legacy_records.invoice_payment(
+                row, partials[legacy_id], log_actions[_clean(row.get("invoice_no"))]
+            )
+            if recorded is not None:
+                if invoice_id in app_activity:
+                    continue
+                paid, owed = recorded
+                target.execute(
+                    update(invoice_table)
+                    .where(invoice_table.c.id == invoice_id)
+                    .values(
+                        subtotal=total - tax + discount,
+                        tax_amount=tax,
+                        discount_amount=discount,
+                        total_amount=total,
+                        amount_paid=paid,
+                        balance_due=owed,
+                        status=legacy_records.invoice_status(
+                            paid, total, _safe_date(row.get("due_date")) or _safe_date(row.get("created_at"))
+                        ),
+                    )
+                )
+                target.execute(
+                    update(tx_table)
+                    .where(
+                        tx_table.c.invoice_id == invoice_id,
+                        tx_table.c.transaction_type == "invoice_created",
+                    )
+                    .values(amount=total)
+                )
+                target.execute(
+                    delete(tx_table).where(
+                        tx_table.c.invoice_id == invoice_id,
+                        tx_table.c.transaction_type == "payment",
+                        tx_table.c.description.in_(mine),
+                    )
+                )
+                facility_id = target.execute(
+                    select(invoice_table.c.facility_id).where(invoice_table.c.id == invoice_id)
+                ).scalar_one()
+                for payment in legacy_records.payment_rows(row, partials[legacy_id], paid):
+                    self._transaction(
+                        target,
+                        invoice_id,
+                        int(facility_id) if facility_id else None,
+                        "payment",
+                        payment["amount"],
+                        payment["description"],
+                        legacy_records.as_datetime(payment["when"]) or datetime.utcnow(),
+                        payment["method"] or self._payment_method(row.get("payment_gateway")),
+                        payment["reference"],
+                    )
+                continue
             partial_paid = sum(
                 (_money(item.get("paid_amount")) for item in partials[legacy_id]),
                 Decimal("0"),

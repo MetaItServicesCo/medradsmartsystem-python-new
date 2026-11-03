@@ -18,6 +18,7 @@ audit, and checks what it reports and that it writes nothing:
 from __future__ import annotations
 
 import contextlib
+import json
 import io
 import os
 import pathlib
@@ -38,6 +39,7 @@ from app.models.inspection import Inspection  # noqa: E402
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType  # noqa: E402
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus  # noqa: E402
 from scripts.legacy_migration import audit_legacy_records as audit  # noqa: E402
+from scripts.legacy_migration import fix_legacy_records as fix  # noqa: E402
 from scripts.legacy_migration import legacy_records as lr  # noqa: E402
 
 failures: list[str] = []
@@ -59,10 +61,15 @@ legacy = sa.create_engine(legacy_url)
 with legacy.begin() as c:
     c.exec_driver_sql("CREATE TABLE invoices (id INT, invoice_no TEXT, invoice_order TEXT, net_amount TEXT, paid_amount TEXT,"
                       " confirm_paid_amount TEXT, balance TEXT, refund TEXT, status INT, paid_at TEXT, due_date TEXT)")
-    c.exec_driver_sql("CREATE TABLE partial_payments (invoice_id INT, paid_amount TEXT)")
+    c.exec_driver_sql("CREATE TABLE partial_payments (id INT, invoice_id INT, paid_amount TEXT, paid_at TEXT, created_at TEXT,"
+                      " payment_type TEXT, charge_id TEXT)")
+    c.exec_driver_sql("CREATE TABLE services (id INT, user_name TEXT)")
+    for service_id in (101, 102, 103):
+        c.execute(sa.text("INSERT INTO services VALUES (:i, 'Front Desk')"), dict(i=service_id))
     c.exec_driver_sql("CREATE TABLE invoice_logs (invoice_no TEXT, action TEXT)")
     c.exec_driver_sql("CREATE TABLE service_reports (id INT, service_id INT, technician TEXT, date TEXT, hours TEXT,"
-                      " fault TEXT, action TEXT, worked_hours TEXT)")
+                      " fault TEXT, action TEXT, worked_hours TEXT, file TEXT, po TEXT, trips TEXT, trip_price TEXT,"
+                      " milage_amount TEXT, fixed_amount TEXT, created_at TEXT, updated_at TEXT)")
     c.exec_driver_sql("CREATE TABLE service_activities (id INT, service_id INT)")
     c.exec_driver_sql("CREATE TABLE inspection_charges (id INT, inspection_id INT, parts TEXT, discount TEXT, tax TEXT,"
                       " labour TEXT, service TEXT, travel TEXT, other TEXT, net_charges TEXT)")
@@ -79,13 +86,16 @@ with legacy.begin() as c:
         c.execute(sa.text("INSERT INTO invoices VALUES (:i, :no, :no, :net, :pa, :conf, :bal, :ref, :st, :pat, '2022-01-01')"),
                   dict(i=i, no=no, net=net, pa=pa, conf=conf, bal=bal, ref=ref, st=status, pat=paid_at))
         c.execute(sa.text("INSERT INTO invoice_logs VALUES (:no, :a)"), dict(no=no, a="paid" if status == 1 else "viewed"))
-    c.execute(sa.text("INSERT INTO service_reports VALUES (1, 101, :t, :d, :h, :f, :a, '3')"), dict(
+    c.execute(sa.text("INSERT INTO service_reports VALUES (1, 101, :t, :d, :h, :f, :a, '3', NULL, NULL, '0', '0', NULL,"
+                      " NULL, '2023-02-06 10:00:00', '2023-02-09 10:00:00')"), dict(
         t='["Daniel","Daniel"]', d='["2023-02-06","2023-02-09"]', h='["1","2"]',
         f='["Pre-amp error",null]', a='["Ordered supply","Replaced supply"]'))
-    c.execute(sa.text("INSERT INTO service_reports VALUES (2, 102, :t, :d, '[null]', '[null]', '[null]', '0')"),
+    c.execute(sa.text("INSERT INTO service_reports VALUES (2, 102, :t, :d, '[null]', '[null]', '[null]', '0', NULL, NULL,"
+                      " '0', '0', NULL, NULL, '2026-10-23 13:55:00', '2026-10-23 13:57:00')"),
               dict(t='["Omar"]', d='["2026-10-23"]'))
     c.execute(sa.text("INSERT INTO service_activities VALUES (1, 102)"))
-    c.execute(sa.text("INSERT INTO service_reports VALUES (3, 103, :t, :d, '[\"2\"]', '[\"Noise\"]', '[\"Tightened\"]', '2')"),
+    c.execute(sa.text("INSERT INTO service_reports VALUES (3, 103, :t, :d, '[\"2\"]', '[\"Noise\"]', '[\"Tightened\"]', '2',"
+                      " NULL, NULL, '0', '0', NULL, NULL, '2024-01-01 09:00:00', '2024-01-01 11:00:00')"),
               dict(t='["Sam"]', d='["2024-01-01"]'))
     for i, insp in ((1, 201), (2, 202), (3, 203)):
         c.execute(sa.text("INSERT INTO inspection_charges VALUES (:i, :insp, '10', '1', '2', '20', '30', '0', '5', '66')"),
@@ -146,11 +156,14 @@ def service(legacy_id, number, history, resolution):
 
 service(101, "2023-000101", [{"action": "technician_clock_out", "user": '["Daniel","Daniel"]', "changes": {
     "session_id": "legacy-report-1", "duration_hours": 3.0, "diagnosis": '["Pre-amp error",null]',
-    "work_done": '["Ordered supply","Replaced supply"]', "notes": '["2023-02-06","2023-02-09"]'}}],
+    "work_done": '["Ordered supply","Replaced supply"]', "notes": '["2023-02-06","2023-02-09"]'}},
+    {"action": "status_change", "user": "Admin", "changes": {"to": "completed"}}],
     '["Ordered supply","Replaced supply"]')
-service(102, "2026-002064", [{"action": "legacy_service_report", "user": '["Omar"]', "changes": {}}], "[null]")
-service(103, "2024-000103", [{"action": "technician_clock_out", "user": "Sam", "changes": {
-    "session_id": "legacy-report-3", "duration_hours": 2.0, "diagnosis": "Noise", "work_done": "Tightened"}}],
+service(102, "2026-002064", [{"action": "legacy_service_report", "user": '["Omar"]',
+                               "changes": {"legacy_report_id": 2, "diagnosis": "[null]"}}], "[null]")
+service(103, "2024-000103", [{"action": "technician_clock_out", "user": "Sam", "timestamp": "2024-01-01 11:00:00",
+    "changes": {"session_id": "legacy-report-3", "work_date": "2024-01-01", "duration_hours": 2.0, "diagnosis": "Noise",
+                "work_done": "Tightened", "legacy_report_file": None, "po": None, "trips": "0", "trip_price": "0"}}],
     "Tightened")
 
 
@@ -197,10 +210,10 @@ ok("an invoice paid in the new app since is reported but not proposed for change
 ok("an invoice that already matches is counted as matching", "invoices matching the legacy record: 1" in text_out)
 ok("a zero-total invoice is left as it is", "invoices left as they are (credit note, zero total or refund): 1" in text_out)
 ok("squashed work sessions with legacy list text are found",
-   "2023-000101: 1 work session(s) shown, legacy recorded 2; legacy list text in a work session" in text_out)
+   "2023-000101: 1 report entr(ies) shown, legacy recorded 2; legacy list text left in" in text_out)
 ok("a [null] resolution summary is found and read correctly",
    "2026-002064" in text_out and "resolution summary '[null]' -> None" in text_out)
-ok("  as is a technician kept as list text", "legacy list text as the technician" in text_out)
+ok("  as is a technician kept as list text", "2026-002064: legacy list text left in" in text_out)
 ok("a service request already right counts as matching", "service requests matching the legacy record: 1" in text_out)
 ok("billing that does not add up is found, with the legacy split",
    "INSP-2026-000923-1" in text_out and "'inspection_charges': 50.0, 'others': 6.0" in text_out)
@@ -209,11 +222,78 @@ ok("billing saved in the app since is not proposed for change",
 ok("billing that already adds up counts as matching", "inspection billing matching the legacy charge: 1" in text_out)
 
 print()
+print("The correction")
+fix.create_engine = audit.create_engine
+
+
+def run(module, *extra):
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        result = module.main(["--database-url", prod_url, "--legacy-url", legacy_url, *extra])
+    return result, buffer.getvalue()
+
+
+code, dry = run(fix)
+ok("a dry run writes nothing", snapshot() == before, dry[:200])
+ok("  and lists what it would set", "invoices set to the legacy payment record: 3" in dry
+   and "service requests set to the legacy service reports: 2" in dry and "inspection billing set to the legacy charge: 1" in dry,
+   dry)
+code, applied = run(fix, "--apply")
+code, after_audit = run(audit)
+ok("after --apply the audit finds every record matching the legacy system", code == 0, after_audit)
+with prod.connect() as c:
+    inv = {r.invoice_number: r for r in c.execute(sa.text("SELECT * FROM invoices"))}
+    ledger = c.execute(sa.text("SELECT invoice_id, amount, description FROM invoice_transactions ORDER BY id")).fetchall()
+    services_after = {r.request_number: r for r in c.execute(sa.text("SELECT * FROM service_requests"))}
+    billing_after = {r.inspection_number: r for r in c.execute(sa.text("SELECT * FROM inspections"))}
+ok("the paid invoice is paid, with its legacy payment on the ledger",
+   inv["INV-1"].status == "PAID" and D(str(inv["INV-1"].amount_paid)) == D("790")
+   and any(row.invoice_id == inv["INV-1"].id and D(str(row.amount)) == D("790") for row in ledger))
+ok("the still-owed invoice is owed, and the migration's wrong payment row is gone",
+   inv["INV-2"].status == "OVERDUE" and D(str(inv["INV-2"].balance_due)) == D("230")
+   and not any(row.invoice_id == inv["INV-2"].id for row in ledger))
+ok("the part-paid invoice owes exactly the legacy balance",
+   inv["INV-6"].status == "PARTIALLY_PAID" and D(str(inv["INV-6"].balance_due)) == D("4800"))
+ok("the invoice paid in the new app is untouched, ledger and all",
+   inv["INV-4"].status == "PAID" and D(str(inv["INV-4"].amount_paid)) == D("300")
+   and sum(1 for row in ledger if row.invoice_id == inv["INV-4"].id) == 2)
+history_101 = json.loads(services_after["2023-000101"].history)
+sessions_101 = [e for e in history_101 if e["action"] == "technician_clock_out"]
+ok("each legacy work session is its own session, with its own hours and details",
+   [(e["user"], e["changes"]["work_date"], e["changes"]["duration_hours"], e["changes"]["diagnosis"],
+     e["changes"]["work_done"]) for e in sessions_101]
+   == [("Daniel", "2023-02-06", 1.0, "Pre-amp error", "Ordered supply"),
+       ("Daniel", "2023-02-09", 2.0, None, "Replaced supply")], str(sessions_101))
+ok("  and the entry the app added is kept as it was",
+   {"action": "status_change", "user": "Admin", "changes": {"to": "completed"}} in history_101)
+ok("the resolution summary reads the legacy work done, not list text",
+   services_after["2023-000101"].resolution_description == "Replaced supply"
+   and services_after["2026-002064"].resolution_description is None)
+entry_102 = json.loads(services_after["2026-002064"].history)[0]
+ok("no [null] or list text is left on a service report entry",
+   entry_102["user"] == "Omar" and entry_102["changes"]["diagnosis"] is None, str(entry_102))
+ok("inspection billing adds up to the legacy charge, keeping the legacy breakdown",
+   json.loads(billing_after["INSP-2026-000923-1"].form_data)["billing"] | {} ==
+   {"parts": 10.0, "discount": 1, "tax": 2, "labor": 20, "service": 30, "travel": 0, "other": 5, "net_charges": 66,
+    "inspection_charges": 50.0, "others": 6.0})
+ok("billing saved in the app since is untouched",
+   json.loads(billing_after["INSP-2026-000923-2"].form_data)["billing"] == legacy_keys)
+settled = snapshot()
+code, again = run(fix, "--apply")
+ok("a second run changes nothing", snapshot() == settled, again)
+
+print()
 print("The rules")
 ok("legacy list columns become one session each, null hours staying unrecorded",
    lr.report_sessions({"technician": '["Omar"]', "date": '["2026-10-23"]', "hours": "[null]", "fault": "[null]",
                        "action": "[null]"}) == [{"technician": "Omar", "work_date": "2026-10-23", "duration_hours": None,
                                                  "diagnosis": None, "work_done": None}])
+ok("a one-session report that kept its hours only in the total gets them on that session",
+   lr.report_sessions({"technician": '["Sam"]', "date": '["2024-01-01"]', "hours": "[null]", "fault": "[null]",
+                       "action": '["Fixed"]', "worked_hours": "2.5"})[0]["duration_hours"] == 2.5)
+ok("  and a report that recorded nothing at all has no work session",
+   lr.report_sessions({"technician": None, "date": None, "hours": None, "fault": None, "action": None,
+                       "worked_hours": "0"}) == [])
 ok("Parts + Inspection Charges + Others always equals the legacy net charge",
    sum(lr.inspection_billing({"parts": "10", "discount": "1", "tax": "2", "labour": "20", "service": "30", "travel": "0",
                               "other": "5"}).values()) == 66)
