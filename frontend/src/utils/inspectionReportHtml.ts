@@ -939,10 +939,10 @@ const blankCanvasElementHtml = (element: any): string => {
   }
 }
 
-// The canvas builder places elements at absolute pixel positions on a canvas
-// wider than a sheet of paper, so the whole thing is scaled down as one piece.
-// Scaling the layout keeps it looking like what was designed; reflowing it into
-// a column would not.
+// The canvas builder places elements at absolute pixel positions, so the whole
+// thing is scaled as one piece to exactly the page width - the width the fixed
+// sections above and below it print at. Scaling the layout keeps it looking
+// like what was designed; reflowing it into a column would not.
 const blankCanvasHtml = (canvas: any): string => {
   const elements: any[] = Array.isArray(canvas?.elements) ? canvas.elements : []
   if (!elements.length) return ''
@@ -950,7 +950,7 @@ const blankCanvasHtml = (canvas: any): string => {
   const contentBottom = elements.reduce(
     (lowest, element) => Math.max(lowest, Number(element.y || 0) + Number(element.height || 0)), 0)
   const height = Math.max(Number(canvas.canvas_height) || 0, contentBottom + 16)
-  const scale = Math.min(1, PRINT_WIDTH / width)
+  const scale = PRINT_WIDTH / width
 
   const inner = elements
     .slice()
@@ -965,14 +965,12 @@ const blankCanvasHtml = (canvas: any): string => {
     })
     .join('')
 
-  // The scaled block still occupies its unscaled height in the flow, so the
-  // leftover is pulled back to stop a page of white space appearing under it.
-  // A canvas narrower than the page is centred, matching the full-width fixed
-  // sections above and below it; a wider one is scaled to exactly the page.
-  const collapse = Math.round(height * (1 - scale))
-  return `<div style="width:100%;overflow:hidden">
+  // A transform does not change the space the block takes in the flow, so the
+  // outer box is given the scaled height: no white space under a block scaled
+  // down, nothing cut off under one scaled up.
+  return `<div style="width:100%;height:${Math.ceil(height * scale)}px;overflow:hidden">
     <div style="position:relative;width:${width}px;height:${height}px;transform:scale(${
-      scale.toFixed(4)});transform-origin:top left;margin:0 ${width < PRINT_WIDTH ? 'auto' : '0'} -${collapse}px">${inner}</div>
+      scale.toFixed(4)});transform-origin:top left">${inner}</div>
   </div>`
 }
 

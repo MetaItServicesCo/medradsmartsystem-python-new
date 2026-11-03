@@ -2109,6 +2109,40 @@ export function CanvasFormViewer({ schema, values = {}, onChange, readOnly = fal
   )
 }
 
+/**
+ * A canvas form scaled to the full width of the section it is shown in, so it
+ * lines up with the full-width sections above and below it. The layout is
+ * scaled as one piece, never reflowed, so it keeps looking as it was built.
+ */
+export function FullWidthCanvasViewer(props: ViewerProps) {
+  const outer = useRef<HTMLDivElement>(null)
+  const [available, setAvailable] = useState(0)
+  const width = props.schema.canvas_width ?? CANVAS_W
+  // Elements can sit below the section's stored height; the viewer shows
+  // them, so the scaled block keeps room for them too.
+  const contentBottom = props.schema.elements.reduce((lowest, el) => Math.max(lowest, el.y + el.height), 0)
+  const height = Math.max(props.schema.canvas_height ?? 600, contentBottom)
+
+  useEffect(() => {
+    const node = outer.current
+    if (!node) return
+    const measure = () => setAvailable(node.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  const scale = available > 0 ? available / width : 1
+  return (
+    <Box ref={outer} sx={{ width: '100%', height: height * scale, overflow: 'hidden' }}>
+      <Box sx={{ width, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+        <CanvasFormViewer {...props} />
+      </Box>
+    </Box>
+  )
+}
+
 function renderViewerContent(
   el: CanvasElement,
   val: string | boolean | string[] | undefined,

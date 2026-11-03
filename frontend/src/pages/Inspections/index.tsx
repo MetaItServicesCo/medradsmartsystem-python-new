@@ -37,7 +37,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
-import { CanvasFormBuilder, CanvasFormViewer, type CanvasFormSchema, type CanvasFormValues } from './CanvasFormBuilder'
+import { CanvasFormBuilder, FullWidthCanvasViewer, type CanvasFormSchema, type CanvasFormValues } from './CanvasFormBuilder'
 import { canvasPassFail, isFailText } from '@/utils/canvasPassFail'
 import { canvasValuesFromGrid, gridHasContent, gridToCanvas } from '@/utils/gridToCanvas'
 
@@ -982,21 +982,6 @@ const reportWithDefaults = (inspection: Inspection) => {
   Object.entries(BIOMED_NOTE_DEFAULTS).forEach(([key, value]) => { if (blank(diagnostics[key])) diagnostics[key] = value })
   return { ...saved, checks, diagnostics }
 }
-
-// The printable width of the inspection sheet, as the canvas builder uses it.
-const CANVAS_PAGE_W = 736
-// A section card's padding and border on each side (p: 2 and a 1px border).
-const SECTION_CARD_INSET = 17
-
-// The fixed Inspection Report and Biomed Notes take the width of the canvas
-// section built between them - never narrower than the printable page - so the
-// three share the same edges and read as one form, centred on the screen it is
-// shown in. A canvas narrower than that sits centred in its section
-// (canvasCentredSx). Grid forms already fill the width.
-const formColumnSx = (canvas?: CanvasFormSchema | null) => (canvas?.elements?.length
-  ? { width: Math.max(Number(canvas.canvas_width) || 1080, CANVAS_PAGE_W) + SECTION_CARD_INSET * 2, maxWidth: '100%', mx: 'auto' }
-  : {})
-const canvasCentredSx = { width: 'fit-content', mx: 'auto' }
 
 const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
   asset_tag: '',
@@ -4052,15 +4037,11 @@ const Inspections = () => {
     return (
       <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
         <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>{title || 'Custom Inspection Form'}</Typography>
-        <Box sx={{ overflowX: 'auto' }}>
-          <Box sx={canvasCentredSx}>
-            <CanvasFormViewer
-              schema={canvas}
-              values={canvasFormValues}
-              onChange={setCanvasFormValues}
-            />
-          </Box>
-        </Box>
+        <FullWidthCanvasViewer
+          schema={canvas}
+          values={canvasFormValues}
+          onChange={setCanvasFormValues}
+        />
       </Card>
     )
   }
@@ -5156,7 +5137,7 @@ const Inspections = () => {
               </Typography>
             </DialogTitle>
             <DialogContent dividers>
-              <Box sx={{ display: 'grid', gap: 2.5, ...formColumnSx(canvasForm) }}>
+              <Box sx={{ display: 'grid', gap: 2.5 }}>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Inspection Report</Typography>
                   <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
@@ -5201,11 +5182,7 @@ const Inspections = () => {
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
                   <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{canvasForm ? previewSchema.title : formioForm?.title || grid?.title || 'Custom Form'}</Typography>
                   {canvasForm ? (
-                    <Box sx={{ overflowX: 'auto' }}>
-                      <Box sx={canvasCentredSx}>
-                        <CanvasFormViewer schema={canvasForm} readOnly />
-                      </Box>
-                    </Box>
+                    <FullWidthCanvasViewer schema={canvasForm} readOnly />
                   ) : formioForm?.components ? (
                     <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
                       This is a temporary Form.io form. Please edit/recreate it with the custom grid builder.
@@ -6133,7 +6110,7 @@ const Inspections = () => {
                 )}
               </Card>
               {isCustomGridReport() ? (
-                <Box sx={{ display: 'grid', gap: 3, ...formColumnSx(activeReportSchema?.canvas_form) }}>
+                <>
                   {renderFixedInspectionTable()}
                   {activeReportSchema?.canvas_form?.elements?.length
                     ? renderCanvasReport()
@@ -6141,7 +6118,7 @@ const Inspections = () => {
                       ? renderFormioReport()
                       : renderCustomGridReport()}
                   {renderBiomedNotes()}
-                </Box>
+                </>
               ) : renderDefaultReportCore()}
               <Divider />
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Operational Report Details</Typography>
