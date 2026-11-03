@@ -19,6 +19,7 @@ import { toast } from 'react-toastify'
 import { fetchTiers, createTier, updateTier, deleteTier, duplicateTier, type Tier, type TierCreate, type TierUpdate } from '@/api/tiers'
 import { updateFacility, type Facility } from '@/api/facilities'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { NumericField } from '@/components/NumericField'
 
 interface Props {
   open: boolean
@@ -414,11 +415,11 @@ const TierFormFields = ({ form, setForm }: { form: Partial<TierCreate>, setForm:
       <MenuItem value="inactive">Inactive</MenuItem>
     </TextField>
     
-    <TextField size="small" label="Labor Fee (/hr)" type="number" value={form.labor_rate_per_hour} onChange={e => setForm({ ...form, labor_rate_per_hour: Number(e.target.value) })} />
-    <TextField size="small" label="Service Call Fee" type="number" value={form.service_call_fee} onChange={e => setForm({ ...form, service_call_fee: Number(e.target.value) })} />
-    <TextField size="small" label="PM Cost" type="number" value={form.preventive_maintenance_fee} onChange={e => setForm({ ...form, preventive_maintenance_fee: Number(e.target.value) })} />
+    <NumericField size="small" label="Labor Fee (/hr)" value={form.labor_rate_per_hour ?? 0} onChange={val => setForm({ ...form, labor_rate_per_hour: val })} />
+    <NumericField size="small" label="Service Call Fee" value={form.service_call_fee ?? 0} onChange={val => setForm({ ...form, service_call_fee: val })} />
+    <NumericField size="small" label="PM Cost" value={form.preventive_maintenance_fee ?? 0} onChange={val => setForm({ ...form, preventive_maintenance_fee: val })} />
     
-    <TextField size="small" label="Mileage Cost (/mi)" type="number" value={form.mileage_rate} onChange={e => setForm({ ...form, mileage_rate: Number(e.target.value) })} />
+    <NumericField size="small" label="Mileage Cost (/mi)" value={form.mileage_rate ?? 0} onChange={val => setForm({ ...form, mileage_rate: val })} />
     <TextField size="small" label="Response Time (hrs)" type="number" value={form.response_time_hours} onChange={e => setForm({ ...form, response_time_hours: Number(e.target.value) })} />
     <TextField size="small" label="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
   </Box>

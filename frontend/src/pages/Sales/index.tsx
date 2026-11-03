@@ -30,6 +30,7 @@ import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { NumericField } from '@/components/NumericField'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import DeliveryLinkDialog, { type DeliveryLink } from '@/components/DeliveryLinkDialog'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
@@ -2477,9 +2478,9 @@ const Sales = () => {
                 ? `${selectedPartRemaining} more available`
                 : ' '}
             />
-            <TextField label="Shipping & Packing" type="number" value={selectedPartShipping} onChange={e => setSelectedPartShipping(Number(e.target.value))} />
-            <TextField label="Delivery & Setup" type="number" value={selectedPartSetup} onChange={e => setSelectedPartSetup(Number(e.target.value))} />
-            <TextField label="Labor" type="number" value={selectedPartLabor} onChange={e => setSelectedPartLabor(Number(e.target.value))} />
+            <NumericField label="Shipping & Packing" value={selectedPartShipping} onChange={setSelectedPartShipping} />
+            <NumericField label="Delivery & Setup" value={selectedPartSetup} onChange={setSelectedPartSetup} />
+            <NumericField label="Labor" value={selectedPartLabor} onChange={setSelectedPartLabor} />
             <TextField select label="Condition" value={selectedPartCondition} onChange={e => setSelectedPartCondition(e.target.value)}>
               {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
             </TextField>
@@ -2620,7 +2621,7 @@ const Sales = () => {
                           }))} />
                           : <ClippedTooltipText value={item.description} field />}
                       </TableCell>
-                      <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>
+                      <TableCell><NumericField size="small" value={item.unit_price ?? 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: val } : line) }))} sx={{ width: 120 }} /></TableCell>
                       <TableCell>
                         <TextField
                           size="small"
@@ -2642,9 +2643,9 @@ const Sales = () => {
                           sx={{ width: stockIssue ? 220 : 90 }}
                         />
                       </TableCell>
-                      <TableCell><TextField size="small" type="number" value={item.shipping_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
-                      <TableCell><TextField size="small" type="number" value={item.setup_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
-                      <TableCell><TextField size="small" type="number" value={item.labor_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, labor_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell><NumericField size="small" value={item.shipping_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell><NumericField size="small" value={item.setup_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell><NumericField size="small" value={item.labor_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, labor_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell>{item.condition || 'New'}</TableCell>
                       <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(lineTotal(item))}</TableCell>
                       {quotationForm.quotation_type !== 'standard' && (
@@ -3093,12 +3094,12 @@ const Sales = () => {
                     <MenuItem value="cheque">Cheque</MenuItem>
                     <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
                   </TextField>
-                  <TextField size="small" label="Labour Hours" type="number" value={invoiceDetails.labour_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, labour_hours: Number(e.target.value) }))} />
-                  <TextField size="small" label="Working Hours Fee ($)" type="number" value={invoiceDetails.worked_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, worked_hours: Number(e.target.value) }))} />
-                  <TextField size="small" label="Service Fee" type="number" value={invoiceDetails.service_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, service_fee: Number(e.target.value) }))} />
-                  <TextField size="small" label="Setup Fee" type="number" value={invoiceDetails.setup_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
-                  <TextField size="small" label="Shipping / Delivery Fee" type="number" value={invoiceDetails.shipping_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
-                  <TextField size="small" label="Application Fee" type="number" value={invoiceDetails.application_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, application_fee: Number(e.target.value) }))} />
+                  <NumericField size="small" label="Labour Hours" value={invoiceDetails.labour_hours || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, labour_hours: val }))} />
+                  <NumericField size="small" label="Working Hours Fee ($)" value={invoiceDetails.worked_hours || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, worked_hours: val }))} />
+                  <NumericField size="small" label="Service Fee" value={invoiceDetails.service_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, service_fee: val }))} />
+                  <NumericField size="small" label="Setup Fee" value={invoiceDetails.setup_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, setup_fee: val }))} />
+                  <NumericField size="small" label="Shipping / Delivery Fee" value={invoiceDetails.shipping_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, shipping_fee: val }))} />
+                  <NumericField size="small" label="Application Fee" value={invoiceDetails.application_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, application_fee: val }))} />
                   <TextField size="small" label="Parts Total" value={convertPartsTotal.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" label="Tax Rate (%)" value={SALES_TAX_RATE.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" label="Tax Amount" value={convertTaxAmount.toFixed(2)} InputProps={{ readOnly: true }} />
@@ -3106,7 +3107,7 @@ const Sales = () => {
                     <MenuItem value="fixed">Fixed ($)</MenuItem>
                     <MenuItem value="percent">Percent (%)</MenuItem>
                   </TextField>
-                  <TextField size="small" label="Discount" type="number" value={invoiceDetails.discount_amount || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, discount_amount: Number(e.target.value) }))} />
+                  <NumericField size="small" label="Discount" value={invoiceDetails.discount_amount || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, discount_amount: val }))} />
                   <TextField size="small" label="Grand Total" value={convertGrandTotal.toFixed(2)} InputProps={{ readOnly: true }} sx={{ gridColumn: '1 / -1' }} />
                   <TextField size="small" label="Due Date" type="date" value={invoiceDetails.due_date || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} sx={{ gridColumn: '1 / -1' }} />
                   <TextField size="small" label="Notes" value={invoiceDetails.notes || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, notes: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
