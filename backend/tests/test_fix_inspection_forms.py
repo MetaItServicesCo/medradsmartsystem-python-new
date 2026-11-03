@@ -265,6 +265,17 @@ MIGRATED_958 = inspection("WO-958-00001", form_958, {
     "source": "admin_medrad", "legacy_report": {"tests": page_958},
     "custom_grid_values": {"item_column311__ans": "Pass", "item_fav_language__ans": "70/20"},
 })
+# Production as the first migration left it: the reading of the SpO2 box
+# stored under the EKG box's key (both legacy boxes were named fav_language),
+# and a stale N/A over the recorded PM Kit "pass".
+stale_tests = legacy_page({"9": "pass"})
+stale_data = {
+    "source": "admin_medrad", "legacy_report": {"tests": stale_tests},
+    "checks": {"pm_kit": "na"}, "custom_grid_values": {"item_fav_language__ans": "98%"},
+}
+STALE = inspection("WO-2-00001", migrated_form, copy.deepcopy(stale_data))
+# The same, but opened and saved in the app since: the technician's now.
+STALE_SAVED = inspection("WO-2-00002", migrated_form, copy.deepcopy(stale_data) | {"form_template": {"name": "x"}})
 seed.commit()
 seed.close()
 
@@ -283,7 +294,8 @@ ok("a dry run writes nothing", snapshot() == baseline)
 with engine.connect() as conn:
     trial = conn.begin()
     fix.correct(conn, {"templates_fixed": [], "forms_cleaned": [], "inspections_filled": 0, "compliance_cleared": 0,
-                       "notes_carried": 0, "readings_carried": 0, "check_overrides": [], "check_conflicts": []})
+                       "notes_carried": 0, "readings_carried": 0, "check_overrides": [], "check_conflicts": [],
+                       "checks_restored": [], "answers_restored": []})
     # On PostgreSQL a connection left streaming runs its UPDATEs as server-side
     # cursors, which fails; streaming belongs to the one read query.
     ok("streaming is set on the read query, never left on the connection that writes",
@@ -297,6 +309,15 @@ import json  # noqa: E402
 def as_obj(value):
     return json.loads(value) if isinstance(value, str) else value
 
+stale_after = as_obj(rows_after["WO-2-00001"][0])
+ok("a migrated report's reading stored under the wrong box is set back to the legacy report's",
+   stale_after["custom_grid_values"].get("item_fav_language__ans") == "70/20", str(stale_after["custom_grid_values"]))
+ok("  and a stale N/A over its recorded PM Kit pass is set back to pass",
+   stale_after["checks"].get("pm_kit") == "pass", str(stale_after["checks"]))
+saved_after = as_obj(rows_after["WO-2-00002"][0])
+ok("a report saved in the app since keeps every value it holds (only empty fields are ever filled)",
+   saved_after["custom_grid_values"].get("item_fav_language__ans") == "98%" and saved_after["checks"] == {"pm_kit": "na"},
+   str(saved_after.get("checks")))
 cleaned = as_obj(forms_after[" Patient Monitor1"])
 ok("the migrated form is cleaned", "Physical Insp." not in labels(cleaned) and "Reported Problem" not in labels(cleaned)
    and {"EKG Cable", "SpO2 Sensor", "EKG Leads"} <= set(labels(cleaned)), str(labels(cleaned)))

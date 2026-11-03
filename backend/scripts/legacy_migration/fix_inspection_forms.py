@@ -29,6 +29,15 @@ same correction to the data a past run produced. It changes only:
   table's starting "pass"; a "fail" or "n/a" already there is kept. Each case
   is listed in the dry run.
 
+* migrated inspections nobody has opened and saved in the app since the
+  migration: a standard check or recorded answer that differs from the
+  preserved legacy report is set back to it. The first migration stored some
+  readings under a box they did not belong to (several legacy boxes shared a
+  name), and an earlier correction could carry a stale removed-cell answer
+  over a recorded "pass"; the legacy report is what the technician recorded.
+  An inspection saved in the app since is never touched. Each change is
+  listed in the dry run.
+
 It runs in one transaction and writes nothing unless ``--apply`` is given::
 
     python -m scripts.legacy_migration.fix_inspection_forms            # dry run
@@ -230,6 +239,39 @@ def _removed_targets(old: dict[str, Any], new: dict[str, Any]) -> dict[str, tupl
     return targets
 
 
+def _same(a: Any, b: Any) -> bool:
+    return " ".join(str(a if a is not None else "").split()) == " ".join(str(b if b is not None else "").split())
+
+
+def _restore_legacy_values(data: dict[str, Any], legacy: dict[str, Any], aliases: dict[str, str],
+                           number: str, report: dict[str, Any]) -> None:
+    """Set the standard checks and recorded answers back to the legacy report's."""
+    expected = OperationalWriter._report_fields(legacy).get("checks") or {}
+    checks = dict(data.get("checks") or {})
+    for key, value in expected.items():
+        if checks.get(key) != value:
+            report["checks_restored"].append((number, key, checks.get(key), value))
+            checks[key] = value
+    if checks != (data.get("checks") or {}):
+        data["checks"] = checks
+    grid_values = dict(data.get("custom_grid_values") or {})
+    for key, value in extract_answers(legacy.get("tests") or "").items():
+        stale = grid_values.get(key)
+        if _same(stale, value):
+            continue
+        report["answers_restored"].append((number, key, stale, value))
+        grid_values[key] = value
+        # The page row showing this answer under its newer name.
+        cell, _, rest = key.partition("__")
+        target = aliases.get(cell)
+        if target:
+            shown = f"{target}__{rest}"
+            if shown not in grid_values or _same(grid_values[shown], stale):
+                grid_values[shown] = value
+    if grid_values != (data.get("custom_grid_values") or {}):
+        data["custom_grid_values"] = grid_values
+
+
 def correct(conn, report: dict[str, Any]) -> None:
     meta = MetaData()
     meta.reflect(conn, only=["inspection_forms", "inspections"])
@@ -255,6 +297,8 @@ def correct(conn, report: dict[str, Any]) -> None:
     definitions = _legacy_form_items()
 
     removed_by_form: dict[int, dict[str, tuple[str, str]]] = {}
+    # Each form's older-name matches, so a restored answer reaches its page row.
+    aliases_by_form: dict[int, dict[str, str]] = {}
     superseded_by_form: dict[int, dict[str, str]] = {}
     for form_id, name, raw_schema in conn.execute(select(forms.c.id, forms.c.name, forms.c.schema)).all():
         schema = _as_dict(raw_schema)
@@ -268,6 +312,7 @@ def correct(conn, report: dict[str, Any]) -> None:
             continue
         cleaned = rebuild_legacy_form(schema, definitions, list(recorded.get(form_id, {}).values()),
                                       report_names.get(form_id, ()))
+        aliases_by_form[form_id] = (cleaned or {}).get("legacy_aliases") or {}
         if cleaned is schema:
             continue
         removed_by_form[form_id] = _removed_targets(schema, cleaned)
@@ -345,6 +390,12 @@ def correct(conn, report: dict[str, Any]) -> None:
                     data["diagnostics"] = notes
                     report["notes_carried"] += 1
 
+        # Last, so no step above can leave a stale value in place: a migrated
+        # inspection nobody has saved in the app since shows what the legacy
+        # report recorded.
+        if isinstance(legacy, dict) and "form_template" not in data:
+            _restore_legacy_values(data, legacy, aliases_by_form.get(form_id) or {}, number, report)
+
         if data != form_data:
             values["form_data"] = data
             report["inspections_filled"] += 1
@@ -364,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
     report: dict[str, Any] = {
         "templates_fixed": [], "forms_cleaned": [], "inspections_filled": 0,
         "compliance_cleared": 0, "notes_carried": 0, "readings_carried": 0, "check_overrides": [], "check_conflicts": [],
+        "checks_restored": [], "answers_restored": [],
     }
     engine = create_engine(args.database_url)
     with engine.connect() as conn:
@@ -398,6 +450,13 @@ def main(argv: list[str] | None = None) -> int:
     print("left as recorded (built-in 'fail'/'n/a' differs from the removed cell): {}".format(len(conflicts)))
     for number, key, kept, other in conflicts[:100]:
         print("  {:<24} {:<20} kept {} (grid said {})".format(number, key, kept, other))
+    for title, entries in (("standard checks set back to the legacy report's", report["checks_restored"]),
+                           ("recorded answers set back to the legacy report's", report["answers_restored"])):
+        print("{} (inspections not saved in the app since): {}".format(title, len(entries)))
+        for number, key, stale, value in entries[:100]:
+            print("  {:<24} {:<34} {!r} -> {!r}".format(number, key, stale, value))
+        if len(entries) > 100:
+            print("  ... and {} more".format(len(entries) - 100))
     return 0
 
 
