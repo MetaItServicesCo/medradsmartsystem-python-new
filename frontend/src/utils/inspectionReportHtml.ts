@@ -967,10 +967,12 @@ const blankCanvasHtml = (canvas: any): string => {
 
   // The scaled block still occupies its unscaled height in the flow, so the
   // leftover is pulled back to stop a page of white space appearing under it.
+  // A canvas narrower than the page is centred, matching the full-width fixed
+  // sections above and below it; a wider one is scaled to exactly the page.
   const collapse = Math.round(height * (1 - scale))
   return `<div style="width:100%;overflow:hidden">
     <div style="position:relative;width:${width}px;height:${height}px;transform:scale(${
-      scale.toFixed(4)});transform-origin:top left;margin-bottom:-${collapse}px">${inner}</div>
+      scale.toFixed(4)});transform-origin:top left;margin:0 ${width < PRINT_WIDTH ? 'auto' : '0'} -${collapse}px">${inner}</div>
   </div>`
 }
 

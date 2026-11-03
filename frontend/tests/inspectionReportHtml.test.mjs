@@ -11,7 +11,7 @@
  *   cd frontend
  *   node tests/run-inspectionReportHtml.mjs
  */
-import { buildInspectionSingleReportHtml } from './.build/inspectionReportHtml.mjs'
+import { buildInspectionFormHtml, buildInspectionSingleReportHtml } from './.build/inspectionReportHtml.mjs'
 
 let failures = 0
 const ok = (label, condition, detail = '') => {
@@ -122,6 +122,22 @@ const standardLayout = print({
 ok('in the standard layout an ordinary measurement is not printed as Battery dates', !standardLayout.includes('<b>OK</b>'))
 const migratedFields = print({ form_schema: legacyGrid, form_data: { checks: {}, battery: { replaced_on: '2025-05-05', due: '2026-05-05' } } })
 ok('migrated Battery dates print from where the migration stored them', migratedFields.includes('2025-05-05') && migratedFields.includes('2026-05-05'))
+
+// ── A blank form: the canvas section lines up with the fixed sections ───────
+// The Inspection Report and Biomed Notes print the full page width, so a canvas
+// narrower than the page is centred between them and a wider one is scaled to
+// exactly the page.
+const blankForm = width => buildInspectionFormHtml({ name: 'Form', schema: { version: 5, canvas_form: {
+  canvas_width: width, canvas_height: 200,
+  elements: [{ id: 'h', type: 'heading', label: 'Section', x: 0, y: 0, width: 200, height: 30 }],
+} } })
+const narrow = blankForm(500)
+ok('a canvas narrower than the page prints centred', narrow.includes('width:500px') && narrow.includes('margin:0 auto -0px'))
+const wide = blankForm(1080)
+ok('a canvas wider than the page is scaled to the page, not centred', wide.includes('transform:scale(0.6815)') && wide.includes('margin:0 0 -'))
+const page = blankForm(736)
+ok('a canvas at page width prints at its real size', page.includes('transform:scale(1.0000)') && page.includes('margin:0 0 -0px'))
+ok('the fixed sections still print around it', page.includes('Inspection Report') && page.includes('Biomed Notes'))
 
 console.log()
 if (failures) {

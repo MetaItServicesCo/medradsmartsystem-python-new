@@ -920,6 +920,14 @@ const printBatchSummaryInvoice = (batch: InspectionBatch) => {
   openPrintFrame(`${batch.batch_number} Batch Summary Invoice`, body)
 }
 
+// What the Biomed Notes start with on a report being filled in; each stays editable.
+const BIOMED_NOTE_DEFAULTS: Record<string, string> = {
+  reported_problem: 'N/A',
+  problem_found: 'N/A',
+  corrective_action_taken: 'N/A',
+  summary: 'Inspected Units passed all tests',
+}
+
 const makeReport = (inspection: Inspection) => ({
   identity: {
     asset_number: inspection.asset_tag || inspection.part_number || '',
@@ -932,12 +940,7 @@ const makeReport = (inspection: Inspection) => ({
     pm_schedule: 'Annual',
   },
   checks: CHECK_FIELDS.reduce((acc, [key]) => ({ ...acc, [key]: 'pass' }), {} as Record<string, string>),
-  diagnostics: {
-    reported_problem: 'N/A',
-    problem_found: 'N/A',
-    corrective_action_taken: '',
-    summary: '',
-  },
+  diagnostics: { ...BIOMED_NOTE_DEFAULTS },
   measurements: [
     { name: 'Electrical leakage', set_value: '', read_value: '', unit: 'mA/Ohms', status: 'pass', notes: '' },
     { name: 'Functional test', set_value: '', read_value: '', unit: '', status: 'pass', notes: '' },
@@ -962,6 +965,36 @@ const makeReport = (inspection: Inspection) => ({
     next_inspection_due_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().slice(0, 10),
   },
 })
+
+// The report a technician opens. One still being filled in starts with every
+// fixed Inspection Report check on Pass and the Biomed Notes defaults, so only
+// what failed needs changing; whatever was already answered is kept. A
+// completed or closed report is shown exactly as it was saved.
+const reportWithDefaults = (inspection: Inspection) => {
+  const saved = inspection.form_data as any
+  if (inspection.status === 'completed' || inspection.status === 'closed') return saved || makeReport(inspection)
+  if (!saved || !Object.keys(saved).length) return makeReport(inspection)
+  const blank = (value: unknown) => value === undefined || value === null || String(value).trim() === ''
+  const checks = { ...(saved.checks || {}) }
+  CHECK_FIELDS.forEach(([key]) => { if (blank(checks[key])) checks[key] = 'pass' })
+  const diagnostics = { ...(saved.diagnostics || {}) }
+  Object.entries(BIOMED_NOTE_DEFAULTS).forEach(([key, value]) => { if (blank(diagnostics[key])) diagnostics[key] = value })
+  return { ...saved, checks, diagnostics }
+}
+
+// The printable width of the inspection sheet, as the canvas builder uses it.
+const CANVAS_PAGE_W = 736
+// A section card's padding and border on each side (p: 2 and a 1px border).
+const SECTION_CARD_INSET = 17
+
+// The fixed Inspection Report and Biomed Notes take the width of the canvas
+// section built between them - never narrower than the printable page - so the
+// three share the same edges and read as one form. A canvas narrower than that
+// sits centred in its section (canvasCentredSx). Grid forms already fill the width.
+const formColumnSx = (canvas?: CanvasFormSchema | null) => (canvas?.elements?.length
+  ? { width: Math.max(Number(canvas.canvas_width) || 1080, CANVAS_PAGE_W) + SECTION_CARD_INSET * 2, maxWidth: '100%' }
+  : {})
+const canvasCentredSx = { width: 'fit-content', mx: 'auto' }
 
 const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
   asset_tag: '',
@@ -1912,7 +1945,7 @@ const Inspections = () => {
 
   useEffect(() => {
     if (reportInspection) {
-      setReport(reportInspection.form_data || makeReport(reportInspection))
+      setReport(reportWithDefaults(reportInspection))
       setReportStatus(reportInspection.status === 'completed' ? 'completed' : 'completed')
       const usesAttached = Boolean(reportInspection.attached_form_id)
       const initialSource: ReportFormSource = usesAttached ? 'attached' : 'default'
@@ -3998,11 +4031,13 @@ const Inspections = () => {
       <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
         <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>{title || 'Custom Inspection Form'}</Typography>
         <Box sx={{ overflowX: 'auto' }}>
-          <CanvasFormViewer
-            schema={canvas}
-            values={canvasFormValues}
-            onChange={setCanvasFormValues}
-          />
+          <Box sx={canvasCentredSx}>
+            <CanvasFormViewer
+              schema={canvas}
+              values={canvasFormValues}
+              onChange={setCanvasFormValues}
+            />
+          </Box>
         </Box>
       </Card>
     )
@@ -5099,7 +5134,7 @@ const Inspections = () => {
               </Typography>
             </DialogTitle>
             <DialogContent dividers>
-              <Box sx={{ display: 'grid', gap: 2.5 }}>
+              <Box sx={{ display: 'grid', gap: 2.5, ...formColumnSx(canvasForm) }}>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Inspection Report</Typography>
                   <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
@@ -5145,7 +5180,9 @@ const Inspections = () => {
                   <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{canvasForm ? previewSchema.title : formioForm?.title || grid?.title || 'Custom Form'}</Typography>
                   {canvasForm ? (
                     <Box sx={{ overflowX: 'auto' }}>
-                      <CanvasFormViewer schema={canvasForm} readOnly />
+                      <Box sx={canvasCentredSx}>
+                        <CanvasFormViewer schema={canvasForm} readOnly />
+                      </Box>
                     </Box>
                   ) : formioForm?.components ? (
                     <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
@@ -6074,7 +6111,7 @@ const Inspections = () => {
                 )}
               </Card>
               {isCustomGridReport() ? (
-                <>
+                <Box sx={{ display: 'grid', gap: 3, ...formColumnSx(activeReportSchema?.canvas_form) }}>
                   {renderFixedInspectionTable()}
                   {activeReportSchema?.canvas_form?.elements?.length
                     ? renderCanvasReport()
@@ -6082,7 +6119,7 @@ const Inspections = () => {
                       ? renderFormioReport()
                       : renderCustomGridReport()}
                   {renderBiomedNotes()}
-                </>
+                </Box>
               ) : renderDefaultReportCore()}
               <Divider />
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Operational Report Details</Typography>
