@@ -60,8 +60,15 @@ def form_field_keys(schema: dict[str, Any]) -> set[str] | None:
     for row in grid["cells"]:
         for cell in row:
             for block in cell.get("blocks") or []:
-                keys.add("{}__{}".format(cell.get("id"), block.get("id") or ANSWER_BLOCK_ID))
+                key = "{}__{}".format(cell.get("id"), block.get("id") or ANSWER_BLOCK_ID)
+                keys.add(key)
+                if block.get("type") == "checkbox":
+                    keys.update("{}__{}".format(key, index) for index in range(len(block.get("options") or [])))
             keys.add(str(cell.get("id")))
+    # An answer recorded under a question's older name shows in the page
+    # question's row (form_convert.legacy_aliases).
+    for older, page in ((schema or {}).get("legacy_aliases") or {}).items():
+        keys.update(key.replace(page, older, 1) for key in list(keys) if key == page or key.startswith(page + "__"))
     return keys
 
 

@@ -21,12 +21,15 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection
 
 from .form_convert import (
+    alias_answers,
     build_grid_schema_from_items,
     extract_answers,
     extract_standard_checks,
     extract_standard_readings,
+    legacy_aliases,
     merge_item_lists,
     parse_form,
+    parse_layout,
 )
 from .writer import (
     SOURCE_SYSTEM,
@@ -187,6 +190,9 @@ class OperationalWriter:
         self.customer_cache: dict[int, dict[str, str]] = {}
         # legacy inventory_id -> migrated inspection_form id (from pm_desc link)
         self.asset_form_id: dict[int, int] = {}
+        # migrated inspection_form id -> its legacy_aliases (older question
+        # names shown in a page row), applied to each report's answers.
+        self.form_aliases: dict[int, dict[str, str]] = {}
 
     def run(self) -> dict[str, Any]:
         with self.legacy.connect() as source, self.target.begin() as target:
@@ -437,6 +443,7 @@ class OperationalWriter:
             if pm_id:
                 insp_to_pm[int(row["id"])] = pm_id
         recorded: dict[int, dict[str, dict[str, Any]]] = defaultdict(dict)
+        report_names: dict[int, list[set[str]]] = defaultdict(list)
         for row in self._rows(
             source,
             "SELECT inspection_id, tests FROM inspection_reports "
@@ -446,10 +453,13 @@ class OperationalWriter:
             if not pm_id:
                 continue
             bucket = recorded[pm_id]
+            names: set[str] = set()
+            report_names[pm_id].append(names)
             for item in parse_form(row["tests"]):
                 if item.get("kind") == "heading":
                     continue
                 name = item["name"]
+                names.add(name)
                 if name not in bucket:
                     bucket[name] = {
                         "name": name,
@@ -476,11 +486,13 @@ class OperationalWriter:
             if legacy_id in self.maps["inspection_form"]:
                 continue
             title = _clean(row.get("title")) or f"Legacy Form {legacy_id}"
-            items = merge_item_lists(
-                parse_form(row.get("html") or ""),
-                list(recorded.get(legacy_id, {}).values()),
-            )
-            schema = build_grid_schema_from_items(items, title, legacy_id)
+            page_items = parse_form(row.get("html") or "")
+            layout = parse_layout(row.get("html") or "")
+            aliases = legacy_aliases(layout, page_items, list(recorded.get(legacy_id, {}).values()),
+                                     report_names.get(legacy_id, ()))
+            items = merge_item_lists(page_items, list(recorded.get(legacy_id, {}).values()))
+            # Laid out as the legacy page showed it (form_convert.parse_layout).
+            schema = build_grid_schema_from_items(items, title, legacy_id, layout=layout, aliases=aliases)
             created = _safe_datetime(row.get("created_at")) or datetime.utcnow()
             form_id = self._insert(
                 target,
@@ -494,6 +506,7 @@ class OperationalWriter:
                 },
             )
             self._map(target, "inspection_form", legacy_id, form_id)
+            self.form_aliases[form_id] = schema.get("legacy_aliases") or {}
             self.counts["inspection_forms_migrated"] += 1
 
     def _load_asset_forms(self, source: Connection) -> None:
@@ -608,7 +621,7 @@ class OperationalWriter:
                 values["form_template_id"] = form_id
             tests = reports.get(legacy_id)
             if tests:
-                answers = extract_answers(tests)
+                answers = alias_answers(extract_answers(tests), self.form_aliases.get(form_id))
                 if answers:
                     form_data = dict(existing_form_data.get(prod_id) or {})
                     form_data["custom_grid_values"] = answers
@@ -1207,7 +1220,10 @@ class OperationalWriter:
                 # Fold the completed checklist answers into the native grid
                 # value map so the migrated form opens with them populated.
                 if report.get("tests"):
-                    answers = extract_answers(report.get("tests"))
+                    answers = alias_answers(
+                        extract_answers(report.get("tests")),
+                        self.form_aliases.get(self.asset_form_id.get(int(row["inventory_id"])) if row.get("inventory_id") else None),
+                    )
                     if answers:
                         form_data["custom_grid_values"] = answers
                 inspection_id = self._insert(

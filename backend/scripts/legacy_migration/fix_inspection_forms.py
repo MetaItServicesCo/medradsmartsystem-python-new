@@ -11,8 +11,10 @@ same correction to the data a past run produced. It changes only:
   definition (``legacy_form_items.json``) and the questions their inspections
   recorded, so the duplicated cells are removed and every measurement reading
   (each row's Set / Actual / Note box) gets its own field instead of all
-  sharing one; every existing cell keeps its id, so recorded answers still
-  line up, and no field a form has today is dropped;
+  sharing one; laid out as the legacy page showed it (each table under its
+  heading, with its column headings and one row per line), with the legacy
+  checkbox questions; every existing cell keeps its id, so recorded answers
+  still line up, and no field a form has today is dropped;
 * the generated "Legacy Clinical Engineering Report" template: its sections
   are given the format the report screen reads;
 * inspections migrated from the legacy system: their standard checks, notes
@@ -55,6 +57,7 @@ from .form_convert import (
     build_grid_schema_from_items,
     clean_grid_schema,
     extract_answers,
+    legacy_aliases,
     merge_item_lists,
     note_input_name,
     parse_form,
@@ -85,11 +88,13 @@ def _legacy_form_items() -> dict[str, Any]:
         return {}
 
 
-def _add_recorded(union: dict[str, dict[str, Any]], html: str) -> None:
-    """Union a completed legacy report's questions into ``union`` (by name)."""
+def _add_recorded(union: dict[str, dict[str, Any]], html: str) -> set[str]:
+    """Union a completed legacy report's questions into ``union`` (by name); returns their names."""
+    names: set[str] = set()
     for item in parse_form(html):
         if item["kind"] == "heading":
             continue
+        names.add(item["name"])
         existing = union.get(item["name"])
         if existing is None:
             entry = {"name": item["name"], "kind": item["kind"], "label": item["label"],
@@ -103,10 +108,11 @@ def _add_recorded(union: dict[str, dict[str, Any]], html: str) -> None:
         for option in item.get("raw_options", []):
             if option not in existing["raw_options"]:
                 existing["raw_options"].append(option)
+    return names
 
 
 def rebuild_legacy_form(schema: dict[str, Any], definitions: dict[str, Any],
-                        recorded: list[dict[str, Any]]) -> dict[str, Any]:
+                        recorded: list[dict[str, Any]], report_names: list[set[str]] | tuple = ()) -> dict[str, Any]:
     """A migrated form rebuilt the way the corrected migration builds it.
 
     Its legacy definition, plus every question its migrated inspections
@@ -137,10 +143,18 @@ def rebuild_legacy_form(schema: dict[str, Any], definitions: dict[str, Any],
                and not _derived_key(item["name"])]
     if missing:
         items = merge_item_lists(items, missing)
-    rebuilt = build_grid_schema_from_items(items, schema.get("title") or grid.get("title") or "", legacy_id)
-    if rebuilt["custom_grid"]["cells"] == grid["cells"]:
+    layout = (definition or {}).get("layout")
+    aliases = legacy_aliases(layout, base, recorded + missing, report_names) if layout else {}
+    rebuilt = build_grid_schema_from_items(items, schema.get("title") or grid.get("title") or "", legacy_id,
+                                           layout=layout, aliases=aliases)
+    if rebuilt["custom_grid"]["cells"] == grid["cells"] \
+            and rebuilt.get("legacy_aliases") == schema.get("legacy_aliases"):
         return schema
-    return {**schema, "custom_grid": {**grid, **rebuilt["custom_grid"]}}
+    result = {**schema, "custom_grid": {**grid, **rebuilt["custom_grid"]}}
+    result.pop("legacy_aliases", None)
+    if rebuilt.get("legacy_aliases"):
+        result["legacy_aliases"] = rebuilt["legacy_aliases"]
+    return result
 
 
 def _derived_key(name: str) -> bool:
@@ -157,16 +171,21 @@ def superseded_fields(old: dict[str, Any], new: dict[str, Any]) -> dict[str, str
     new_cells = _item_cells(new)
     by_label: dict[str, str] = {}
     for cell_id, cell in new_cells.items():
-        label = " ".join(str(((cell.get("blocks") or [{}])[0]).get("label") or "").split()).lower()
-        by_label.setdefault(label, cell_id)
+        by_label.setdefault(_cell_label(cell), cell_id)
     mapping: dict[str, str] = {}
     for cell_id, cell in _item_cells(old).items():
         if cell_id in new_cells or not _derived_key(cell_id[len("item_"):]):
             continue
-        label = " ".join(str(((cell.get("blocks") or [{}])[0]).get("label") or "").split()).lower()
+        label = _cell_label(cell)
         if label in by_label:
             mapping[cell_id] = by_label[label]
     return mapping
+
+
+def _cell_label(cell: dict[str, Any]) -> str:
+    """A field cell's question label (kept on the cell when the legacy page showed it beside it)."""
+    label = cell.get("itemLabel") or ((cell.get("blocks") or [{}])[0]).get("label") or ""
+    return " ".join(str(label).split()).lower()
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -219,6 +238,9 @@ def correct(conn, report: dict[str, Any]) -> None:
     # The questions each form's migrated inspections recorded, as the migration
     # merged them. Streamed, so the legacy pages are never all held at once.
     recorded: dict[int, dict[str, dict[str, Any]]] = {}
+    # The question names each report recorded, so a question is only shown in
+    # a page row under an older name when no report holds both.
+    report_names: dict[int, list[set[str]]] = {}
     # Streaming is set on this one query: set on the connection, it would turn
     # every later statement, the UPDATEs included, into a server-side cursor,
     # which PostgreSQL refuses for anything but a SELECT.
@@ -228,7 +250,8 @@ def correct(conn, report: dict[str, Any]) -> None:
         form_data = _as_dict(raw_form_data)
         legacy = form_data.get("legacy_report") if form_data.get("source") == SOURCE_SYSTEM else None
         if isinstance(legacy, dict) and legacy.get("tests"):
-            _add_recorded(recorded.setdefault(form_id, {}), legacy["tests"])
+            names = _add_recorded(recorded.setdefault(form_id, {}), legacy["tests"])
+            report_names.setdefault(form_id, []).append(names)
     definitions = _legacy_form_items()
 
     removed_by_form: dict[int, dict[str, tuple[str, str]]] = {}
@@ -243,11 +266,12 @@ def correct(conn, report: dict[str, Any]) -> None:
             conn.execute(update(forms).where(forms.c.id == form_id).values(schema=copy.deepcopy(LEGACY_REPORT_SCHEMA)))
             report["templates_fixed"].append(name)
             continue
-        cleaned = rebuild_legacy_form(schema, definitions, list(recorded.get(form_id, {}).values()))
+        cleaned = rebuild_legacy_form(schema, definitions, list(recorded.get(form_id, {}).values()),
+                                      report_names.get(form_id, ()))
         if cleaned is schema:
             continue
         removed_by_form[form_id] = _removed_targets(schema, cleaned)
-        superseded_by_form[form_id] = superseded_fields(schema, cleaned)
+        superseded_by_form[form_id] = {**superseded_fields(schema, cleaned), **(cleaned.get("legacy_aliases") or {})}
         before, after = set(_item_cells(schema)), set(_item_cells(cleaned))
         conn.execute(update(forms).where(forms.c.id == form_id).values(schema=cleaned))
         report["forms_cleaned"].append((form_id, name.strip(), len(before - after), len(after - before)))
@@ -280,9 +304,13 @@ def correct(conn, report: dict[str, Any]) -> None:
 
         grid_values = data.get("custom_grid_values") or {}
         carried = {}
-        for old_cell, new_cell in superseded_by_form.get(form_id, {}).items():
-            answer = grid_values.get(f"{old_cell}__{ANSWER_BLOCK_ID}")
-            new_key = f"{new_cell}__{ANSWER_BLOCK_ID}"
+        mapping = superseded_by_form.get(form_id, {})
+        for key, answer in grid_values.items():
+            cell, separator, rest = key.partition("__")
+            new_cell = mapping.get(cell)
+            if not new_cell or not separator:
+                continue
+            new_key = f"{new_cell}__{rest}"
             if str(answer or "").strip() and not str(grid_values.get(new_key) or "").strip():
                 carried[new_key] = answer
         if carried:

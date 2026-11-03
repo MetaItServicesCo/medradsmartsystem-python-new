@@ -351,6 +351,8 @@ const normalizeGridCellBlock = (block: any, index: number): GridCellBlock => {
 const gridCellBlockValueKey = (cell: GridCellSchema, block: GridCellBlock, optionIndex?: number) =>
   optionIndex === undefined ? `${cell.id}__${block.id}` : `${cell.id}__${block.id}__${optionIndex}`
 
+const MAX_STORED_GRID_ROWS = 150
+
 const createEmptyGrid = (rows = 3, columns = 3, title = 'Set Title'): CustomGridSchema => ({
   title,
   rows,
@@ -386,9 +388,11 @@ const normalizeGridCell = (cell: any, row: number, column: number): GridCellSche
 const normalizeGrid = (grid: any, fallbackTitle = 'Set Title'): CustomGridSchema | null => {
   if (!grid) return null
   if (Array.isArray(grid.cells) && grid.cells.length) {
+    // A stored form keeps all its rows: forms migrated from the legacy system
+    // run past 30 (C Arm, General), and cutting them hid their later questions.
     const cells = grid.cells
       .filter((row: any) => Array.isArray(row) && row.length)
-      .slice(0, 30)
+      .slice(0, MAX_STORED_GRID_ROWS)
       .map((row: any[], rowIndex: number) => row.slice(0, 12).map((cell: any, columnIndex: number) => normalizeGridCell(cell, rowIndex, columnIndex)))
     if (cells.length) {
       return {
