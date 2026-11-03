@@ -38,6 +38,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
 import { CanvasFormBuilder, CanvasFormViewer, type CanvasFormSchema, type CanvasFormValues } from './CanvasFormBuilder'
+import { canvasPassFail, isFailText } from '@/utils/canvasPassFail'
 import { canvasValuesFromGrid, gridHasContent, gridToCanvas } from '@/utils/gridToCanvas'
 
 import {
@@ -989,10 +990,11 @@ const SECTION_CARD_INSET = 17
 
 // The fixed Inspection Report and Biomed Notes take the width of the canvas
 // section built between them - never narrower than the printable page - so the
-// three share the same edges and read as one form. A canvas narrower than that
-// sits centred in its section (canvasCentredSx). Grid forms already fill the width.
+// three share the same edges and read as one form, centred on the screen it is
+// shown in. A canvas narrower than that sits centred in its section
+// (canvasCentredSx). Grid forms already fill the width.
 const formColumnSx = (canvas?: CanvasFormSchema | null) => (canvas?.elements?.length
-  ? { width: Math.max(Number(canvas.canvas_width) || 1080, CANVAS_PAGE_W) + SECTION_CARD_INSET * 2, maxWidth: '100%' }
+  ? { width: Math.max(Number(canvas.canvas_width) || 1080, CANVAS_PAGE_W) + SECTION_CARD_INSET * 2, maxWidth: '100%', mx: 'auto' }
   : {})
 const canvasCentredSx = { width: 'fit-content', mx: 'auto' }
 
@@ -3141,7 +3143,9 @@ const Inspections = () => {
       }
     }
     const normalizedReport = mergeSchemaDefaultsIntoReport(report, activeReportSchema)
+    // A Fail in the fixed checks or in the middle custom section fails the report.
     const hasFail = Object.values(normalizedReport.checks || {}).includes('fail')
+      || customSectionPassFail(normalizedReport).hasFail
     const partTotal = (normalizedReport.parts || []).reduce((sum: number, part: any) => sum + Number(part.price || 0), 0)
     const formData = {
       ...normalizedReport,
@@ -3630,36 +3634,28 @@ const Inspections = () => {
     </>
   )
 
-  // Overall live-report status: 'fail' if any pass/fail field is set to fail,
-  // 'pass' only when every pass/fail field is answered and none failed,
-  // 'pending' while pass/fail questions are still unanswered.
-  const computeLiveReportStatus = (): 'pass' | 'fail' | 'pending' | null => {
-    if (!report) return null
+  // The middle custom section's pass/fail answers. A choice field offering
+  // "Fail" counts - on the canvas, inside a canvas table, or in a grid - and
+  // so does a tick box in a canvas table column headed "Fail", the way a paper
+  // sheet's Fail column works. Any Fail fails the report; a pass/fail choice
+  // still unanswered keeps it pending.
+  const customSectionPassFail = (current: any) => {
     let hasFail = false
     let hasPending = false
-
-    // options === undefined means the field is a known pass/fail field (checks, measurements).
-    // For option-based fields we only count them when a "Fail" choice exists.
     const consider = (value: unknown, options?: string[]) => {
-      if (options && !options.some(opt => opt.trim().toLowerCase() === 'fail')) return
-      const v = String(value ?? '').trim().toLowerCase()
+      if (!(options || []).some(isFailText)) return
+      const v = String(value ?? '').trim()
       if (!v) { hasPending = true; return }
-      if (v === 'fail') hasFail = true
+      if (isFailText(v)) hasFail = true
     }
-
-    Object.values((report.checks || {}) as Record<string, string>).forEach(v => consider(v))
-    ;(report.measurements || []).forEach((m: any) => consider(m?.status))
 
     const canvas = activeReportSchema?.canvas_form
     if (canvas?.elements?.length) {
-      canvas.elements.forEach(el => {
-        if (el.type !== 'radio') return
-        consider(canvasFormValues[el.id], el.options?.length ? el.options : [])
-      })
+      return canvasPassFail(canvas, canvasFormValues)
     } else {
-      const grid = activeReportSchema?.custom_grid || report?.custom_grid
-      if (grid && !activeReportSchema?.formio_form && !report?.formio_form) {
-        const values = report?.custom_grid_values || {}
+      const grid = activeReportSchema?.custom_grid || current?.custom_grid
+      if (grid && !activeReportSchema?.formio_form && !current?.formio_form) {
+        const values = current?.custom_grid_values || {}
         grid.cells.flat().forEach((cell: GridCellSchema) => {
           if (cell.hidden) return
           if (cell.blocks?.length) {
@@ -3673,6 +3669,30 @@ const Inspections = () => {
         })
       }
     }
+    return { hasFail, hasPending }
+  }
+
+  // Overall live-report status: 'fail' if any pass/fail field is set to fail,
+  // 'pass' only when every pass/fail field is answered and none failed,
+  // 'pending' while pass/fail questions are still unanswered.
+  const computeLiveReportStatus = (): 'pass' | 'fail' | 'pending' | null => {
+    if (!report) return null
+    let hasFail = false
+    let hasPending = false
+
+    // The fixed checks and measurements are known pass/fail fields.
+    const consider = (value: unknown) => {
+      const v = String(value ?? '').trim().toLowerCase()
+      if (!v) { hasPending = true; return }
+      if (v === 'fail') hasFail = true
+    }
+
+    Object.values((report.checks || {}) as Record<string, string>).forEach(v => consider(v))
+    ;(report.measurements || []).forEach((m: any) => consider(m?.status))
+
+    const custom = customSectionPassFail(report)
+    if (custom.hasFail) hasFail = true
+    if (custom.hasPending) hasPending = true
 
     if (hasFail) return 'fail'
     if (hasPending) return 'pending'
