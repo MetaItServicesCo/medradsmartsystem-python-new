@@ -2478,9 +2478,9 @@ const Sales = () => {
                 ? `${selectedPartRemaining} more available`
                 : ' '}
             />
-            <NumericField label="Shipping & Packing" value={selectedPartShipping} onChange={setSelectedPartShipping} />
-            <NumericField label="Delivery & Setup" value={selectedPartSetup} onChange={setSelectedPartSetup} />
-            <NumericField label="Labor" value={selectedPartLabor} onChange={setSelectedPartLabor} />
+            <NumericField showZero label="Shipping & Packing" value={selectedPartShipping} onChange={setSelectedPartShipping} />
+            <NumericField showZero label="Delivery & Setup" value={selectedPartSetup} onChange={setSelectedPartSetup} />
+            <NumericField showZero label="Labor" value={selectedPartLabor} onChange={setSelectedPartLabor} />
             <TextField select label="Condition" value={selectedPartCondition} onChange={e => setSelectedPartCondition(e.target.value)}>
               {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
             </TextField>
@@ -2621,7 +2621,7 @@ const Sales = () => {
                           }))} />
                           : <ClippedTooltipText value={item.description} field />}
                       </TableCell>
-                      <TableCell><NumericField size="small" value={item.unit_price ?? 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: val } : line) }))} sx={{ width: 120 }} /></TableCell>
+                      <TableCell><NumericField showZero size="small" value={item.unit_price ?? 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: val } : line) }))} sx={{ width: 120 }} /></TableCell>
                       <TableCell>
                         <TextField
                           size="small"
@@ -2643,9 +2643,9 @@ const Sales = () => {
                           sx={{ width: stockIssue ? 220 : 90 }}
                         />
                       </TableCell>
-                      <TableCell><NumericField size="small" value={item.shipping_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
-                      <TableCell><NumericField size="small" value={item.setup_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
-                      <TableCell><NumericField size="small" value={item.labor_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, labor_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell><NumericField showZero size="small" value={item.shipping_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell><NumericField showZero size="small" value={item.setup_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell><NumericField showZero size="small" value={item.labor_fee || 0} onChange={val => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, labor_fee: val } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell>{item.condition || 'New'}</TableCell>
                       <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(lineTotal(item))}</TableCell>
                       {quotationForm.quotation_type !== 'standard' && (
@@ -3094,12 +3094,12 @@ const Sales = () => {
                     <MenuItem value="cheque">Cheque</MenuItem>
                     <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
                   </TextField>
-                  <NumericField size="small" label="Labour Hours" value={invoiceDetails.labour_hours || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, labour_hours: val }))} />
-                  <NumericField size="small" label="Working Hours Fee ($)" value={invoiceDetails.worked_hours || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, worked_hours: val }))} />
-                  <NumericField size="small" label="Service Fee" value={invoiceDetails.service_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, service_fee: val }))} />
-                  <NumericField size="small" label="Setup Fee" value={invoiceDetails.setup_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, setup_fee: val }))} />
-                  <NumericField size="small" label="Shipping / Delivery Fee" value={invoiceDetails.shipping_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, shipping_fee: val }))} />
-                  <NumericField size="small" label="Application Fee" value={invoiceDetails.application_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, application_fee: val }))} />
+                  <NumericField showZero size="small" label="Labour Hours" value={invoiceDetails.labour_hours || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, labour_hours: val }))} />
+                  <NumericField showZero size="small" label="Working Hours Fee ($)" value={invoiceDetails.worked_hours || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, worked_hours: val }))} />
+                  <NumericField showZero size="small" label="Service Fee" value={invoiceDetails.service_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, service_fee: val }))} />
+                  <NumericField showZero size="small" label="Setup Fee" value={invoiceDetails.setup_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, setup_fee: val }))} />
+                  <NumericField showZero size="small" label="Shipping / Delivery Fee" value={invoiceDetails.shipping_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, shipping_fee: val }))} />
+                  <NumericField showZero size="small" label="Application Fee" value={invoiceDetails.application_fee || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, application_fee: val }))} />
                   <TextField size="small" label="Parts Total" value={convertPartsTotal.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" label="Tax Rate (%)" value={SALES_TAX_RATE.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" label="Tax Amount" value={convertTaxAmount.toFixed(2)} InputProps={{ readOnly: true }} />
@@ -3107,7 +3107,7 @@ const Sales = () => {
                     <MenuItem value="fixed">Fixed ($)</MenuItem>
                     <MenuItem value="percent">Percent (%)</MenuItem>
                   </TextField>
-                  <NumericField size="small" label="Discount" value={invoiceDetails.discount_amount || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, discount_amount: val }))} />
+                  <NumericField showZero size="small" label="Discount" value={invoiceDetails.discount_amount || 0} onChange={val => setInvoiceDetails(prev => ({ ...prev, discount_amount: val }))} />
                   <TextField size="small" label="Grand Total" value={convertGrandTotal.toFixed(2)} InputProps={{ readOnly: true }} sx={{ gridColumn: '1 / -1' }} />
                   <TextField size="small" label="Due Date" type="date" value={invoiceDetails.due_date || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} sx={{ gridColumn: '1 / -1' }} />
                   <TextField size="small" label="Notes" value={invoiceDetails.notes || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, notes: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />

@@ -415,11 +415,11 @@ const TierFormFields = ({ form, setForm }: { form: Partial<TierCreate>, setForm:
       <MenuItem value="inactive">Inactive</MenuItem>
     </TextField>
     
-    <NumericField size="small" label="Labor Fee (/hr)" value={form.labor_rate_per_hour ?? 0} onChange={val => setForm({ ...form, labor_rate_per_hour: val })} />
-    <NumericField size="small" label="Service Call Fee" value={form.service_call_fee ?? 0} onChange={val => setForm({ ...form, service_call_fee: val })} />
-    <NumericField size="small" label="PM Cost" value={form.preventive_maintenance_fee ?? 0} onChange={val => setForm({ ...form, preventive_maintenance_fee: val })} />
+    <NumericField showZero size="small" label="Labor Fee (/hr)" value={form.labor_rate_per_hour ?? 0} onChange={val => setForm({ ...form, labor_rate_per_hour: val })} />
+    <NumericField showZero size="small" label="Service Call Fee" value={form.service_call_fee ?? 0} onChange={val => setForm({ ...form, service_call_fee: val })} />
+    <NumericField showZero size="small" label="PM Cost" value={form.preventive_maintenance_fee ?? 0} onChange={val => setForm({ ...form, preventive_maintenance_fee: val })} />
     
-    <NumericField size="small" label="Mileage Cost (/mi)" value={form.mileage_rate ?? 0} onChange={val => setForm({ ...form, mileage_rate: val })} />
+    <NumericField showZero size="small" label="Mileage Cost (/mi)" value={form.mileage_rate ?? 0} onChange={val => setForm({ ...form, mileage_rate: val })} />
     <TextField size="small" label="Response Time (hrs)" type="number" value={form.response_time_hours} onChange={e => setForm({ ...form, response_time_hours: Number(e.target.value) })} />
     <TextField size="small" label="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
   </Box>

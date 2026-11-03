@@ -2801,13 +2801,13 @@ const Rentals = () => {
               error={Boolean(selectedRentalPart) && Number(itemDraft.quantity || 0) > (selectedPartRemaining ?? 0)}
               helperText={selectedRentalPart ? `${selectedPartRemaining} available` : undefined}
             />
-            <NumericField label={`Rate / ${agreementForm.billing_frequency}`} value={itemDraft.rental_rate} onChange={val => setItemDraft(prev => ({ ...prev, rental_rate: val }))} />
+            <NumericField showZero label={`Rate / ${agreementForm.billing_frequency}`} value={itemDraft.rental_rate} onChange={val => setItemDraft(prev => ({ ...prev, rental_rate: val }))} />
             <TextField label="Condition" value={itemDraft.item_condition || ''} InputProps={{ readOnly: true }} helperText="From parts inventory" placeholder={selectedRentalPart ? '—' : 'Select a product'} />
-            <NumericField label="Shipping & Packing" value={itemDraft.shipping_fee} onChange={val => setItemDraft(prev => ({ ...prev, shipping_fee: val }))} />
-            <NumericField label="Delivery & Setup" value={itemDraft.setup_fee} onChange={val => setItemDraft(prev => ({ ...prev, setup_fee: val }))} />
-            <NumericField label="Labor" value={itemDraft.labor_fee} onChange={val => setItemDraft(prev => ({ ...prev, labor_fee: val }))} />
-            <NumericField label="Removal / Pickup" value={itemDraft.removal_fee} onChange={val => setItemDraft(prev => ({ ...prev, removal_fee: val }))} />
-            <NumericField label="Security Deposit" value={itemDraft.security_deposit} onChange={val => setItemDraft(prev => ({ ...prev, security_deposit: val }))} helperText="Per unit" />
+            <NumericField showZero label="Shipping & Packing" value={itemDraft.shipping_fee} onChange={val => setItemDraft(prev => ({ ...prev, shipping_fee: val }))} />
+            <NumericField showZero label="Delivery & Setup" value={itemDraft.setup_fee} onChange={val => setItemDraft(prev => ({ ...prev, setup_fee: val }))} />
+            <NumericField showZero label="Labor" value={itemDraft.labor_fee} onChange={val => setItemDraft(prev => ({ ...prev, labor_fee: val }))} />
+            <NumericField showZero label="Removal / Pickup" value={itemDraft.removal_fee} onChange={val => setItemDraft(prev => ({ ...prev, removal_fee: val }))} />
+            <NumericField showZero label="Security Deposit" value={itemDraft.security_deposit} onChange={val => setItemDraft(prev => ({ ...prev, security_deposit: val }))} helperText="Per unit" />
             </Box>
           </Box>
 
@@ -2847,33 +2847,33 @@ const Rentals = () => {
                       />
                     </TableCell>
                     <TableCell align="right">
-                      <NumericField size="small" value={item.rental_rate}
+                      <NumericField showZero size="small" value={item.rental_rate}
                         onChange={val => setLineNumber(item.key, 'rental_rate', val)}
                         inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
                     </TableCell>
                     <TableCell>{item.item_condition}</TableCell>
                     <TableCell align="right">
-                      <NumericField size="small" value={item.shipping_fee}
+                      <NumericField showZero size="small" value={item.shipping_fee}
                         onChange={val => setLineNumber(item.key, 'shipping_fee', val)}
                         inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
                     </TableCell>
                     <TableCell align="right">
-                      <NumericField size="small" value={item.setup_fee}
+                      <NumericField showZero size="small" value={item.setup_fee}
                         onChange={val => setLineNumber(item.key, 'setup_fee', val)}
                         inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
                     </TableCell>
                     <TableCell align="right">
-                      <NumericField size="small" value={item.labor_fee}
+                      <NumericField showZero size="small" value={item.labor_fee}
                         onChange={val => setLineNumber(item.key, 'labor_fee', val)}
                         inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
                     </TableCell>
                     <TableCell align="right">
-                      <NumericField size="small" value={item.removal_fee}
+                      <NumericField showZero size="small" value={item.removal_fee}
                         onChange={val => setLineNumber(item.key, 'removal_fee', val)}
                         inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
                     </TableCell>
                     <TableCell align="right">
-                      <NumericField size="small" value={item.security_deposit}
+                      <NumericField showZero size="small" value={item.security_deposit}
                         onChange={val => setLineNumber(item.key, 'security_deposit', val)}
                         inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
                     </TableCell>
@@ -3455,18 +3455,18 @@ const Rentals = () => {
                   <MenuItem value="cheque">Cheque</MenuItem>
                   <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
                 </TextField>
-                <NumericField label="Labour Hours" size="small" value={invoiceDetails.labour_hours || 0} onChange={val => setInvoiceDetails(p => ({ ...p, labour_hours: val }))} />
-                <NumericField label="Working Hours Fee ($)" size="small" value={invoiceDetails.worked_hours || 0} onChange={val => setInvoiceDetails(p => ({ ...p, worked_hours: val }))} />
-                <NumericField label="Service Fee" size="small" value={invoiceDetails.service_fee || 0} onChange={val => setInvoiceDetails(p => ({ ...p, service_fee: val }))} />
-                <NumericField label="Setup Fee" size="small" value={invoiceDetails.setup_fee || 0} onChange={val => setInvoiceDetails(p => ({ ...p, setup_fee: val }))} />
-                <NumericField label="Shipping / Delivery Fee" size="small" value={invoiceDetails.shipping_fee || 0} onChange={val => setInvoiceDetails(p => ({ ...p, shipping_fee: val }))} />
-                <NumericField label="Application / Training Fee" size="small" value={invoiceDetails.application_fee || 0} onChange={val => setInvoiceDetails(p => ({ ...p, application_fee: val }))} />
+                <NumericField showZero label="Labour Hours" size="small" value={invoiceDetails.labour_hours || 0} onChange={val => setInvoiceDetails(p => ({ ...p, labour_hours: val }))} />
+                <NumericField showZero label="Working Hours Fee ($)" size="small" value={invoiceDetails.worked_hours || 0} onChange={val => setInvoiceDetails(p => ({ ...p, worked_hours: val }))} />
+                <NumericField showZero label="Service Fee" size="small" value={invoiceDetails.service_fee || 0} onChange={val => setInvoiceDetails(p => ({ ...p, service_fee: val }))} />
+                <NumericField showZero label="Setup Fee" size="small" value={invoiceDetails.setup_fee || 0} onChange={val => setInvoiceDetails(p => ({ ...p, setup_fee: val }))} />
+                <NumericField showZero label="Shipping / Delivery Fee" size="small" value={invoiceDetails.shipping_fee || 0} onChange={val => setInvoiceDetails(p => ({ ...p, shipping_fee: val }))} />
+                <NumericField showZero label="Application / Training Fee" size="small" value={invoiceDetails.application_fee || 0} onChange={val => setInvoiceDetails(p => ({ ...p, application_fee: val }))} />
                 <TextField label="Tax Rate" size="small" value={`${SALES_TAX_RATE}% (auto, taxes rent + shipping + setup)`} InputProps={{ readOnly: true }} disabled />
                 <TextField select label="Discount Type" size="small" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(p => ({ ...p, discount_type: e.target.value as 'fixed' | 'percent' }))}>
                   <MenuItem value="fixed">Fixed ($)</MenuItem>
                   <MenuItem value="percent">Percent (%)</MenuItem>
                 </TextField>
-                <NumericField label="Discount Amount" size="small" value={invoiceDetails.discount_amount || 0} onChange={val => setInvoiceDetails(p => ({ ...p, discount_amount: val }))} />
+                <NumericField showZero label="Discount Amount" size="small" value={invoiceDetails.discount_amount || 0} onChange={val => setInvoiceDetails(p => ({ ...p, discount_amount: val }))} />
                 <TextField label="Invoice Due Date" type="date" size="small" value={invoiceDetails.due_date} onChange={e => setInvoiceDetails(p => ({ ...p, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
                 <TextField label="Billing Notes" size="small" multiline rows={2} value={invoiceDetails.notes} onChange={e => setInvoiceDetails(p => ({ ...p, notes: e.target.value }))} />
               </Card>
