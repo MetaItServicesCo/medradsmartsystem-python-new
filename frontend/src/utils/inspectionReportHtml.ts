@@ -939,10 +939,12 @@ const blankCanvasElementHtml = (element: any): string => {
   }
 }
 
-// The canvas builder places elements at absolute pixel positions, so the whole
-// thing is scaled as one piece to exactly the page width - the width the fixed
-// sections above and below it print at. Scaling the layout keeps it looking
-// like what was designed; reflowing it into a column would not.
+// The canvas builder places elements at absolute pixel positions; on paper the
+// canvas spans exactly the page width the fixed sections above and below it
+// print at. A canvas wider than the page is scaled down as one piece, which
+// keeps it looking like what was designed. A narrower one is spread across the
+// page instead - each field keeps its place across the width and its height,
+// and the text stays its normal size.
 const blankCanvasHtml = (canvas: any): string => {
   const elements: any[] = Array.isArray(canvas?.elements) ? canvas.elements : []
   if (!elements.length) return ''
@@ -950,15 +952,17 @@ const blankCanvasHtml = (canvas: any): string => {
   const contentBottom = elements.reduce(
     (lowest, element) => Math.max(lowest, Number(element.y || 0) + Number(element.height || 0)), 0)
   const height = Math.max(Number(canvas.canvas_height) || 0, contentBottom + 16)
-  const scale = PRINT_WIDTH / width
+  const scale = Math.min(1, PRINT_WIDTH / width)
+  const stretch = width < PRINT_WIDTH ? PRINT_WIDTH / width : 1
+  const layoutWidth = width * stretch
 
   const inner = elements
     .slice()
     .sort((a, b) => (Number(a.zIndex) || 1) - (Number(b.zIndex) || 1))
     .map(element => {
       const grey = element.bgColor === 'grey'
-      return `<div style="position:absolute;left:${Number(element.x) || 0}px;top:${
-        Number(element.y) || 0}px;width:${Number(element.width) || 100}px;min-height:${
+      return `<div style="position:absolute;left:${+((Number(element.x) || 0) * stretch).toFixed(2)}px;top:${
+        Number(element.y) || 0}px;width:${+((Number(element.width) || 100) * stretch).toFixed(2)}px;min-height:${
         Number(element.height) || 24}px;box-sizing:border-box;padding:${
         element.type === 'table' ? '0' : '4px'};background:${grey ? '#E5E7EB' : 'transparent'};border-radius:${
         grey ? '6px' : '0'}">${blankCanvasElementHtml(element)}</div>`
@@ -966,10 +970,9 @@ const blankCanvasHtml = (canvas: any): string => {
     .join('')
 
   // A transform does not change the space the block takes in the flow, so the
-  // outer box is given the scaled height: no white space under a block scaled
-  // down, nothing cut off under one scaled up.
+  // outer box is given the scaled height: no white space under a scaled block.
   return `<div style="width:100%;height:${Math.ceil(height * scale)}px;overflow:hidden">
-    <div style="position:relative;width:${width}px;height:${height}px;transform:scale(${
+    <div style="position:relative;width:${layoutWidth}px;height:${height}px;transform:scale(${
       scale.toFixed(4)});transform-origin:top left">${inner}</div>
   </div>`
 }

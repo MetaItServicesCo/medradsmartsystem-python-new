@@ -2110,18 +2110,16 @@ export function CanvasFormViewer({ schema, values = {}, onChange, readOnly = fal
 }
 
 /**
- * A canvas form scaled to the full width of the section it is shown in, so it
- * lines up with the full-width sections above and below it. The layout is
- * scaled as one piece, never reflowed, so it keeps looking as it was built.
+ * A canvas form spread across the full width of the section it is shown in,
+ * so it lines up with the full-width sections above and below it. Each field
+ * keeps its place across the width and its height, and the text stays its
+ * normal size: fields get wider, nothing gets bigger. Where the section is
+ * narrower than the canvas, the canvas is shown as built and scrolls.
  */
 export function FullWidthCanvasViewer(props: ViewerProps) {
   const outer = useRef<HTMLDivElement>(null)
   const [available, setAvailable] = useState(0)
   const width = props.schema.canvas_width ?? CANVAS_W
-  // Elements can sit below the section's stored height; the viewer shows
-  // them, so the scaled block keeps room for them too.
-  const contentBottom = props.schema.elements.reduce((lowest, el) => Math.max(lowest, el.y + el.height), 0)
-  const height = Math.max(props.schema.canvas_height ?? 600, contentBottom)
 
   useEffect(() => {
     const node = outer.current
@@ -2133,12 +2131,15 @@ export function FullWidthCanvasViewer(props: ViewerProps) {
     return () => observer.disconnect()
   }, [])
 
-  const scale = available > 0 ? available / width : 1
+  const stretch = available > width ? available / width : 1
+  const schema = stretch === 1 ? props.schema : {
+    ...props.schema,
+    canvas_width: available,
+    elements: props.schema.elements.map(el => ({ ...el, x: el.x * stretch, width: el.width * stretch })),
+  }
   return (
-    <Box ref={outer} sx={{ width: '100%', height: height * scale, overflow: 'hidden' }}>
-      <Box sx={{ width, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-        <CanvasFormViewer {...props} />
-      </Box>
+    <Box ref={outer} sx={{ width: '100%', overflowX: 'auto' }}>
+      <CanvasFormViewer {...props} schema={schema} />
     </Box>
   )
 }

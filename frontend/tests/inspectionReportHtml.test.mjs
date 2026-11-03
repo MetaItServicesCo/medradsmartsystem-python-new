@@ -124,21 +124,24 @@ const migratedFields = print({ form_schema: legacyGrid, form_data: { checks: {},
 ok('migrated Battery dates print from where the migration stored them', migratedFields.includes('2025-05-05') && migratedFields.includes('2026-05-05'))
 
 // ── A blank form: the canvas section spans the page like the fixed sections ─
-// The Inspection Report and Biomed Notes print the full page width (736px), so
-// the canvas is scaled to exactly that width, up or down, with its box given
-// the scaled height.
+// The Inspection Report and Biomed Notes print the full page width (736px). A
+// wider canvas is scaled down to it; a narrower one is spread across it, its
+// fields widened and moved in proportion and its text left at normal size.
 const blankForm = width => buildInspectionFormHtml({ name: 'Form', schema: { version: 5, canvas_form: {
   canvas_width: width, canvas_height: 200,
-  elements: [{ id: 'h', type: 'heading', label: 'Section', x: 0, y: 0, width: 200, height: 30 }],
+  elements: [{ id: 'h', type: 'heading', label: 'Section', x: 100, y: 0, width: 200, height: 30 }],
 } } })
 const narrow = blankForm(368)
-ok('a canvas narrower than the page is scaled up to the page width', narrow.includes('width:368px') && narrow.includes('transform:scale(2.0000)'))
-ok('its box is the scaled height, so nothing is cut off', narrow.includes('width:100%;height:400px;overflow:hidden'))
+ok('a canvas narrower than the page is spread to the page width, not enlarged',
+  narrow.includes('width:736px;height:200px;transform:scale(1.0000)'))
+ok('its fields are widened and moved in proportion, at their own height',
+  narrow.includes('left:200px;top:0px;width:400px;min-height:30px'))
 const wide = blankForm(1080)
-ok('a canvas wider than the page is scaled down to the page width', wide.includes('transform:scale(0.6815)'))
+ok('a canvas wider than the page is scaled down to the page width', wide.includes('width:1080px;height:200px;transform:scale(0.6815)'))
 ok('its box is the scaled height, so no white space is left under it', wide.includes('width:100%;height:137px;overflow:hidden'))
+ok('its fields keep their built positions', wide.includes('left:100px;top:0px;width:200px'))
 const page = blankForm(736)
-ok('a canvas at page width prints at its real size', page.includes('transform:scale(1.0000)') && page.includes('width:100%;height:200px;overflow:hidden'))
+ok('a canvas at page width prints at its real size', page.includes('width:736px;height:200px;transform:scale(1.0000)') && page.includes('left:100px;top:0px;width:200px'))
 ok('the fixed sections still print around it', page.includes('Inspection Report') && page.includes('Biomed Notes'))
 
 console.log()
