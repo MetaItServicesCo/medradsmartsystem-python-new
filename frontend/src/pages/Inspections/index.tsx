@@ -3143,8 +3143,10 @@ const Inspections = () => {
       }
     }
     const normalizedReport = mergeSchemaDefaultsIntoReport(report, activeReportSchema)
-    // A Fail in the fixed checks or in the middle custom section fails the report.
+    // A Fail in the fixed checks, a measurement or the middle custom section
+    // fails the report - the same fields the live status reads.
     const hasFail = Object.values(normalizedReport.checks || {}).includes('fail')
+      || (normalizedReport.measurements || []).some((m: any) => String(m?.status ?? '').trim().toLowerCase() === 'fail')
       || customSectionPassFail(normalizedReport).hasFail
     const partTotal = (normalizedReport.parts || []).reduce((sum: number, part: any) => sum + Number(part.price || 0), 0)
     const formData = {
