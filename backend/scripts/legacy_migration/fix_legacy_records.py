@@ -70,7 +70,7 @@ def fix_invoices(conn, tables, data, report) -> None:
         ledger[int(invoice_id)] += lr.money(amount)
     current = {int(r.id): r for r in conn.execute(select(
         invoices.c.id, invoices.c.invoice_number, invoices.c.status, invoices.c.total_amount, invoices.c.amount_paid,
-        invoices.c.balance_due, invoices.c.due_date, invoices.c.facility_id))}
+        invoices.c.balance_due, invoices.c.due_date, invoices.c.facility_id, invoices.c.updated_at))}
     for row in data["invoices"]:
         target = targets.get(int(row["id"]))
         now = current.get(target) if target is not None else None
@@ -86,7 +86,7 @@ def fix_invoices(conn, tables, data, report) -> None:
         if (lr.money(now.amount_paid), lr.money(now.balance_due), current_status, lr.money(ledger[target])) \
                 == (paid, owed, status, paid):
             continue
-        if target in app_activity:
+        if target in app_activity or lr.edited_since_migration(now.updated_at, row):
             report["counts"]["invoices left as they are: paid or changed in the new app"] += 1
             continue
         conn.execute(delete(transactions).where(transactions.c.invoice_id == target,
@@ -111,10 +111,14 @@ def fix_services(conn, tables, data, report) -> None:
         by_service[int(row["service_id"])].append(row)
     targets = id_map(conn, "service_request")
     rows = {int(r.id): r for r in conn.execute(select(
-        requests.c.id, requests.c.request_number, requests.c.history, requests.c.resolution_description))}
+        requests.c.id, requests.c.request_number, requests.c.history, requests.c.resolution_description,
+        requests.c.updated_at))}
     for legacy_id, target in targets.items():
         sr, reports = rows.get(target), by_service.get(legacy_id) or []
         if sr is None or not reports:
+            continue
+        if lr.edited_since_migration(sr.updated_at, data["services"].get(legacy_id) or {}):
+            report["counts"]["service requests left as they are: changed in the new app"] += 1
             continue
         history = _list(sr.history)
         expected = expected_entries(legacy_id, reports, data)
@@ -140,7 +144,7 @@ def fix_inspection_billing(conn, tables, data, report) -> None:
     charges = {int(row["inspection_id"]): row for row in data["charges"]}
     targets = id_map(conn, "inspection")
     rows = {int(r.id): r for r in conn.execute(select(inspections.c.id, inspections.c.inspection_number,
-                                                       inspections.c.form_data))}
+                                                       inspections.c.form_data, inspections.c.updated_at))}
     for legacy_id, target in targets.items():
         row, charge = rows.get(target), charges.get(legacy_id)
         if row is None or charge is None:
@@ -148,7 +152,10 @@ def fix_inspection_billing(conn, tables, data, report) -> None:
         form_data = _dict(row.form_data)
         expected = lr.inspection_billing(charge)
         billing = form_data.get("billing") or {}
-        if {key: float(lr.money(billing.get(key))) for key in expected} == expected or "form_template" in form_data:
+        if {key: float(lr.money(billing.get(key))) for key in expected} == expected:
+            continue
+        if "form_template" in form_data or lr.edited_since_migration(row.updated_at, data["inspections"].get(legacy_id) or {}):
+            report["counts"]["inspection billing left as it is: saved in the new app"] += 1
             continue
         conn.execute(update(inspections).where(inspections.c.id == target).values(
             form_data={**form_data, "billing": {**billing, **expected}}))
@@ -159,7 +166,8 @@ def fix_inspection_billing(conn, tables, data, report) -> None:
 def print_report(report, applied: bool) -> None:
     print("APPLIED" if applied else "DRY RUN - nothing written")
     for kind in ("invoices set to the legacy payment record", "invoices left as they are: paid or changed in the new app",
-                 "service requests set to the legacy service reports", "inspection billing set to the legacy charge"):
+                 "service requests set to the legacy service reports", "service requests left as they are: changed in the new app",
+                 "inspection billing set to the legacy charge", "inspection billing left as it is: saved in the new app"):
         print(f"{kind}: {report['counts'][kind]}")
         for example in report["examples"].get(kind, [])[:100]:
             print(f"    {example}")

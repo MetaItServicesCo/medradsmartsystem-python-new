@@ -60,12 +60,18 @@ map_path = folder / "map.db"
 legacy = sa.create_engine(legacy_url)
 with legacy.begin() as c:
     c.exec_driver_sql("CREATE TABLE invoices (id INT, invoice_no TEXT, invoice_order TEXT, net_amount TEXT, paid_amount TEXT,"
-                      " confirm_paid_amount TEXT, balance TEXT, refund TEXT, status INT, paid_at TEXT, due_date TEXT)")
+                      " confirm_paid_amount TEXT, balance TEXT, refund TEXT, status INT, paid_at TEXT, due_date TEXT,"
+                      " created_at TEXT, updated_at TEXT)")
+    c.exec_driver_sql("CREATE TABLE inspections (id INT, created_at TEXT, updated_at TEXT)")
+    for inspection_id in (201, 202, 203, 204):
+        c.execute(sa.text("INSERT INTO inspections VALUES (:i, '2024-01-01 09:00:00', '2024-01-02 09:00:00')"),
+                  dict(i=inspection_id))
     c.exec_driver_sql("CREATE TABLE partial_payments (id INT, invoice_id INT, paid_amount TEXT, paid_at TEXT, created_at TEXT,"
                       " payment_type TEXT, charge_id TEXT)")
-    c.exec_driver_sql("CREATE TABLE services (id INT, user_name TEXT)")
-    for service_id in (101, 102, 103):
-        c.execute(sa.text("INSERT INTO services VALUES (:i, 'Front Desk')"), dict(i=service_id))
+    c.exec_driver_sql("CREATE TABLE services (id INT, user_name TEXT, created_at TEXT, updated_at TEXT)")
+    for service_id in (101, 102, 103, 104):
+        c.execute(sa.text("INSERT INTO services VALUES (:i, 'Front Desk', '2023-01-01 09:00:00', '2023-03-01 09:00:00')"),
+                  dict(i=service_id))
     c.exec_driver_sql("CREATE TABLE invoice_logs (invoice_no TEXT, action TEXT)")
     c.exec_driver_sql("CREATE TABLE service_reports (id INT, service_id INT, technician TEXT, date TEXT, hours TEXT,"
                       " fault TEXT, action TEXT, worked_hours TEXT, file TEXT, po TEXT, trips TEXT, trip_price TEXT,"
@@ -81,9 +87,11 @@ with legacy.begin() as c:
         (4, "2021-000700", "300", "300", "0", "300", "0", 2, None),                  # paid in the new app since
         (5, "2021-000800", "0", "0", "0", "0", "0", 1, "2022-03-01 10:00:00"),       # zero total: left alone
         (6, "2024-001343", "4975", "0", "175", "4800", "0", 1, "2024-05-01 10:00:00"),  # part-paid
+        (7, "2021-000900", "500", "0", "500", "0", "0", 1, "2022-04-01 10:00:00"),   # paid, but edited in the new app
     ]
     for i, no, net, pa, conf, bal, ref, status, paid_at in invoices:
-        c.execute(sa.text("INSERT INTO invoices VALUES (:i, :no, :no, :net, :pa, :conf, :bal, :ref, :st, :pat, '2022-01-01')"),
+        c.execute(sa.text("INSERT INTO invoices VALUES (:i, :no, :no, :net, :pa, :conf, :bal, :ref, :st, :pat, '2022-01-01',"
+                          " '2021-12-01 09:00:00', '2022-06-01 09:00:00')"),
                   dict(i=i, no=no, net=net, pa=pa, conf=conf, bal=bal, ref=ref, st=status, pat=paid_at))
         c.execute(sa.text("INSERT INTO invoice_logs VALUES (:no, :a)"), dict(no=no, a="paid" if status == 1 else "viewed"))
     c.execute(sa.text("INSERT INTO service_reports VALUES (1, 101, :t, :d, :h, :f, :a, '3', NULL, NULL, '0', '0', NULL,"
@@ -94,10 +102,12 @@ with legacy.begin() as c:
                       " '0', '0', NULL, NULL, '2026-10-23 13:55:00', '2026-10-23 13:57:00')"),
               dict(t='["Omar"]', d='["2026-10-23"]'))
     c.execute(sa.text("INSERT INTO service_activities VALUES (1, 102)"))
+    c.execute(sa.text("INSERT INTO service_reports VALUES (4, 104, '[\"Ann\"]', '[\"2023-02-01\"]', '[\"1\"]', '[null]',"
+                      " '[\"Done\"]', '1', NULL, NULL, '0', '0', NULL, NULL, '2023-02-01 09:00:00', '2023-02-01 10:00:00')"))
     c.execute(sa.text("INSERT INTO service_reports VALUES (3, 103, :t, :d, '[\"2\"]', '[\"Noise\"]', '[\"Tightened\"]', '2',"
                       " NULL, NULL, '0', '0', NULL, NULL, '2024-01-01 09:00:00', '2024-01-01 11:00:00')"),
               dict(t='["Sam"]', d='["2024-01-01"]'))
-    for i, insp in ((1, 201), (2, 202), (3, 203)):
+    for i, insp in ((1, 201), (2, 202), (3, 203), (4, 204)):
         c.execute(sa.text("INSERT INTO inspection_charges VALUES (:i, :insp, '10', '1', '2', '20', '30', '0', '5', '66')"),
                   dict(i=i, insp=insp))
 
@@ -133,12 +143,16 @@ production_invoices = {
     4: (InvoiceStatus.PAID, "300", "0", "300"),
     5: (InvoiceStatus.PAID, "0", "0", "0"),
     6: (InvoiceStatus.OVERDUE, "0", "4975", "4975"),
+    7: (InvoiceStatus.OVERDUE, "0", "500", "500"),
 }
+MIGRATED_AT = datetime(2022, 6, 1, 9, 0, 0)  # the legacy updated_at the migration copied
+EDITED_AT = datetime(2026, 11, 2, 15, 30, 0)  # a save in the new app
 for legacy_id, (status, paid, balance, total) in production_invoices.items():
     invoice = mapped("invoice", legacy_id, Invoice(
         invoice_number=f"INV-{legacy_id}", invoice_type=InvoiceType.SERVICE, customer_name="Clinic",
         customer_email="c@x.com", subtotal=D(total), total_amount=D(total), amount_paid=D(paid), balance_due=D(balance),
-        status=status, issue_date=date(2022, 1, 1), due_date=date(2022, 1, 1)))
+        status=status, issue_date=date(2022, 1, 1), due_date=date(2022, 1, 1),
+        updated_at=EDITED_AT if legacy_id == 7 else MIGRATED_AT))
     if D(paid) > 0:
         db.add(InvoiceTransaction(invoice_id=invoice.id, transaction_type="payment", amount=D(paid),
                                   description="Imported legacy payment balance"))
@@ -147,11 +161,11 @@ for legacy_id, (status, paid, balance, total) in production_invoices.items():
                                   description="Square card payment"))
 
 
-def service(legacy_id, number, history, resolution):
+def service(legacy_id, number, history, resolution, edited=False):
     mapped("service_request", legacy_id, ServiceRequest(
         request_number=number, facility_id=1, equipment_id=1, requester_id=1, problem_description="x",
         priority=Priority.MEDIUM, status=ServiceRequestStatus.COMPLETED, history=history,
-        resolution_description=resolution))
+        resolution_description=resolution, updated_at=EDITED_AT if edited else datetime(2023, 3, 1, 9, 0, 0)))
 
 
 service(101, "2023-000101", [{"action": "technician_clock_out", "user": '["Daniel","Daniel"]', "changes": {
@@ -167,15 +181,20 @@ service(103, "2024-000103", [{"action": "technician_clock_out", "user": "Sam", "
     "Tightened")
 
 
-def inspection(legacy_id, number, form_data):
+def inspection(legacy_id, number, form_data, edited=False):
     mapped("inspection", legacy_id, Inspection(inspection_number=number, facility_id=1, form_template_id=1,
-                                               scheduled_date=datetime(2024, 1, 1), form_data=form_data))
+                                               scheduled_date=datetime(2024, 1, 1), form_data=form_data,
+                                               updated_at=EDITED_AT if edited else datetime(2024, 1, 2, 9, 0, 0)))
 
 
 legacy_keys = {"parts": 10, "discount": 1, "tax": 2, "labor": 20, "service": 30, "travel": 0, "other": 5, "net_charges": 66}
 inspection(201, "INSP-2026-000923-1", {"source": "admin_medrad", "billing": legacy_keys})
 inspection(202, "INSP-2026-000923-2", {"source": "admin_medrad", "billing": legacy_keys, "form_template": {"name": "x"}})
 inspection(203, "INSP-2026-000923-3", {"source": "admin_medrad", "billing": {"parts": 10, "inspection_charges": 50, "others": 6}})
+inspection(204, "INSP-2026-000923-4", {"source": "admin_medrad", "billing": legacy_keys}, edited=True)
+service(104, "2023-000104", [{"action": "technician_clock_out", "user": '["Ann"]', "changes": {
+    "session_id": "legacy-report-4", "duration_hours": 1.0, "diagnosis": "[null]", "work_done": '["Done"]'}}],
+    '["Done"]', edited=True)
 db.commit()
 db.close()
 
@@ -218,7 +237,7 @@ ok("a service request already right counts as matching", "service requests match
 ok("billing that does not add up is found, with the legacy split",
    "INSP-2026-000923-1" in text_out and "'inspection_charges': 50.0, 'others': 6.0" in text_out)
 ok("billing saved in the app since is not proposed for change",
-   "inspection billing saved in the app since (not touched): 1" in text_out and "INSP-2026-000923-2" not in text_out)
+   "inspection billing saved in the app since (not touched): 2" in text_out and "INSP-2026-000923-2" not in text_out)
 ok("billing that already adds up counts as matching", "inspection billing matching the legacy charge: 1" in text_out)
 
 print()
@@ -278,6 +297,17 @@ ok("inspection billing adds up to the legacy charge, keeping the legacy breakdow
     "inspection_charges": 50.0, "others": 6.0})
 ok("billing saved in the app since is untouched",
    json.loads(billing_after["INSP-2026-000923-2"].form_data)["billing"] == legacy_keys)
+ok("an invoice edited in the new app since the migration is left exactly as it is",
+   inv["INV-7"].status == "OVERDUE" and D(str(inv["INV-7"].amount_paid)) == D("0"))
+ok("a service request changed in the new app is left exactly as it is",
+   json.loads(services_after["2023-000104"].history)[0]["user"] == '["Ann"]'
+   and services_after["2023-000104"].resolution_description == '["Done"]')
+ok("an inspection saved in the new app keeps its billing exactly",
+   json.loads(billing_after["INSP-2026-000923-4"].form_data)["billing"] == legacy_keys)
+ok("the dry run counts what it leaves alone because it was changed in the app",
+   "invoices left as they are: paid or changed in the new app: 2" in dry
+   and "service requests left as they are: changed in the new app: 1" in dry
+   and "inspection billing left as it is: saved in the new app: 2" in dry, dry)
 settled = snapshot()
 code, again = run(fix, "--apply")
 ok("a second run changes nothing", snapshot() == settled, again)

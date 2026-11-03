@@ -78,7 +78,8 @@ def legacy_data(legacy) -> dict[str, Any]:
             "payments": rows("SELECT * FROM partial_payments ORDER BY id"),
             "logs": rows("SELECT invoice_no, action FROM invoice_logs"),
             "reports": rows("SELECT * FROM service_reports ORDER BY id"),
-            "services": {int(r["id"]): r for r in rows("SELECT id, user_name FROM services")},
+            "services": {int(r["id"]): r for r in rows("SELECT id, user_name, created_at, updated_at FROM services")},
+            "inspections": {int(r["id"]): r for r in rows("SELECT id, created_at, updated_at FROM inspections")},
             "activity_services": {r["service_id"] for r in rows("SELECT DISTINCT service_id FROM service_activities")},
             "charges": rows("SELECT * FROM inspection_charges ORDER BY id"),
         }
@@ -113,7 +114,7 @@ def audit_invoices(conn, data, report) -> None:
         "AND coalesce(description, '') NOT IN :mine").bindparams(bindparam("mine", expanding=True)),
         {"mine": sorted(lr.MIGRATION_TRANSACTIONS)})}
     current = {int(r.id): r for r in conn.execute(text(
-        "SELECT id, invoice_number, status, total_amount, amount_paid, balance_due, due_date FROM invoices"))}
+        "SELECT id, invoice_number, status, total_amount, amount_paid, balance_due, due_date, updated_at FROM invoices"))}
     ledger = collections.Counter()
     for invoice_id, amount in conn.execute(text(
             "SELECT invoice_id, amount FROM invoice_transactions WHERE transaction_type = 'payment' "
@@ -135,7 +136,7 @@ def audit_invoices(conn, data, report) -> None:
         if same:
             report["counts"]["invoices matching the legacy record"] += 1
             continue
-        if target in app_activity:
+        if target in app_activity or lr.edited_since_migration(now.updated_at, row):
             note(report, "invoices that differ but were paid or changed in the new app (not touched)",
                  f"{now.invoice_number}: {now.status} paid {now.amount_paid}")
             continue
@@ -169,11 +170,14 @@ def audit_services(conn, data, report) -> None:
         by_service[int(row["service_id"])].append(row)
     targets = id_map(conn, "service_request")
     rows = {int(r.id): r for r in conn.execute(text(
-        "SELECT id, request_number, history, resolution_description FROM service_requests"))}
+        "SELECT id, request_number, history, resolution_description, updated_at FROM service_requests"))}
     for legacy_id, target in targets.items():
         sr = rows.get(target)
         reports = by_service.get(legacy_id) or []
         if sr is None or not reports:
+            continue
+        if lr.edited_since_migration(sr.updated_at, data["services"].get(legacy_id) or {}):
+            report["counts"]["service requests changed in the new app since the migration (not touched)"] += 1
             continue
         history = _list(sr.history)
         migrated = [e for e in history if lr.is_migrated_report_entry(e)]
@@ -202,7 +206,7 @@ def audit_services(conn, data, report) -> None:
 def audit_inspection_billing(conn, data, report) -> None:
     charges = {int(row["inspection_id"]): row for row in data["charges"]}
     targets = id_map(conn, "inspection")
-    rows = {int(r.id): r for r in conn.execute(text("SELECT id, inspection_number, form_data FROM inspections"))}
+    rows = {int(r.id): r for r in conn.execute(text("SELECT id, inspection_number, form_data, updated_at FROM inspections"))}
     for legacy_id, target in targets.items():
         row, charge = rows.get(target), charges.get(legacy_id)
         if row is None or charge is None:
@@ -213,7 +217,7 @@ def audit_inspection_billing(conn, data, report) -> None:
         shown = {key: float(lr.money(billing.get(key))) for key in expected}
         if shown == expected:
             report["counts"]["inspection billing matching the legacy charge"] += 1
-        elif "form_template" in form_data:
+        elif "form_template" in form_data or lr.edited_since_migration(row.updated_at, data["inspections"].get(legacy_id) or {}):
             report["counts"]["inspection billing saved in the app since (not touched)"] += 1
         else:
             note(report, "inspection billing pages that do not add up to the legacy charge",

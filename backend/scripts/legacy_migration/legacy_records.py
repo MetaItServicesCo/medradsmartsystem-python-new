@@ -292,3 +292,20 @@ def as_datetime(value: Any):
         return _datetime.fromisoformat(text.replace("T", " ")[:19]) if text and not text.startswith("0000") else None
     except ValueError:
         return None
+
+
+def edited_since_migration(current_updated_at: Any, legacy_row: dict[str, Any]) -> bool:
+    """True when a migrated record was saved in the new app since the migration.
+
+    The migration set every record's ``updated_at`` to the legacy record's own
+    (else its ``created_at``), and the app refreshes ``updated_at`` on every
+    save; so a record whose ``updated_at`` no longer matches was changed in the
+    app, and is the app's now. Unknown legacy times count as unchanged.
+    """
+    expected = as_datetime(legacy_row.get("updated_at")) or as_datetime(legacy_row.get("created_at"))
+    current = as_datetime(current_updated_at)
+    if expected is None or current is None:
+        return False
+    if getattr(current, "tzinfo", None) is not None:
+        current = current.replace(tzinfo=None)
+    return abs((current - expected).total_seconds()) > 1
