@@ -542,6 +542,8 @@ export interface ServiceRequestWorkOrderAdditionPayload {
   notes?: string
   test_equipment_ids?: number[]
   part_usages?: ServiceRequestPartUsage[]
+  // A status change made with the addition (same rules as a work session).
+  status?: ServiceRequestStatus
 }
 
 export const addToServiceWorkOrder = async (id: number, data: ServiceRequestWorkOrderAdditionPayload): Promise<ServiceRequest> => {

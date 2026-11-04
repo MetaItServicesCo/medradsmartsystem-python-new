@@ -216,6 +216,8 @@ class ServiceRequestWorkOrderAdditionCreate(BaseModel):
     notes: Optional[str] = None
     test_equipment_ids: Optional[List[int]] = None
     part_usages: List[ServiceRequestPartUsage] = Field(default_factory=list)
+    # A status change made with the addition, by the same rules as a work session.
+    status: Optional[str] = None
 
 
 class ServiceRequestHoursCorrectionCreate(BaseModel):

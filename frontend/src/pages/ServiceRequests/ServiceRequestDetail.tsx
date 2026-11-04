@@ -424,6 +424,8 @@ const ServiceRequestDetail = () => {
         part_id: part.id,
         quantity: Number(partQuantities[part.id] ?? '1'),
       })),
+      // Only a status actually changed is sent; a completed request offers none.
+      status: canLogWorkForRequest && sr && serviceWorkflowStatus !== sr.status ? serviceWorkflowStatus : undefined,
     }),
     onSuccess: (updated) => {
       toast.success('Added to the work order')
@@ -617,6 +619,12 @@ const ServiceRequestDetail = () => {
     if (!partQuantitiesAreValid()) return
     if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0 && selectedServiceParts.length === 0) {
       toast.info('Add parts, notes, diagnosis, work done or test equipment')
+      return
+    }
+    // An addition adds no hours, so completing needs a session's hours already.
+    if (canLogWorkForRequest && sr && serviceWorkflowStatus === 'completed' && sr.status !== 'completed'
+      && Number(sr.time_spent_hours || 0) <= 0) {
+      toast.warning('Save at least one work session with hours before completing')
       return
     }
     additionMutation.mutate()
@@ -1652,7 +1660,8 @@ const ServiceRequestDetail = () => {
                     ))}
                   </Box>
                 )}
-                {!addingWithoutTime && (
+                {/* With a work session or an addition; a completed request has no status left to change. */}
+                {canLogWork && (
                 <FormControl fullWidth>
                   <InputLabel>Service Status</InputLabel>
                   <Select

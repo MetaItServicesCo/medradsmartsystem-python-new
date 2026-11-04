@@ -137,6 +137,8 @@ ACTIVE = request("SR-ACTIVE", ServiceRequestStatus.IN_PROGRESS)
 DONE = request("SR-DONE", ServiceRequestStatus.COMPLETED)
 INVOICED = request("SR-INVOICED", ServiceRequestStatus.COMPLETED)
 CANCELLED = request("SR-CANCELLED", ServiceRequestStatus.CANCELLED)
+WITH_STATUS = request("SR-STATUS", ServiceRequestStatus.IN_PROGRESS)
+NO_HOURS = request("SR-NO-HOURS", ServiceRequestStatus.IN_PROGRESS, hours="0")
 NEW = ServiceRequest(request_number="SR-NEW", facility_id=clinic.id, equipment_id=monitor.id,
                      requester_id=PEOPLE["client"].id, problem_description="x", priority=Priority.MEDIUM,
                      status=ServiceRequestStatus.NEW, history=[])
@@ -249,6 +251,38 @@ for who in ("othertech", "employee", "facadmin", "client"):
     ok(f"{who} cannot add to someone else's work order", r.status_code in (403, 404), str(r.status_code))
 ok("a new (unassigned) request cannot be added to", add(NEW, who="superadmin", notes="x").status_code == 400)
 ok("a cancelled request cannot be added to", add(CANCELLED, notes="x").status_code == 400)
+
+# ── A2. Changing status with an addition ─────────────────────────────────────
+section("A2. Changing the status with an addition")
+r = add(WITH_STATUS, notes="Board on order", status="waiting_on_parts")
+after = state(WITH_STATUS)
+ok("the technician sets Waiting on Parts with an addition", r.status_code == 200
+   and after["status"] == ServiceRequestStatus.WAITING_ON_PARTS, f"{r.status_code} {after['status']}")
+ok("  hours and cost unchanged", after["hours"] == D("2.00") and after["cost"] == D("200.00"))
+ok("  the history records the change", additions(WITH_STATUS)[-1]["changes"]["status"]
+   == {"from": "in_progress", "to": "waiting_on_parts"}, str(additions(WITH_STATUS)[-1]["changes"]["status"]))
+r = add(WITH_STATUS, notes="Still waiting", status="waiting_on_parts")
+ok("choosing the current status changes nothing", r.status_code == 200
+   and additions(WITH_STATUS)[-1]["changes"]["status"] == "waiting_on_parts")
+r = add(WITH_STATUS, notes="x", status="not-a-status")
+ok("an unknown status is refused", r.status_code == 400 and state(WITH_STATUS)["status"] == ServiceRequestStatus.WAITING_ON_PARTS)
+taken = stock()
+r = add(NO_HOURS, notes="Fitted the board", status="completed", part_usages=[{"part_id": PART, "quantity": 1}])
+ok("completing with no hours logged is refused", r.status_code == 400 and "hours" in r.text, f"{r.status_code} {r.text[:80]}")
+ok("  and nothing changed: status, entries, stock", state(NO_HOURS)["status"] == ServiceRequestStatus.IN_PROGRESS
+   and not additions(NO_HOURS) and stock() == taken)
+r = add(WITH_STATUS, notes="Board fitted, all tests pass", status="completed")
+after = state(WITH_STATUS)
+ok("with hours logged, an addition can complete the request", r.status_code == 200
+   and after["status"] == ServiceRequestStatus.COMPLETED, f"{r.status_code} {after['status']}")
+db = Session()
+completed_at = db.get(ServiceRequest, WITH_STATUS).completed_at
+db.close()
+ok("  completion is time-stamped, hours unchanged", completed_at is not None and after["hours"] == D("2.00"))
+r = add(WITH_STATUS, notes="Reopen?", status="in_progress")
+ok("a completed request cannot be moved back by an addition", r.status_code == 400
+   and state(WITH_STATUS)["status"] == ServiceRequestStatus.COMPLETED, str(r.status_code))
+ok("  but can still be added to without a status", add(WITH_STATUS, notes="Late note").status_code == 200)
 
 # ── B. After completion, before invoicing ────────────────────────────────────
 section("B. After completion, until invoiced")

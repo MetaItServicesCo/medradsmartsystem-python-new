@@ -2131,8 +2131,9 @@ def add_to_work_order(
     """Record what was left out of the work order, without time.
 
     A part used, a note, diagnosis or test equipment forgotten in a work
-    session. No hours are added, so the labour billed is unchanged, and the
-    request keeps its status. Parts come out of stock as in a work session and
+    session. No hours are added, so the labour billed is unchanged; the status
+    changes only if one is chosen, by a work session's rules (and completing
+    needs hours already logged). Parts come out of stock as in a work session and
     are billed only through a quotation, as before. Open to the assigned
     technician and administrators while the request is being worked on and,
     once completed, until it is invoiced; never after.
@@ -2174,6 +2175,38 @@ def add_to_work_order(
     if not diagnosis and not work_done and not notes and not test_equipment_used and not part_usages:
         raise HTTPException(status_code=400, detail="Add parts, notes, diagnosis, work done or test equipment")
 
+    # A status change made with the addition follows a work session's rules;
+    # completing also needs hours logged, as an addition adds none.
+    requested_status: Optional[ServiceRequestStatus] = None
+    if addition.status:
+        try:
+            requested_status = ServiceRequestStatus(addition.status)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="Invalid service request status") from error
+        if requested_status == db_sr.status:
+            requested_status = None
+        elif requested_status not in VALID_TRANSITIONS.get(db_sr.status, []):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot transition from '{db_sr.status.value}' to '{requested_status.value}'. "
+                    f"Allowed: {[item.value for item in VALID_TRANSITIONS.get(db_sr.status, [])]}"
+                ),
+            )
+    previous_status = db_sr.status
+    if requested_status is not None:
+        now = datetime.utcnow()
+        if requested_status == ServiceRequestStatus.COMPLETED:
+            if _active_clock_session(db_sr):
+                raise HTTPException(status_code=400, detail="End the active work session before marking this service request complete")
+            if Decimal(str(db_sr.time_spent_hours or 0)) <= 0:
+                raise HTTPException(status_code=400, detail="Save at least one work session with hours before completing")
+            db_sr.completed_at = now
+        elif requested_status in SERVICE_WORKFLOW_STATUSES and not db_sr.started_at:
+            db_sr.started_at = now
+        db_sr.status = requested_status
+        db_sr.total_cost = _calculate_service_cost(db_sr)
+
     parts_used = _consume_service_parts(
         db, db_sr, part_usages, current_user, addition_id, source="Work order addition",
     )
@@ -2185,9 +2218,24 @@ def add_to_work_order(
         "notes": notes,
         "test_equipment": test_equipment_used,
         "parts": parts_used,
-        "status": db_sr.status.value,
+        "status": (
+            {"from": previous_status.value, "to": db_sr.status.value}
+            if previous_status != db_sr.status
+            else db_sr.status.value
+        ),
     }))
     db_sr.history = history
+    if previous_status != db_sr.status:
+        recipients = {db_sr.requester_id, db_sr.assigned_technician_id}
+        create_notifications(
+            db,
+            user_ids=[user_id for user_id in recipients if user_id and user_id != current_user.id],
+            title="Service request updated",
+            message=f"Service request {db_sr.request_number} is now {db_sr.status.value.replace('_', ' ')}.",
+            notification_type="service_request",
+            link_url=f"/service-requests/{db_sr.id}",
+            actor_id=current_user.id,
+        )
     db.commit()
     return get_service_request(request_id, db, current_user)
 
