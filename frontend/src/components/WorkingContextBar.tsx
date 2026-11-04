@@ -27,8 +27,12 @@ const WorkingContextBar = () => {
       aria-live="polite"
       sx={{
         position: 'fixed',
-        right: { xs: 12, sm: 24 },
-        bottom: { xs: 'calc(76px + env(safe-area-inset-bottom))', sm: 24 },
+        // Clear of the assistant button in the bottom-right corner (56px,
+        // 26px in from the edges; 14px and above the mobile nav on phones),
+        // which would otherwise cover the Show and Close buttons: beside it
+        // on wider screens, above it on phones, where this spans the width.
+        right: { xs: 12, sm: 94 },
+        bottom: { xs: 'calc(144px + env(safe-area-inset-bottom))', sm: 26 },
         zIndex: 1450,
         width: { xs: 'calc(100vw - 24px)', sm: 440 },
         px: { xs: 1.25, sm: 2 },

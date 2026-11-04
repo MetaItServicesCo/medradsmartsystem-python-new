@@ -4573,9 +4573,11 @@ const Inspections = () => {
               <Table stickyHeader>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                    <TableCell sx={{ fontWeight: 900 }}>Form</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Fields</TableCell>
+                    {/* Form and Description share the width; Fields and Actions
+                        take only what they need. */}
+                    <TableCell sx={{ fontWeight: 900, width: '40%' }}>Form</TableCell>
+                    <TableCell sx={{ fontWeight: 900, width: '45%' }}>Description</TableCell>
+                    <TableCell sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}>Fields</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
@@ -4608,9 +4610,10 @@ const Inspections = () => {
                             Fixed checklist + {formioForm ? 'temporary external form' : grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom form'} + Biomed Notes
                           </Typography>
                         </TableCell>
-                        {/* Clipped to a fixed width; the whole description shows on hover. */}
-                        <TableCell sx={{ width: 360, maxWidth: 360 }}><ClippedTooltipText value={form.description || '-'} field maxWidth={360} /></TableCell>
-                        <TableCell><Chip size="small" label={`${fieldCount} custom field${fieldCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
+                        {/* Clipped to its column (maxWidth 0 stops a long one widening it);
+                            the whole description shows on hover. */}
+                        <TableCell sx={{ maxWidth: 0 }}><ClippedTooltipText value={form.description || '-'} field /></TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}><Chip size="small" label={`${fieldCount} custom field${fieldCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
                         <TableCell align="right">
                           <IconButton
                             size="small"
