@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -152,7 +153,10 @@ def logout(token: str = Depends(logout_token_scheme)):
 
 
 @router.post("/refresh")
-def refresh_access_token(current_user: User = Depends(get_current_user)):
+def refresh_access_token(
+    token: str = Depends(logout_token_scheme),
+    current_user: User = Depends(get_current_user),
+):
     """A fresh access token for someone still working.
 
     An access token has a fixed lifetime from sign-in, so without this a user
@@ -163,12 +167,25 @@ def refresh_access_token(current_user: User = Depends(get_current_user)):
     unchanged, account active - so nothing that could not sign a request can
     extend a session. It stays valid until its own expiry, as requests already
     in flight may still carry it.
+
+    A session is renewed for at most SESSION_MAX_HOURS from its sign-in, which
+    every renewed token carries (auth_time; a token from sign-in has only its
+    iat), so a token that leaked cannot be kept alive indefinitely.
     """
+    payload = decode_token(token)  # get_current_user has already verified it
+    signed_in_at = int(payload.get("auth_time") or payload["iat"])
+    if datetime.now(timezone.utc).timestamp() - signed_in_at >= settings.SESSION_MAX_HOURS * 3600:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session has ended. Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return {
         "access_token": create_access_token(data={
             "sub": current_user.username,
             "role": current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
             "ver": password_token_version(current_user.hashed_password),
+            "auth_time": signed_in_at,
         }),
         "token_type": "bearer",
     }
