@@ -6,7 +6,8 @@ outcome:
 
     1. signing in: guessing, enumeration, throttling, disabled accounts
     2. tokens: forged, tampered, expired, replayed after logout or a
-       password change, belonging to deleted or disabled users
+       password change, belonging to deleted or disabled users -- and
+       refreshed: only a token that could sign a request gets a new one
     3. signing up: what a stranger who registers can reach
     4. privilege: users raising their own rights or taking over others'
 
@@ -296,21 +297,56 @@ for claim in ("superadmin", "admin"):
                    headers=bearer(forge(ver=version, role=claim)))
     ok("  nor lets its holder change roles ({})".format(claim), r.status_code == 403)
 
+
+
+def refresh(token):
+    return client.post("/api/v1/auth/refresh", headers=bearer(token))
+
+
+# Refreshing keeps a working session alive; nothing that cannot sign a request
+# may use it to extend one.
+r = refresh(staff)
+fresh = r.json().get("access_token", "") if r.status_code == 200 else ""
+ok("a working session gets a fresh token", r.status_code == 200 and bool(fresh) and fresh != staff, str(r.status_code))
+ok("  which signs requests as the same user", me(fresh).status_code == 200 and me(fresh).json()["username"] == "staff")
+fresh_claims, staff_claims = jwt.get_unverified_claims(fresh), jwt.get_unverified_claims(staff)
+ok("  bound to the same password, with an id of its own",
+   fresh_claims.get("ver") == version and fresh_claims.get("jti") != staff_claims.get("jti"))
+ok("  for the normal lifetime, no longer",
+   fresh_claims["exp"] - fresh_claims["iat"] == settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+   str(fresh_claims["exp"] - fresh_claims["iat"]))
+ok("  of the normal type", fresh_claims.get("token_type") == "access")
+ok("no token gets no fresh one", client.post("/api/v1/auth/refresh").status_code == 401)
+ok("an expired token cannot be refreshed", refresh(forge(ver=version, exp=past, iat=past - timedelta(minutes=30),
+                                                         nbf=past - timedelta(minutes=30))).status_code == 401)
+ok("a token signed with a guessed key cannot be refreshed",
+   refresh(jwt.encode({"sub": "staff", "ver": version, "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+                       "iat": datetime.now(timezone.utc), "iss": settings.JWT_ISSUER, "aud": settings.JWT_AUDIENCE,
+                       "jti": "x2", "token_type": "access"}, "guessed-secret", algorithm="HS256")).status_code == 401)
+ok("a token of another type cannot be refreshed", refresh(forge(ver=version, token_type="refresh")).status_code == 401)
+ok("a token without the password binding cannot be refreshed", refresh(forge(ver=None)).status_code == 401)
+
 r = client.post("/api/v1/auth/logout", headers=bearer(staff))
 ok("signing out revokes the token", r.status_code == 204 and me(staff).status_code == 401)
+ok("  and a signed-out token cannot be refreshed", refresh(staff).status_code == 401)
+client.post("/api/v1/auth/logout", headers=bearer(fresh))
+ok("signing out with a refreshed token ends it too", me(fresh).status_code == 401 and refresh(fresh).status_code == 401)
 
 changer = token_for("changer")
 client.put("/api/v1/users/me", json={"password": "a-brand-new-password-1", "current_password": PASSWORD},
            headers=bearer(changer))
 ok("changing the password ends every earlier session", me(changer).status_code == 401)
+ok("  and none of them can be refreshed", refresh(changer).status_code == 401)
 
 leaver = token_for("leaver")
 boss = token_for("boss")
 r = client.put("/api/v1/users/{}/deactivate".format(IDS["leaver"]), headers=bearer(boss))
 ok("a deactivated user's live token stops working at once", r.status_code == 200 and me(leaver).status_code in (401, 403))
+ok("  and cannot be refreshed", refresh(leaver).status_code in (401, 403))
 gone = token_for("gone")
 client.delete("/api/v1/users/{}".format(IDS["gone"]), headers=bearer(boss))
 ok("a deleted user's live token stops working at once", me(gone).status_code in (401, 403))
+ok("  and cannot be refreshed", refresh(gone).status_code in (401, 403))
 
 # --- 3. signing up -------------------------------------------------------------------------------
 section("3. Signing up")

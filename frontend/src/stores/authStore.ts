@@ -26,8 +26,13 @@ interface User {
 interface AuthState {
   user: User | null
   token: string | null
+  // When this browser received the token (its own clock), so the session can
+  // be renewed partway through the token's lifetime whatever the server's
+  // clock says.
+  tokenReceivedAt: number | null
   isAuthenticated: boolean
   login: (user: User, token: string) => void
+  renewToken: (token: string) => void
   setUser: (user: User) => void
   logout: () => void
 }
@@ -37,9 +42,13 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       token: null,
+      tokenReceivedAt: null,
       isAuthenticated: false,
       login: (user, token) =>
-        set({ user, token, isAuthenticated: true }),
+        set({ user, token, tokenReceivedAt: Date.now(), isAuthenticated: true }),
+      // A fresh token for the same signed-in user (see useSessionRenewal).
+      renewToken: (token) =>
+        set(state => (state.isAuthenticated ? { token, tokenReceivedAt: Date.now() } : state)),
       setUser: (user) =>
         set((state) => {
           // The header re-syncs the current user on a schedule. When the payload
@@ -65,7 +74,7 @@ export const useAuthStore = create<AuthState>()(
             keepalive: true,
           }).catch(() => undefined)
         }
-        set({ user: null, token: null, isAuthenticated: false })
+        set({ user: null, token: null, tokenReceivedAt: null, isAuthenticated: false })
       },
     }),
     {

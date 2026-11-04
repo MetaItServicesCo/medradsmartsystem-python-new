@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.config import settings
+from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.core.security import (
     create_access_token, decode_token, get_password_hash, password_token_version, verify_password,
@@ -148,6 +149,29 @@ def logout(token: str = Depends(logout_token_scheme)):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     revoke_access_token(payload)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/refresh")
+def refresh_access_token(current_user: User = Depends(get_current_user)):
+    """A fresh access token for someone still working.
+
+    An access token has a fixed lifetime from sign-in, so without this a user
+    in the middle of their work was signed out when it ran out. The app asks
+    for a new one only while its user is active; an idle session still ends
+    by the app's inactivity timeout. The token presented must pass every
+    check a normal request does - not expired, not logged out, password
+    unchanged, account active - so nothing that could not sign a request can
+    extend a session. It stays valid until its own expiry, as requests already
+    in flight may still carry it.
+    """
+    return {
+        "access_token": create_access_token(data={
+            "sub": current_user.username,
+            "role": current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+            "ver": password_token_version(current_user.hashed_password),
+        }),
+        "token_type": "bearer",
+    }
 
 from app.schemas.user import UserCreate
 

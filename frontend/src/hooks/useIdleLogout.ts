@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/authStore'
+import { rememberSessionPlace } from '@/utils/sessionResume'
 
 // Any of these anywhere in the app counts as the user being active.
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll', 'click'] as const
@@ -17,6 +18,8 @@ export const useIdleLogout = (timeoutMs: number) => {
     const forceLogout = () => {
       window.clearTimeout(timerRef.current)
       if (!useAuthStore.getState().isAuthenticated) return
+      // Signing back in returns the user here.
+      rememberSessionPlace(useAuthStore.getState().user?.id)
       useAuthStore.getState().logout()
       // Full navigation clears in-memory/cached state, matching the 401 handler.
       window.location.href = '/login'

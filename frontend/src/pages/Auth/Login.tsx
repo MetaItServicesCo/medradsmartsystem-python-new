@@ -9,6 +9,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { useAuthStore } from '@/stores/authStore'
+import { takeSessionPlace } from '@/utils/sessionResume'
 import apiClient from '@/api/client'
 import './login.css'
 
@@ -26,7 +27,8 @@ const Login = () => {
   const { login, isAuthenticated } = useAuthStore()
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/dashboard')
+    // Back to where the system signed this user out, if it did; else the dashboard.
+    if (isAuthenticated) navigate(takeSessionPlace(useAuthStore.getState().user?.id) || '/dashboard')
   }, [isAuthenticated, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,8 +59,9 @@ const Login = () => {
         const res = await apiClient.post('/auth/login', form.toString(), {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         })
+        // Signing in moves on from here (the effect above): to where the system
+        // signed this user out, if it did, else the dashboard.
         login(res.data.user, res.data.access_token)
-        navigate('/dashboard')
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'An error occurred')

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/authStore'
+import { rememberSessionPlace } from '../utils/sessionResume'
 
 const configuredApiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
@@ -50,6 +51,9 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // A session the server no longer accepts: signing back in returns the
+      // user to where they were.
+      if (useAuthStore.getState().isAuthenticated) rememberSessionPlace(useAuthStore.getState().user?.id)
       useAuthStore.getState().logout()
       window.location.href = '/login'
     }

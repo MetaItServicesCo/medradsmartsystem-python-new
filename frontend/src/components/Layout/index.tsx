@@ -8,6 +8,7 @@ import ModuleBackground from '../ModuleBackground'
 import { PageTransition } from '../motion'
 import { ListContextProvider } from '@/contexts/ListContext'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
+import { useSessionRenewal } from '@/hooks/useSessionRenewal'
 import { useContentReveal } from '@/hooks/useContentReveal'
 import AssistantWidget from '@/components/Assistant'
 
@@ -69,6 +70,8 @@ const Layout = () => {
   const location = useLocation()
   useDismissOrphanedOverlays(location.pathname)
   useIdleLogout(SESSION_IDLE_TIMEOUT_MS)
+  // Someone working is never signed out by their token running out.
+  useSessionRenewal(SESSION_IDLE_TIMEOUT_MS)
   useContentReveal(location.pathname)
   const title = Object.entries(pageTitles).find(([path]) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
