@@ -41,7 +41,8 @@ from app.schemas.service_request import (
     QuotationAuthorizationRequestCreate, QuotationAuthorizationDecisionCreate,
     QuotationAuthorizationResponse,
     LineItemCreate, ServiceRequestNoteCreate, ServiceRequestClockOutCreate,
-    ServiceRequestWorkSessionCreate,
+    ServiceRequestWorkSessionCreate, ServiceRequestWorkOrderAdditionCreate,
+    ServiceRequestHoursCorrectionCreate,
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.facility_access import (
@@ -526,6 +527,7 @@ def _consume_service_parts(
     usages: list[Any],
     current_user: User,
     session_id: str,
+    source: str = "Service work session",
 ) -> list[dict[str, Any]]:
     """Atomically issue facility stock and return immutable history snapshots."""
     quantities: dict[int, int] = {}
@@ -572,7 +574,7 @@ def _consume_service_parts(
             unit_cost=part.unit_price,
             balance_after=part.quantity_on_hand,
             authorization_reference=service_request.request_number,
-            authorization_details=f"Service work session {session_id}",
+            authorization_details=f"{source} {session_id}",
             notes=f"Used during service request {service_request.request_number}",
             created_by_id=current_user.id,
         )
@@ -839,6 +841,16 @@ def _load_service_request_for_work(
     if not db_sr.assigned_technician_id:
         raise HTTPException(status_code=400, detail="Assign a technician before starting work")
     return db_sr
+
+
+def _service_request_is_invoiced(db: Session, request_id: int) -> bool:
+    """Whether the request has a service invoice that is not cancelled. Once
+    it does, the work order is closed to additions and hours corrections."""
+    return db.query(Invoice.id).filter(
+        Invoice.service_request_id == request_id,
+        Invoice.invoice_type == InvoiceType.SERVICE,
+        Invoice.status != InvoiceStatus.CANCELLED,
+    ).first() is not None
 
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
@@ -1298,6 +1310,7 @@ def get_service_request(
             .first()
         )
     data["service_invoice"] = _service_invoice_response(active_invoice) if active_invoice else None
+    data["is_invoiced"] = _service_request_is_invoiced(db, sr.id)
     return data
 
 
@@ -1432,6 +1445,14 @@ def update_service_request(
 
     update_data = sr_in.model_dump(exclude_unset=True)
     _authorize_service_request_update(current_user, db_sr, update_data)
+    if "time_spent_hours" in update_data:
+        # Total hours bill as labour. They change through a work session, or an
+        # administrator's hours correction - which records the reason and stops
+        # once the request is invoiced - never through a plain edit.
+        raise HTTPException(
+            status_code=400,
+            detail="Correct total hours with an hours correction, which records the reason",
+        )
     if update_data.get("assigned_technician_id"):
         require_assignable_technician(db, update_data["assigned_technician_id"], db_sr.facility_id)
     changes = {}
@@ -1578,6 +1599,9 @@ def generate_service_invoice(
     if not has_module_permission(current_user, "billing", "edit"):
         raise HTTPException(status_code=403, detail="Billing edit permission is required")
 
+    # Hold the request while the invoice is built from it, so an hours
+    # correction or work-order addition cannot land half way through.
+    db.query(ServiceRequest.id).filter(ServiceRequest.id == request_id).with_for_update().first()
     db_sr = (
         db.query(ServiceRequest)
         .options(
@@ -2095,6 +2119,130 @@ def add_service_request_note(
         .filter(ServiceRequest.id == db_sr.id)
         .first()
     )
+
+
+@router.post("/{request_id}/work-order-additions", response_model=ServiceRequestResponse)
+def add_to_work_order(
+    request_id: int,
+    addition: ServiceRequestWorkOrderAdditionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Record what was left out of the work order, without time.
+
+    A part used, a note, diagnosis or test equipment forgotten in a work
+    session. No hours are added, so the labour billed is unchanged, and the
+    request keeps its status. Parts come out of stock as in a work session and
+    are billed only through a quotation, as before. Open to the assigned
+    technician and administrators while the request is being worked on and,
+    once completed, until it is invoiced; never after.
+    """
+    db_sr = (
+        db.query(ServiceRequest)
+        .filter(ServiceRequest.id == request_id)
+        .with_for_update()
+        .first()
+    )
+    if not db_sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
+    if not _can_work_on_service(current_user, db_sr):
+        raise HTTPException(status_code=403, detail="Only the assigned technician or an admin can add to the work order")
+    addition_id = addition.addition_id or uuid.uuid4().hex
+    if addition.addition_id and any(
+        entry.get("action") == "work_order_addition"
+        and (entry.get("changes") or {}).get("addition_id") == addition_id
+        for entry in (db_sr.history or [])
+    ):
+        # Idempotent retry: the addition and its stock issuance were committed together.
+        return get_service_request(request_id, db, current_user)
+    if db_sr.status == ServiceRequestStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="A cancelled service request cannot be added to")
+    if db_sr.status == ServiceRequestStatus.NEW or not db_sr.assigned_technician_id:
+        raise HTTPException(status_code=400, detail="Assign a technician before adding to the work order")
+    if _service_request_is_invoiced(db, db_sr.id):
+        raise HTTPException(
+            status_code=409,
+            detail="This service request has been invoiced; nothing more can be added to its work order",
+        )
+
+    diagnosis = (addition.diagnosis or "").strip()
+    work_done = (addition.work_done or "").strip()
+    notes = (addition.notes or "").strip()
+    test_equipment_used = _test_equipment_history_items(db, list(dict.fromkeys(addition.test_equipment_ids or [])))
+    part_usages = list(addition.part_usages or [])
+    if not diagnosis and not work_done and not notes and not test_equipment_used and not part_usages:
+        raise HTTPException(status_code=400, detail="Add parts, notes, diagnosis, work done or test equipment")
+
+    parts_used = _consume_service_parts(
+        db, db_sr, part_usages, current_user, addition_id, source="Work order addition",
+    )
+    history = list(db_sr.history or [])
+    history.append(_history_entry("work_order_addition", current_user, {
+        "addition_id": addition_id,
+        "diagnosis": diagnosis,
+        "work_done": work_done,
+        "notes": notes,
+        "test_equipment": test_equipment_used,
+        "parts": parts_used,
+        "status": db_sr.status.value,
+    }))
+    db_sr.history = history
+    db.commit()
+    return get_service_request(request_id, db, current_user)
+
+
+@router.post("/{request_id}/hours-corrections", response_model=ServiceRequestResponse)
+def correct_service_hours(
+    request_id: int,
+    correction: ServiceRequestHoursCorrectionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """An administrator corrects the request's total work hours, with a reason.
+
+    For hours that were forgotten or mistyped. The new total bills as labour
+    and the correction - from, to, reason, who - is kept in the history; the
+    technicians' logged sessions are left exactly as they were. Possible until
+    the request is invoiced; never after.
+    """
+    if not _is_internal_service_user(current_user) or not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Only an administrator with Billing edit permission can correct hours")
+    db_sr = (
+        db.query(ServiceRequest)
+        .filter(ServiceRequest.id == request_id)
+        .with_for_update()
+        .first()
+    )
+    if not db_sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
+    if db_sr.status in {ServiceRequestStatus.NEW, ServiceRequestStatus.CANCELLED}:
+        raise HTTPException(status_code=400, detail="Hours can be corrected once work has started, and not on a cancelled request")
+    if _service_request_is_invoiced(db, db_sr.id):
+        raise HTTPException(
+            status_code=409,
+            detail="This service request has been invoiced; its hours can no longer be corrected",
+        )
+    reason = correction.reason.strip()
+    if len(reason) < 3:
+        raise HTTPException(status_code=400, detail="Give the reason for the correction")
+    previous = Decimal(str(db_sr.time_spent_hours or 0)).quantize(Decimal("0.01"))
+    corrected = Decimal(str(correction.total_hours)).quantize(Decimal("0.01"))
+    if corrected == previous:
+        raise HTTPException(status_code=400, detail=f"Total hours are already {previous}")
+
+    db_sr.time_spent_hours = corrected
+    db_sr.total_cost = _calculate_service_cost(db_sr)
+    history = list(db_sr.history or [])
+    history.append(_history_entry("hours_correction", current_user, {
+        "from_hours": float(previous),
+        "to_hours": float(corrected),
+        "reason": reason,
+    }))
+    db_sr.history = history
+    db.commit()
+    return get_service_request(request_id, db, current_user)
 
 
 @router.delete("/{request_id}")

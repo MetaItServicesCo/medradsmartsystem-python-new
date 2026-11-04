@@ -339,6 +339,9 @@ export interface ServiceRequest {
   cc_auth_requested: boolean
   invoice_deleted: boolean
   service_invoice?: ServiceInvoice | null
+  // Whether a service invoice exists: once it does, nothing more is added to
+  // the work order and hours are no longer corrected. Set by the request's own fetch.
+  is_invoiced?: boolean | null
   history: ServiceRequestHistoryEntry[]
 
   // Denormalized display names
@@ -528,6 +531,27 @@ export const createServiceRequestWorkSession = async (id: number, data: ServiceR
 
 export const adjustActiveSession = async (id: number, sessionHours: number): Promise<ServiceRequest> => {
   const res = await apiClient.patch(`/service-requests/${id}/active-session`, { session_hours: sessionHours })
+  return res.data
+}
+
+// Something left out of the work order - a part, a note - recorded without time.
+export interface ServiceRequestWorkOrderAdditionPayload {
+  addition_id?: string
+  diagnosis?: string
+  work_done?: string
+  notes?: string
+  test_equipment_ids?: number[]
+  part_usages?: ServiceRequestPartUsage[]
+}
+
+export const addToServiceWorkOrder = async (id: number, data: ServiceRequestWorkOrderAdditionPayload): Promise<ServiceRequest> => {
+  const res = await apiClient.post(`/service-requests/${id}/work-order-additions`, data)
+  return res.data
+}
+
+// An administrator's correction of total work hours, with the reason.
+export const correctServiceHours = async (id: number, data: { total_hours: number; reason: string }): Promise<ServiceRequest> => {
+  const res = await apiClient.post(`/service-requests/${id}/hours-corrections`, data)
   return res.data
 }
 

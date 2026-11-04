@@ -35,6 +35,8 @@ import EditIcon from '@mui/icons-material/Edit'
 import { toast } from 'react-toastify'
 
 import {
+  addToServiceWorkOrder,
+  correctServiceHours,
   createServiceRequestWorkSession,
   fetchServiceRequestImage,
   fetchServiceRequestParts,
@@ -142,14 +144,19 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   payment_method: 'Payment Method',
   reference_number: 'Reference',
   remaining_balance: 'Remaining Balance',
+  from_hours: 'Hours Before',
+  to_hours: 'Hours After',
+  reason: 'Reason',
 }
 
 const HISTORY_DATE_FIELDS = new Set(['start_time', 'end_time', 'clocked_in_at', 'clocked_out_at'])
-const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'test_equipment', 'parts', 'clocked_in_at', 'clocked_out_at', 'duration_source', 'raw_hours', 'total_work_hours', 'quotation_id', 'authorization_id', 'authorized_by_id', 'recorded_by_id', 'paid_by_id'])
+const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'addition_id', 'test_equipment', 'parts', 'clocked_in_at', 'clocked_out_at', 'duration_source', 'raw_hours', 'total_work_hours', 'quotation_id', 'authorization_id', 'authorized_by_id', 'recorded_by_id', 'paid_by_id'])
 
 const historyActionLabel = (action?: string) => {
   if (action === 'technician_work_session' || action === 'technician_clock_out') return 'Technician Work Session'
   if (action === 'technician_clock_in') return 'Work Session Started'
+  if (action === 'work_order_addition') return 'Added to Work Order (no time)'
+  if (action === 'hours_correction') return 'Hours Corrected'
   if (action === 'status_changed') return 'Status Changed'
   if (action === 'quotation_authorization_requested') return 'Quotation Authorization Requested'
   if (action === 'quotation_authorization_authorized') return 'Quotation Authorized'
@@ -198,6 +205,10 @@ const ServiceRequestDetail = () => {
   const [invoiceLaborFees, setInvoiceLaborFees] = useState('0')
   const [editingTime, setEditingTime] = useState(false)
   const [editTimeValue, setEditTimeValue] = useState('')
+  const [editTimeReason, setEditTimeReason] = useState('')
+  // A work session logs time; an addition records what was left out of one
+  // (a part, a note) without time, so labour billing is unchanged.
+  const [workEntryMode, setWorkEntryMode] = useState<'session' | 'addition'>('session')
   const [editInvoiceOpen, setEditInvoiceOpen] = useState(false)
   const [editInvoiceAmountPaid, setEditInvoiceAmountPaid] = useState('0')
   const [editInvoiceStatus, setEditInvoiceStatus] = useState('')
@@ -251,6 +262,16 @@ const ServiceRequestDetail = () => {
     && canAddServiceRequests
     && (isInternalServiceUser || user?.id === sr.assigned_technician_id),
   )
+  // Adding to the work order without time is open while the work goes on and,
+  // once completed, until the request is invoiced - never after.
+  const canAddWithoutTime = Boolean(
+    sr
+    && !['new', 'cancelled'].includes(sr.status)
+    && (sr.status !== 'completed' || sr.is_invoiced === false)
+    && sr.assigned_technician_id
+    && canAddServiceRequests
+    && (isInternalServiceUser || user?.id === sr.assigned_technician_id),
+  )
 
   useEffect(() => {
     if (sr?.status && SERVICE_WORKFLOW_STATUS_OPTIONS.some(option => option.value === sr.status)) {
@@ -278,7 +299,7 @@ const ServiceRequestDetail = () => {
   const { data: testEquipmentData } = useQuery({
     queryKey: ['test-equipment', 'active-options'],
     queryFn: () => fetchActiveTestEquipment({ limit: 500 }),
-    enabled: canLogWorkForRequest,
+    enabled: canLogWorkForRequest || canAddWithoutTime,
   })
   const testEquipmentOptions = testEquipmentData?.items || []
 
@@ -287,7 +308,7 @@ const ServiceRequestDetail = () => {
     return () => window.clearTimeout(timer)
   }, [partSearchInput])
 
-  const canFetchServiceParts = Boolean(
+  const canFetchServiceParts = canAddWithoutTime || Boolean(
     sr
     && !['completed', 'cancelled'].includes(sr.status)
     && sr.assigned_technician_id
@@ -329,6 +350,29 @@ const ServiceRequestDetail = () => {
     },
   })
 
+  const resetWorkEntry = () => {
+    const now = new Date()
+    setSessionStartTime(toDateTimeLocalValue(now))
+    setSessionEndTime(toDateTimeLocalValue(now))
+    setSessionBreakMinutes('0')
+    setSessionTotalWorkHours('')
+    setSessionTotalMileage('')
+    setSessionDiagnosis('')
+    setSessionWorkDone('')
+    setSessionNotes('')
+    setSelectedTestEquipmentIds([])
+    setWorkSessionId(createWorkSessionId())
+    setPartSearchInput('')
+    setPartSearch('')
+    setSelectedServiceParts([])
+    setPartQuantities({})
+    queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+    queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+    queryClient.invalidateQueries({ queryKey: ['service-request-parts', id] })
+    queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
+    queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
+  }
+
   const workSessionMutation = useMutation({
     mutationFn: () => {
       const totalWorkHours = sessionTotalWorkHours.trim() ? Number(sessionTotalWorkHours) : null
@@ -357,32 +401,65 @@ const ServiceRequestDetail = () => {
         pathname: '/service-requests',
         query: { search: updated.request_number },
       })
-      const now = new Date()
-      setSessionStartTime(toDateTimeLocalValue(now))
-      setSessionEndTime(toDateTimeLocalValue(now))
-      setSessionBreakMinutes('0')
-      setSessionTotalWorkHours('')
-      setSessionTotalMileage('')
-      setSessionDiagnosis('')
-      setSessionWorkDone('')
-      setSessionNotes('')
-      setSelectedTestEquipmentIds([])
-      setWorkSessionId(createWorkSessionId())
-      setPartSearchInput('')
-      setPartSearch('')
-      setSelectedServiceParts([])
-      setPartQuantities({})
-      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
-      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
-      queryClient.invalidateQueries({ queryKey: ['service-request-parts', id] })
-      queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
-      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
+      resetWorkEntry()
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Failed to update work order')
       if (err.response?.status === 409) {
         queryClient.invalidateQueries({ queryKey: ['service-request-parts', id] })
       }
+    },
+  })
+
+  // What was left out of the work order, recorded without time. The entry id
+  // makes a retried submission count once (and take its parts once).
+  const additionMutation = useMutation({
+    mutationFn: () => addToServiceWorkOrder(Number(id), {
+      addition_id: workSessionId,
+      diagnosis: sessionDiagnosis.trim(),
+      work_done: sessionWorkDone.trim(),
+      notes: sessionNotes.trim(),
+      test_equipment_ids: selectedTestEquipmentIds,
+      part_usages: selectedServicePartValues.map((part) => ({
+        part_id: part.id,
+        quantity: Number(partQuantities[part.id] ?? '1'),
+      })),
+    }),
+    onSuccess: (updated) => {
+      toast.success('Added to the work order')
+      focusRecord(`service-request-${updated.id}`, updated.request_number, {
+        message: 'Added to the work order (no time)',
+        pathname: '/service-requests',
+        query: { search: updated.request_number },
+      })
+      resetWorkEntry()
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to add to the work order')
+      if (err.response?.status === 409) {
+        queryClient.invalidateQueries({ queryKey: ['service-request-parts', id] })
+        queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+      }
+    },
+  })
+
+  const correctHoursMutation = useMutation({
+    mutationFn: (data: { total_hours: number; reason: string }) => correctServiceHours(Number(id), data),
+    onSuccess: (updated) => {
+      toast.success('Hours corrected')
+      focusRecord(`service-request-${updated.id}`, updated.request_number, {
+        message: 'Hours corrected',
+        pathname: '/service-requests',
+        query: { search: updated.request_number },
+      })
+      setEditingTime(false)
+      setEditTimeReason('')
+      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Could not correct hours')
+      if (err.response?.status === 409) queryClient.invalidateQueries({ queryKey: ['service-request', id] })
     },
   })
 
@@ -402,7 +479,7 @@ const ServiceRequestDetail = () => {
       setInvoiceOpen(false)
       // Immediately stamp the invoice into cached SR so the button switches without a round-trip
       queryClient.setQueryData(['service-request', id], (old: any) =>
-        old ? { ...old, service_invoice: invoice } : old
+        old ? { ...old, service_invoice: invoice, is_invoiced: true } : old
       )
       // Also seed the secondary invoice cache so resolvedInvoice picks it up instantly
       queryClient.setQueryData(['service-invoices-for-sr', id], { items: [invoice], total: 1 })
@@ -513,22 +590,36 @@ const ServiceRequestDetail = () => {
         return
       }
     }
-    for (const part of selectedServicePartValues) {
-      const quantity = Number(partQuantities[part.id] ?? '1')
-      if (!Number.isInteger(quantity) || quantity <= 0) {
-        toast.error(`Enter a whole quantity greater than zero for ${part.part_number}`)
-        return
-      }
-      if (quantity > part.quantity_on_hand) {
-        toast.error(`${part.part_number} only has ${part.quantity_on_hand} unit${part.quantity_on_hand === 1 ? '' : 's'} available`)
-        return
-      }
-    }
+    if (!partQuantitiesAreValid()) return
     if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0 && selectedServiceParts.length === 0) {
       toast.info('Add diagnosis, work done, notes, test equipment, or parts before updating the work order')
       return
     }
     workSessionMutation.mutate()
+  }
+
+  const partQuantitiesAreValid = () => {
+    for (const part of selectedServicePartValues) {
+      const quantity = Number(partQuantities[part.id] ?? '1')
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        toast.error(`Enter a whole quantity greater than zero for ${part.part_number}`)
+        return false
+      }
+      if (quantity > part.quantity_on_hand) {
+        toast.error(`${part.part_number} only has ${part.quantity_on_hand} unit${part.quantity_on_hand === 1 ? '' : 's'} available`)
+        return false
+      }
+    }
+    return true
+  }
+
+  const handleAddToWorkOrder = () => {
+    if (!partQuantitiesAreValid()) return
+    if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0 && selectedServiceParts.length === 0) {
+      toast.info('Add parts, notes, diagnosis, work done or test equipment')
+      return
+    }
+    additionMutation.mutate()
   }
 
   const handleCancel = () => {
@@ -556,9 +647,17 @@ const ServiceRequestDetail = () => {
       toast.error('Enter a valid number of hours (e.g. 2.5)')
       return
     }
-    updateMutation.mutate({ time_spent_hours: Math.round(newHours * 100) / 100 }, {
-      onSuccess: () => setEditingTime(false),
-    })
+    if (editTimeReason.trim().length < 3) {
+      toast.error('Give the reason for the correction')
+      return
+    }
+    correctHoursMutation.mutate({ total_hours: Math.round(newHours * 100) / 100, reason: editTimeReason.trim() })
+  }
+
+  const startHoursCorrection = (hours: number) => {
+    setEditTimeValue(hours.toFixed(2))
+    setEditTimeReason('')
+    setEditingTime(true)
   }
 
   const billableQuotations = useMemo(
@@ -766,6 +865,54 @@ const ServiceRequestDetail = () => {
   const isTerminal = sr.status === 'completed' || sr.status === 'cancelled'
   const nextStatus = NEXT_STATUS[sr.status]
   const canLogWork = canLogWorkForRequest
+  // Once completed, adding without time is the only kind of entry left.
+  const addingWithoutTime = !canLogWork || workEntryMode === 'addition'
+  // An administrator corrects total hours, with a reason, until invoiced.
+  const canCorrectHours = canManageServiceBilling && sr.is_invoiced === false && !['new', 'cancelled'].includes(sr.status)
+  // Total hours show in the work card and in the summary; the correction is
+  // offered in the work card when it is shown, so only one editor ever opens.
+  const hoursCorrectedInWorkCard = canLogWork || canAddWithoutTime
+  const hoursCorrectionEditor = (
+    <Box sx={{ display: 'grid', gap: 0.75, mt: 0.75 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          type="number"
+          label="Corrected total"
+          value={editTimeValue}
+          onChange={(e) => setEditTimeValue(e.target.value)}
+          inputProps={{ min: 0, step: 0.01 }}
+          sx={{ width: 130 }}
+          autoFocus
+          onKeyDown={(e) => { if (e.key === 'Escape') setEditingTime(false) }}
+        />
+        <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
+      </Box>
+      <TextField
+        size="small"
+        label="Reason for the correction"
+        value={editTimeReason}
+        onChange={(e) => setEditTimeReason(e.target.value)}
+        inputProps={{ maxLength: 500 }}
+        fullWidth
+        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTime(); if (e.key === 'Escape') setEditingTime(false) }}
+      />
+      <Box sx={{ display: 'flex', gap: 0.75 }}>
+        <Button
+          size="small"
+          variant="contained"
+          onClick={handleSaveTime}
+          disabled={correctHoursMutation.isPending}
+          sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+        >
+          Save
+        </Button>
+        <Button size="small" onClick={() => setEditingTime(false)} sx={{ minWidth: 0, px: 1, py: 0.4, fontSize: '0.75rem' }}>
+          Cancel
+        </Button>
+      </Box>
+    </Box>
+  )
   const canCustomerCancelRequest = isFacilityCustomerView && canEditServiceRequests && sr.status === 'new' && sr.requester_id === user?.id
   const timeSpentHours = Number(sr.time_spent_hours || 0)
   const tierLaborRate = Number(sr.tier_labor_rate_per_hour || 0)
@@ -1176,21 +1323,42 @@ const ServiceRequestDetail = () => {
 
         {/* Right Column — Actions */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {canLogWork && (
+          {(canLogWork || canAddWithoutTime) && (
             <Card sx={{ p: 3, border: '1px solid #D1FAE5' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
                 <Avatar sx={{ bgcolor: '#D1FAE5', color: '#047857' }}>
-                  <AccessTimeIcon />
+                  {addingWithoutTime ? <BuildIcon /> : <AccessTimeIcon />}
                 </Avatar>
                 <Box>
                   <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '1rem' }}>
-                    Technician Work Session
+                    {addingWithoutTime ? 'Add to Work Order' : 'Technician Work Session'}
                   </Typography>
                   <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: '0.82rem' }}>
-                    Enter start/end time or directly enter total working hours for the session.
+                    {addingWithoutTime
+                      ? 'Record a part, note or test equipment left out of a session. No hours are added, so labour billing is unchanged.'
+                      : 'Enter start/end time or directly enter total working hours for the session.'}
                   </Typography>
                 </Box>
               </Box>
+              {canLogWork && (
+                <Box sx={{ display: 'flex', borderRadius: '12px', border: '1px solid #A7F3D0', overflow: 'hidden', mb: 2, width: 'fit-content', maxWidth: '100%' }} role="group" aria-label="Kind of work order entry">
+                  {([['session', 'Work session (with hours)'], ['addition', 'Add without hours']] as const).map(([mode, label]) => (
+                    <Button
+                      key={mode}
+                      onClick={() => setWorkEntryMode(mode)}
+                      aria-pressed={workEntryMode === mode}
+                      sx={{
+                        borderRadius: 0, px: 2, textTransform: 'none', fontWeight: 900,
+                        bgcolor: workEntryMode === mode ? '#059669' : 'transparent',
+                        color: workEntryMode === mode ? '#fff' : '#047857',
+                        '&:hover': { bgcolor: workEntryMode === mode ? '#047857' : '#ECFDF5' },
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </Box>
+              )}
 
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mb: 2 }}>
                 <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
@@ -1198,47 +1366,19 @@ const ServiceRequestDetail = () => {
                     <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
                       Saved Total Time
                     </Typography>
-                    {canManageServiceBilling && !editingTime && (
+                    {canCorrectHours && !editingTime && (
                       <IconButton
                         size="small"
-                        onClick={() => { setEditTimeValue(timeSpentHours.toFixed(2)); setEditingTime(true) }}
+                        aria-label="Correct total hours"
+                        title="Correct total hours (with a reason)"
+                        onClick={() => startHoursCorrection(timeSpentHours)}
                         sx={{ p: 0.25, color: '#94A3B8', '&:hover': { color: '#7C3AED' } }}
                       >
                         <EditIcon sx={{ fontSize: '0.85rem' }} />
                       </IconButton>
                     )}
                   </Box>
-                  {editingTime ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={editTimeValue}
-                        onChange={(e) => setEditTimeValue(e.target.value)}
-                        inputProps={{ min: 0, step: 0.01 }}
-                        sx={{ width: 90 }}
-                        autoFocus
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTime(); if (e.key === 'Escape') setEditingTime(false) }}
-                      />
-                      <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        onClick={handleSaveTime}
-                        disabled={updateMutation.isPending}
-                        sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="small"
-                        onClick={() => setEditingTime(false)}
-                        sx={{ minWidth: 0, px: 1, py: 0.4, fontSize: '0.75rem' }}
-                      >
-                        Cancel
-                      </Button>
-                    </Box>
-                  ) : (
+                  {editingTime ? hoursCorrectionEditor : (
                     <>
                       <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: '1.25rem' }}>
                         {timeSpentHours.toFixed(2)} hrs
@@ -1251,13 +1391,15 @@ const ServiceRequestDetail = () => {
                 </Box>
                 <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F0FDF4', border: '1px solid #EEF2F7' }}>
                   <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
-                    Manual Work Session
+                    {addingWithoutTime ? 'Addition Without Time' : 'Manual Work Session'}
                   </Typography>
                   <Typography sx={{ fontWeight: 950, color: '#047857', fontSize: '1.25rem' }}>
-                    Start / End or Total Hours
+                    {addingWithoutTime ? 'No hours added' : 'Start / End or Total Hours'}
                   </Typography>
                   <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
-                    Save one clean ledger entry per work session.
+                    {addingWithoutTime
+                      ? sr.status === 'completed' ? 'Possible until the request is invoiced.' : 'Labour billing stays as logged.'
+                      : 'Save one clean ledger entry per work session.'}
                   </Typography>
                 </Box>
               </Box>
@@ -1323,6 +1465,7 @@ const ServiceRequestDetail = () => {
               </Box>
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {!addingWithoutTime && (<>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 140px' }, gap: 1.25 }}>
                   <TextField
                     label="Start Time"
@@ -1365,6 +1508,7 @@ const ServiceRequestDetail = () => {
                     helperText="Optional. Saved with this session and used for mileage-based travel billing."
                   />
                 </Box>
+                </>)}
                 <TextField
                   label="Diagnosis"
                   multiline
@@ -1454,7 +1598,9 @@ const ServiceRequestDetail = () => {
                       {...params}
                       label="Parts Used"
                       placeholder="Search and select inventory parts"
-                      helperText="Stock is deducted only when this work session is successfully saved."
+                      helperText={addingWithoutTime
+                        ? 'Stock is deducted only when this addition is saved. Parts are billed only through a quotation.'
+                        : 'Stock is deducted only when this work session is successfully saved.'}
                     />
                   )}
                 />
@@ -1506,6 +1652,7 @@ const ServiceRequestDetail = () => {
                     ))}
                   </Box>
                 )}
+                {!addingWithoutTime && (
                 <FormControl fullWidth>
                   <InputLabel>Service Status</InputLabel>
                   <Select
@@ -1520,6 +1667,18 @@ const ServiceRequestDetail = () => {
                     ))}
                   </Select>
                 </FormControl>
+                )}
+                {addingWithoutTime ? (
+                  <Button
+                    variant="contained"
+                    startIcon={additionMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleIcon />}
+                    onClick={handleAddToWorkOrder}
+                    disabled={additionMutation.isPending}
+                    sx={{ alignSelf: 'flex-start', borderRadius: '12px', fontWeight: 900, bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                  >
+                    Add to Work Order
+                  </Button>
+                ) : (
                 <Button
                   variant="contained"
                   startIcon={workSessionMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleIcon />}
@@ -1529,6 +1688,7 @@ const ServiceRequestDetail = () => {
                 >
                   Update Work Order
                 </Button>
+                )}
               </Box>
             </Card>
           )}
@@ -1725,33 +1885,19 @@ const ServiceRequestDetail = () => {
                       <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
                         Time Spent
                       </Typography>
-                      {canManageServiceBilling && !editingTime && (
+                      {canCorrectHours && !editingTime && !hoursCorrectedInWorkCard && (
                         <IconButton
                           size="small"
-                          onClick={() => { setEditTimeValue(Number(sr.time_spent_hours || 0).toFixed(2)); setEditingTime(true) }}
+                          aria-label="Correct total hours"
+                          title="Correct total hours (with a reason)"
+                          onClick={() => startHoursCorrection(Number(sr.time_spent_hours || 0))}
                           sx={{ p: 0.25, color: '#9CA3AF', '&:hover': { color: '#7C3AED' } }}
                         >
                           <EditIcon sx={{ fontSize: '0.78rem' }} />
                         </IconButton>
                       )}
                     </Box>
-                    {editingTime ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
-                        <TextField
-                          size="small"
-                          type="number"
-                          value={editTimeValue}
-                          onChange={(e) => setEditTimeValue(e.target.value)}
-                          inputProps={{ min: 0, step: 0.01 }}
-                          sx={{ width: 90 }}
-                          autoFocus
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTime(); if (e.key === 'Escape') setEditingTime(false) }}
-                        />
-                        <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
-                        <Button size="small" variant="contained" onClick={handleSaveTime} disabled={updateMutation.isPending} sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}>Save</Button>
-                        <Button size="small" onClick={() => setEditingTime(false)} sx={{ minWidth: 0, px: 1, py: 0.4, fontSize: '0.75rem' }}>Cancel</Button>
-                      </Box>
-                    ) : (
+                    {editingTime && !hoursCorrectedInWorkCard ? hoursCorrectionEditor : (
                       <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
                         {sr.time_spent_hours} hrs
                       </Typography>

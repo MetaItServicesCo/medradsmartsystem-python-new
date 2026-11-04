@@ -41,6 +41,29 @@ for (const [name, html] of [['report', buildServiceReportDocument(sr, null)], ['
   ok(`${name}: an app session keeps its start and end times`, html.includes('Start Time') && html.includes('End Time'))
 }
 
+// Something added to the work order without time: printed after the sessions,
+// with its part, and with no hours - from the report row or from the history.
+const addition = { user: 'Sam', timestamp: '2026-11-02T09:00:00', diagnosis: '', work_done: '', notes: 'Forgot the fuse',
+  test_equipment: [], parts: [{ part_number: 'P-100', description: 'Fuse', quantity_used: 2 }] }
+const withAddition = { ...sr, sessions: [appSession], additions: [addition] }
+const fromHistory = { ...sr, sessions: undefined, history: [
+  { action: 'technician_work_session', user: 'Sam', timestamp: '2026-11-01T15:00:00', changes: appSession },
+  { action: 'work_order_addition', user: 'Sam', timestamp: '2026-11-02T09:00:00', changes: addition },
+] }
+for (const [name, html] of [
+  ['report (row)', buildServiceReportDocument(withAddition, null)],
+  ['report (history)', buildServiceReportDocument(fromHistory, null)],
+  ['invoice sheet (row)', buildServiceReportSheet(withAddition)],
+  ['invoice sheet (history)', buildServiceReportSheet(fromHistory)],
+]) {
+  ok(`${name}: the addition is printed`, html.includes('Added to Work Order 1'))
+  ok(`${name}: with its note and part`, html.includes('Forgot the fuse') && html.includes('P-100'))
+  ok(`${name}: and no hours of its own`, html.includes('No time added'))
+  ok(`${name}: the session is still printed as a session`, html.includes('2.00 hrs'))
+}
+const noAddition = buildServiceReportSheet({ ...sr, sessions: [appSession], additions: [] })
+ok('a report with no additions prints no additions section', !noAddition.includes('Added to Work Order'))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)

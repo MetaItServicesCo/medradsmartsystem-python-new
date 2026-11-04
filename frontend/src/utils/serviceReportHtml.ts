@@ -79,6 +79,15 @@ const serviceSessions = (sr: any): any[] => {
   return deduplicateSessions(sessions)
 }
 
+// What was added to the work order without time (a part or note left out of
+// a session): from the report row, or from the history on a raw request.
+const serviceAdditions = (sr: any): any[] => {
+  if (Array.isArray(sr?.additions)) return sr.additions
+  return (sr?.history || [])
+    .filter((entry: any) => entry.action === 'work_order_addition')
+    .map((entry: any) => ({ user: entry.user || 'Technician', timestamp: entry.timestamp, ...(entry.changes || {}) }))
+}
+
 const totalMileage = (sessions: any[]) => sessions.reduce((sum, session) => sum + numberValue(session.total_mileage), 0)
 
 const facilityLines = (facility: Facility | null | undefined, sr: any) => {
@@ -233,6 +242,25 @@ const serviceSessionPageHtml = (session: any, index: number) => page(`
   ${sessionPartsHtml(session)}
 `, { break: true })
 
+const serviceAdditionPageHtml = (addition: any, index: number) => page(`
+  <div class="rtitle">
+    <h2 class="sec" style="font-size:20px;color:#1E3A8A">Added to Work Order ${index + 1}</h2>
+    <span class="status">No time added</span>
+  </div>
+  <div class="identity" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
+    ${idBox('Added By', addition.user || 'Technician')}
+    ${idBox('Added On', fmtDateTime(addition.timestamp))}
+  </div>
+  <h2 class="sec">Work Record</h2>
+  ${detailRowsHtml([
+    ['Diagnosis', addition.diagnosis],
+    ['Work Done', addition.work_done],
+    ['Notes', addition.notes],
+  ], 'No narrative details were recorded with this addition.')}
+  ${sessionEquipmentHtml(addition)}
+  ${sessionPartsHtml(addition)}
+`, { break: true })
+
 const serviceBillingPageHtml = (sr: any) => {
   const invoice = sr.invoice
   const amount = invoice ? numberValue(invoice.total_amount) : numberValue(sr.total_cost)
@@ -275,6 +303,7 @@ export const buildServiceReportBody = (sr: any, facility: Facility | null | unde
   return [
     serviceOverviewPageHtml(sr, facility, sessions),
     ...sessions.map((session, index) => serviceSessionPageHtml(session, index)),
+    ...serviceAdditions(sr).map((addition, index) => serviceAdditionPageHtml(addition, index)),
     serviceBillingPageHtml(sr),
   ].join('')
 }
@@ -312,6 +341,24 @@ export const printServiceReportSheet = async (sr: any) => {
 // Kept for compatibility; the .report-* classes live in InvoicePrintDialog print styles.
 export const SERVICE_REPORT_EXTRA_CSS = INSPECTION_REPORT_CSS
 
+const appendAdditionHtml = (addition: any, index: number) => {
+  const equipment: any[] = (addition.test_equipment || []).filter((i: any) => hasVal(i.tem) || hasVal(i.description) || hasVal(i.serial_number))
+  const parts: any[] = (addition.parts || []).filter((i: any) => hasVal(i.part_number) || hasVal(i.description))
+  return `
+    <div class="report-session">
+      <div class="report-session-head">
+        <strong>Added to Work Order ${index + 1} — ${esc(addition.user || 'Technician')}</strong>
+        <span>No time added</span>
+      </div>
+      <div class="report-times"><div><b>Added On</b><br>${esc(fmtDateTime(addition.timestamp) || '-')}</div></div>
+      ${hasVal(addition.diagnosis) ? `<div class="report-h4">Diagnosis</div><p>${esc(addition.diagnosis)}</p>` : ''}
+      ${hasVal(addition.work_done) ? `<div class="report-h4">Work Done</div><p>${esc(addition.work_done)}</p>` : ''}
+      ${hasVal(addition.notes) ? `<div class="report-h4">Notes</div><p>${esc(addition.notes)}</p>` : ''}
+      ${equipment.length ? `<div class="report-h4">Test Equipment Used</div><div class="report-summary" style="margin-top:6px">${equipment.map((i: any) => `<span class="report-pill">${esc(i.tem || i.description || 'Test Equipment')}</span>`).join('')}</div>` : ''}
+      ${parts.length ? `<div class="report-h4">Parts Used</div><div class="report-summary" style="margin-top:6px">${parts.map((i: any) => `<span class="report-pill">${esc(i.part_number || 'Part')} · Qty ${esc(numberValue(i.quantity_used))}</span>`).join('')}</div>` : ''}
+    </div>`
+}
+
 const appendSessionHtml = (session: any, index: number) => {
   const equipment: any[] = (session.test_equipment || []).filter((i: any) => hasVal(i.tem) || hasVal(i.description) || hasVal(i.serial_number))
   const parts: any[] = (session.parts || []).filter((i: any) => hasVal(i.part_number) || hasVal(i.description))
@@ -343,6 +390,8 @@ const appendSessionHtml = (session: any, index: number) => {
 export const buildServiceReportSheet = (sr: any): string => {
   const sessions = serviceSessions(sr)
   const sessionRows = sessions.length ? sessions.map((session, index) => appendSessionHtml(session, index)).join('') : '<p class="muted">No technician sessions recorded.</p>'
+  const additions = serviceAdditions(sr)
+  const additionRows = additions.map((addition, index) => appendAdditionHtml(addition, index)).join('')
   return `
     <main class="sheet doc-a" style="--accent:#2563EB;--accent-soft:#EFF6FF;break-before:page;page-break-before:always;">
       <section class="head">
@@ -377,6 +426,10 @@ export const buildServiceReportSheet = (sr: any): string => {
           <h2 style="margin:0 0 10px;color:#1E3A8A;font-size:16px;font-weight:900">Technician Sessions</h2>
           ${sessionRows}
         </div>
+        ${additions.length ? `<div class="report-section">
+          <h2 style="margin:0 0 10px;color:#1E3A8A;font-size:16px;font-weight:900">Added to Work Order</h2>
+          ${additionRows}
+        </div>` : ''}
         <div class="report-section">
           <h2 style="margin:0 0 10px;color:#1E3A8A;font-size:16px;font-weight:900">Completion Summary</h2>
           <p>${esc(sr.resolution_description || 'No final resolution summary was added.')}</p>

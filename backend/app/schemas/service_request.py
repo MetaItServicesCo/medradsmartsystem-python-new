@@ -207,6 +207,23 @@ class ServiceRequestClockOutCreate(BaseModel):
     total_mileage: Optional[Decimal] = None
 
 
+class ServiceRequestWorkOrderAdditionCreate(BaseModel):
+    """Something left out of the work order - a part, a note, test equipment -
+    recorded without time, so labour billing is unchanged."""
+    addition_id: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    diagnosis: Optional[str] = None
+    work_done: Optional[str] = None
+    notes: Optional[str] = None
+    test_equipment_ids: Optional[List[int]] = None
+    part_usages: List[ServiceRequestPartUsage] = Field(default_factory=list)
+
+
+class ServiceRequestHoursCorrectionCreate(BaseModel):
+    """An administrator's correction of a request's total work hours."""
+    total_hours: Decimal = Field(ge=0, le=10000)
+    reason: str = Field(min_length=3, max_length=500)
+
+
 class ServiceRequestWorkSessionCreate(BaseModel):
     session_id: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     start_time: Optional[datetime] = None
@@ -249,6 +266,10 @@ class ServiceRequestResponse(BaseModel):
     billing_status: Optional[str] = "pending"
     cc_auth_requested: Optional[bool] = False
     invoice_deleted: Optional[bool] = False
+    # Whether a (not cancelled) service invoice exists; once it does, nothing
+    # more is added to the work order and hours are no longer corrected. Set
+    # by the request's own GET; None where a response does not say.
+    is_invoiced: Optional[bool] = None
     history: Optional[list] = []
     
     quotations: List[ServiceRequestQuotationResponse] = []

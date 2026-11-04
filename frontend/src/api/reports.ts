@@ -63,6 +63,8 @@ export interface ServiceReport {
   work_done: string | null
   notes: string | null
   sessions: ServiceReportSession[]
+  // Parts, notes or test equipment added to the work order without time.
+  additions?: Array<Partial<ServiceReportSession> & { user?: string; timestamp?: string }>
   invoice: ReportInvoiceBrief | null
 }
 

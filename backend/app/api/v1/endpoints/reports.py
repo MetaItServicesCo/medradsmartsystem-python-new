@@ -94,6 +94,25 @@ def _service_session_entries(sr: ServiceRequest) -> list[dict[str, Any]]:
     return rows
 
 
+def _service_work_order_additions(sr: ServiceRequest) -> list[dict[str, Any]]:
+    """What was added to the work order without time: parts, notes, test
+    equipment left out of a session. Kept apart from the sessions, which carry
+    the hours."""
+    return [
+        {
+            "user": entry.get("user"),
+            "timestamp": entry.get("timestamp"),
+            "diagnosis": (entry.get("changes") or {}).get("diagnosis"),
+            "work_done": (entry.get("changes") or {}).get("work_done"),
+            "notes": (entry.get("changes") or {}).get("notes"),
+            "test_equipment": (entry.get("changes") or {}).get("test_equipment") or [],
+            "parts": (entry.get("changes") or {}).get("parts") or [],
+        }
+        for entry in sr.history or []
+        if entry.get("action") == "work_order_addition"
+    ]
+
+
 def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -> dict[str, Any]:
     sessions = _service_session_entries(sr)
     latest_session = sessions[-1] if sessions else {}
@@ -129,6 +148,7 @@ def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -
         "work_done": latest_session.get("work_done"),
         "notes": latest_session.get("notes"),
         "sessions": sessions,
+        "additions": _service_work_order_additions(sr),
         "invoice": {
             "id": invoice.id,
             "invoice_number": invoice.invoice_number,
