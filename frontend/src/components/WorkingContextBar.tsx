@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Box, Button, IconButton, Typography } from '@mui/material'
+import { Box, Button, IconButton, Tooltip, Typography } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
@@ -67,9 +67,16 @@ const WorkingContextBar = () => {
           Show
         </Button>
       )}
-      <IconButton size="small" aria-label="Dismiss recent activity" onClick={dismissNotice}>
-        <CloseIcon fontSize="small" />
-      </IconButton>
+      <Tooltip title="Close">
+        <IconButton
+          size="small"
+          aria-label="Close"
+          onClick={dismissNotice}
+          sx={{ flexShrink: 0, color: '#475569', bgcolor: '#F1F5F9', border: '1px solid #E2E8F0', '&:hover': { bgcolor: '#E2E8F0', color: '#1E1B4B' } }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
     </Box>
   )
 }

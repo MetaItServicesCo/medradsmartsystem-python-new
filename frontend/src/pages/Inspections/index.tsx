@@ -4608,7 +4608,8 @@ const Inspections = () => {
                             Fixed checklist + {formioForm ? 'temporary external form' : grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom form'} + Biomed Notes
                           </Typography>
                         </TableCell>
-                        <TableCell><ClippedTooltipText value={form.description || '-'} field /></TableCell>
+                        {/* Clipped to a fixed width; the whole description shows on hover. */}
+                        <TableCell sx={{ width: 360, maxWidth: 360 }}><ClippedTooltipText value={form.description || '-'} field maxWidth={360} /></TableCell>
                         <TableCell><Chip size="small" label={`${fieldCount} custom field${fieldCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
                         <TableCell align="right">
                           <IconButton
