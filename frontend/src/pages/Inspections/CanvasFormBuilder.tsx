@@ -2048,9 +2048,10 @@ interface ViewerProps {
 }
 
 export function CanvasFormViewer({ schema, values = {}, onChange, readOnly = false }: ViewerProps) {
-  const set = (id: string, val: string | boolean | string[]) => {
-    onChange?.({ ...values, [id]: val })
+  const setMany = (patch: CanvasFormValues) => {
+    onChange?.({ ...values, ...patch })
   }
+  const set = (id: string, val: string | boolean | string[]) => setMany({ [id]: val })
 
   return (
     <Box sx={{
@@ -2077,7 +2078,7 @@ export function CanvasFormViewer({ schema, values = {}, onChange, readOnly = fal
                 boxSizing: 'border-box',
               }}
             >
-              {renderViewerTable(el, values, set, readOnly)}
+              {renderViewerTable(el, values, setMany, readOnly)}
             </Box>
           )
         }
@@ -2525,10 +2526,27 @@ function renderTableCellField(
 function renderViewerTable(
   el: CanvasElement,
   values: CanvasFormValues,
-  set: (id: string, val: string | boolean | string[]) => void,
+  setMany: (patch: CanvasFormValues) => void,
   readOnly: boolean,
 ) {
   const cells = el.cells ?? []
+  // Bare radio cells along a row are one choice, like the Pass / Fail / N/A
+  // columns of a paper sheet: choosing one clears the others in that row, and
+  // clicking the chosen one clears it. In a row saved with several on, clicking
+  // one of them makes it the only choice. Tick boxes stay independent, so
+  // several can be ticked.
+  const setCell = (row: TableCell[], cell: TableCell, val: string | boolean | string[]) => {
+    const patch: CanvasFormValues = { [cell.id]: val }
+    if (cell.type === 'radio' && isBareControl(cell)) {
+      const othersOn = row.filter(other => other.id !== cell.id && !other.hidden && other.type === 'radio'
+        && isBareControl(other) && (values[other.id] === true || values[other.id] === 'true'))
+      if (othersOn.length) {
+        patch[cell.id] = true
+        othersOn.forEach(other => { patch[other.id] = false })
+      }
+    }
+    setMany(patch)
+  }
   const cols = el.cols ?? (cells[0]?.length ?? 1)
   const widths = el.colWidths?.length === cols ? el.colWidths : Array.from({ length: cols }, () => 1)
   const rows = cells.length || 1
@@ -2568,7 +2586,7 @@ function renderViewerTable(
               minWidth: 0,
             }}
           >
-            {renderTableCellField(cell, values[cell.id], v => set(cell.id, v), readOnly, isHeader)}
+            {renderTableCellField(cell, values[cell.id], v => setCell(row, cell, v), readOnly, isHeader)}
           </Box>
         )
       }))}
