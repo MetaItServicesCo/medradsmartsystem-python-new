@@ -1155,7 +1155,15 @@ const Inspections = () => {
   const [formSearch, setFormSearch] = useState('')
   const [formSearchField, setFormSearchField] = useState('all')
   // The forms screen lists the forms in use, or the hidden ones to unhide.
-  const [formListView, setFormListView] = useState<'active' | 'hidden'>('active')
+  // Kept in the URL (form_view=hidden) so an update's Show opens the view
+  // the form is in.
+  const formListView: 'active' | 'hidden' = searchParams.get('form_view') === 'hidden' ? 'hidden' : 'active'
+  const setFormListView = (view: 'active' | 'hidden') => setSearchParams(current => {
+    const next = new URLSearchParams(current)
+    if (view === 'hidden') next.set('form_view', 'hidden')
+    else next.delete('form_view')
+    return next
+  }, { replace: true })
   const [debouncedFormSearch, setDebouncedFormSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
@@ -1933,10 +1941,14 @@ const Inspections = () => {
   const archiveFormMut = useMutation({
     mutationFn: (form: InspectionFormOption) => archiveInspectionForm(form.id),
     onSuccess: (saved) => {
-      toast.success(`${saved.name} hidden. Inspections built on it are untouched; unhide it from Hidden forms.`)
       setRemovingForm(null)
       setFormBuilderOpen(false)
       queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+      focusRecord(`inspection-form-${saved.id}`, saved.name, {
+        message: 'Form hidden. Inspections built on it are untouched; it is listed under Hidden forms.',
+        announce: true,
+        query: { tab: 4, form_view: 'hidden' },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not hide this form'),
   })
@@ -1944,8 +1956,12 @@ const Inspections = () => {
   const unhideFormMut = useMutation({
     mutationFn: (form: InspectionFormOption) => unarchiveInspectionForm(form.id),
     onSuccess: (saved) => {
-      toast.success(`${saved.name} is visible again.`)
       queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+      focusRecord(`inspection-form-${saved.id}`, saved.name, {
+        message: 'Form unhidden. It is back in the forms list and every picker.',
+        announce: true,
+        query: { tab: 4, form_view: null },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not unhide this form'),
   })
@@ -1958,7 +1974,7 @@ const Inspections = () => {
       focusRecord(`inspection-form-${saved.id}`, saved.name, {
         message: `Form duplicated as ${saved.name}.`,
         announce: true,
-        query: { tab: 4 },
+        query: { tab: 4, form_view: null },
       })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not duplicate this form'),
