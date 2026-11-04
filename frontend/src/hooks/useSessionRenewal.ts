@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import apiClient from '@/api/client'
 import { useAuthStore } from '@/stores/authStore'
+import { lastActivityAnywhere } from '@/utils/sharedActivity'
 
 // The same signals of someone working as useIdleLogout listens for.
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll', 'click'] as const
@@ -38,7 +39,8 @@ export const useSessionRenewal = (idleTimeoutMs: number) => {
     const renewIfDue = () => {
       const { isAuthenticated, token, tokenReceivedAt } = useAuthStore.getState()
       if (!isAuthenticated || !token || inFlight) return
-      if (Date.now() - lastActivity > idleTimeoutMs) return
+      // Active in this tab or another one.
+      if (Date.now() - lastActivityAnywhere(lastActivity) > idleTimeoutMs) return
       const lifetime = tokenLifetimeMs(token)
       // A session from before this was added has no arrival time: renew it.
       const due = !lifetime || !tokenReceivedAt || Date.now() - tokenReceivedAt >= lifetime / 2

@@ -2,9 +2,10 @@
  * Where someone was when the system signed them out, so signing back in can
  * return them there.
  *
- * Remembered only when the system ends the session (inactivity, or a session
- * the server no longer accepts) - not when someone signs out on purpose - and
- * given back only to the same user, within a day. The place is the page's
+ * Remembered only when the session ends for inactivity (useIdleLogout) - not
+ * when someone signs out on purpose, which also forgets anything remembered
+ * (another open tab may have left a place behind) - and given back only to
+ * the same user, within a day. The place is the page's
  * address: the page, its tab, filters and the record in focus, as far as the
  * page keeps them in its address. Anything typed and not yet saved is not.
  */
@@ -25,6 +26,16 @@ export const rememberSessionPlace = (userId: number | null | undefined) => {
     window.localStorage.setItem(KEY, JSON.stringify({ userId, path, at: Date.now() } satisfies Place))
   } catch {
     // Storage full or blocked: signing back in simply opens the dashboard.
+  }
+}
+
+/** Signing out on purpose: the next sign-in opens the dashboard. */
+export const forgetSessionPlace = () => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(KEY)
+  } catch {
+    // Storage blocked: nothing could have been remembered either.
   }
 }
 

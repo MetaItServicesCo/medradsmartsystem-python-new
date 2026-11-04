@@ -8,6 +8,7 @@ import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone'
 import LogoutIcon from '@mui/icons-material/Logout'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import { useAuthStore } from '@/stores/authStore'
+import { forgetSessionPlace } from '@/utils/sessionResume'
 import { fetchCurrentUser, resolveUploadUrl } from '@/api/users'
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead, type NotificationItem } from '@/api/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -81,6 +82,8 @@ const Header = ({ title }: HeaderProps) => {
 
   const handleLogout = () => {
     handleCloseMenu()
+    // Signing out on purpose: the next sign-in opens the dashboard.
+    forgetSessionPlace()
     logout()
     navigate('/login')
   }

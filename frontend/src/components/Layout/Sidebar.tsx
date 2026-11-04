@@ -25,6 +25,7 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { useAuthStore } from '@/stores/authStore'
+import { forgetSessionPlace } from '@/utils/sessionResume'
 import { getVisibleModules, type Module } from '@/config/permissions'
 
 type ModuleGroup = 'Overview' | 'Operations' | 'Commerce' | 'People' | 'Workspace'
@@ -216,7 +217,8 @@ const Sidebar = () => {
       <Tooltip title="Logout" placement="right" arrow>
         <Box
           component="button" type="button" aria-label="Logout"
-          onClick={() => { closeLauncher(); logout(); navigate('/login') }}
+          // Signing out on purpose: the next sign-in opens the dashboard.
+          onClick={() => { closeLauncher(); forgetSessionPlace(); logout(); navigate('/login') }}
           sx={{
             width: { xs: 42, sm: 48 }, height: { xs: 42, sm: 48 }, p: 0, border: 0, borderRadius: '14px',
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
