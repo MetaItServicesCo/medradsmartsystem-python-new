@@ -26,7 +26,8 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined'
+import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined'
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
 import PersonIcon from '@mui/icons-material/Person'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import RemoveIcon from '@mui/icons-material/Remove'
@@ -75,6 +76,8 @@ import {
   type InspectionDetailsUpdatePayload,
   deleteInspectionForm,
   archiveInspectionForm,
+  unarchiveInspectionForm,
+  duplicateInspectionForm,
 } from '@/api/inspections'
 import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 import { fetchFacility, type Facility } from '@/api/facilities'
@@ -1082,9 +1085,9 @@ const Inspections = () => {
   const [closedFacilityId, setClosedFacilityId] = useState<number | ''>('')
   const [closedPage, setClosedPage] = useState(0)
   const [viewForm, setViewForm] = useState<InspectionFormOption | null>(null)
-  // The form somebody is about to remove, and how. Deleting a form is not
-  // undoable and archiving changes what everyone else can pick, so neither
-  // happens straight off a menu click.
+  // The form somebody is about to delete. Deleting is not undoable, so it is
+  // confirmed here, with hiding offered instead; hiding on its own is undone
+  // from Hidden forms and happens straight off the menu.
   const [removingForm, setRemovingForm] = useState<InspectionFormOption | null>(null)
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [report, setReport] = useState<any>(null)
@@ -1151,6 +1154,8 @@ const Inspections = () => {
   const [debouncedInstantAssetSearch, setDebouncedInstantAssetSearch] = useState('')
   const [formSearch, setFormSearch] = useState('')
   const [formSearchField, setFormSearchField] = useState('all')
+  // The forms screen lists the forms in use, or the hidden ones to unhide.
+  const [formListView, setFormListView] = useState<'active' | 'hidden'>('active')
   const [debouncedFormSearch, setDebouncedFormSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
@@ -1450,6 +1455,20 @@ const Inspections = () => {
     staleTime: 5 * 60_000,
     placeholderData: previousData => previousData,
   })
+  // Hidden (archived) forms, only for the forms screen's Hidden view: every
+  // picker keeps using formsQ, which never includes them.
+  const hiddenFormsQ = useQuery({
+    queryKey: ['inspection-forms', 'hidden', formListSearch, formSearchField],
+    queryFn: () => fetchInspectionForms(undefined, formListSearch || undefined, formSearchField === 'all' ? undefined : formSearchField, true),
+    enabled: tab === 4 && formListView === 'hidden',
+    staleTime: 5 * 60_000,
+    placeholderData: previousData => previousData,
+    select: data => {
+      const items = data.items.filter(form => Boolean(form.archived_at))
+      return { items, total: items.length }
+    },
+  })
+  const formListQ = formListView === 'hidden' ? hiddenFormsQ : formsQ
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen, staleTime: 5 * 60_000 })
   const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection), staleTime: 60_000 })
   const testEquipmentQ = useQuery({
@@ -1909,15 +1928,40 @@ const Inspections = () => {
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not delete this form'),
   })
 
+  // Hiding a form is archiving it: it leaves the list and every picker, and
+  // inspections already run on it open as before. Unhiding brings it back.
   const archiveFormMut = useMutation({
     mutationFn: (form: InspectionFormOption) => archiveInspectionForm(form.id),
     onSuccess: (saved) => {
-      toast.success(`${saved.name} archived. Inspections built on it are untouched.`)
+      toast.success(`${saved.name} hidden. Inspections built on it are untouched; unhide it from Hidden forms.`)
       setRemovingForm(null)
       setFormBuilderOpen(false)
       queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not archive this form'),
+    onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not hide this form'),
+  })
+
+  const unhideFormMut = useMutation({
+    mutationFn: (form: InspectionFormOption) => unarchiveInspectionForm(form.id),
+    onSuccess: (saved) => {
+      toast.success(`${saved.name} is visible again.`)
+      queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not unhide this form'),
+  })
+
+  const duplicateFormMut = useMutation({
+    mutationFn: (form: InspectionFormOption) => duplicateInspectionForm(form.id),
+    onSuccess: (saved) => {
+      setFormListView('active')
+      queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+      focusRecord(`inspection-form-${saved.id}`, saved.name, {
+        message: `Form duplicated as ${saved.name}.`,
+        announce: true,
+        query: { tab: 4 },
+      })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not duplicate this form'),
   })
 
   // Each report opens with its own canvas answers: those saved with it, or for
@@ -4502,6 +4546,24 @@ const Inspections = () => {
                   onChange={event => setFormSearch(event.target.value)}
                   sx={{ minWidth: { xs: '100%', sm: 360 }, flex: 1 }}
                 />
+                <Box sx={{ display: 'flex', borderRadius: '12px', border: '1px solid #DDD6FE', overflow: 'hidden' }} role="group" aria-label="Which forms to list">
+                  {([['active', 'Forms'], ['hidden', 'Hidden forms']] as const).map(([view, label]) => (
+                    <Button
+                      key={view}
+                      onClick={() => setFormListView(view)}
+                      aria-pressed={formListView === view}
+                      startIcon={view === 'hidden' ? <VisibilityOffOutlinedIcon fontSize="small" /> : undefined}
+                      sx={{
+                        borderRadius: 0, px: 2, textTransform: 'none', fontWeight: 900,
+                        bgcolor: formListView === view ? '#7C3AED' : 'transparent',
+                        color: formListView === view ? '#fff' : '#5B21B6',
+                        '&:hover': { bgcolor: formListView === view ? '#6D28D9' : '#F5F3FF' },
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </Box>
               </Box>
               <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateFormBuilder} disabled={!canAddInspections} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                 New Form
@@ -4518,11 +4580,13 @@ const Inspections = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {formsQ.isLoading ? Array.from({ length: 3 }).map((_, i) => (
+                  {formListQ.isLoading ? Array.from({ length: 3 }).map((_, i) => (
                     <TableRow key={i}><TableCell colSpan={4}><Skeleton /></TableCell></TableRow>
-                  )) : (formsQ.data?.items || []).length === 0 ? (
-                    <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspection forms found.</TableCell></TableRow>
-                  ) : formsQ.data!.items.map((form: InspectionFormOption) => {
+                  )) : (formListQ.data?.items || []).length === 0 ? (
+                    <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>
+                      {formListView === 'hidden' ? 'No hidden forms.' : 'No inspection forms found.'}
+                    </TableCell></TableRow>
+                  ) : formListQ.data!.items.map((form: InspectionFormOption) => {
                     const schema = schemaForForm(form)
                     const grid = schema.custom_grid
                     const formioForm = schema.formio_form
@@ -4537,6 +4601,9 @@ const Inspections = () => {
                       >
                         <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
                           <ClippedTooltipText value={form.name} fontWeight={900} onClick={() => setViewForm(form)} />
+                          {form.archived_at && (
+                            <Chip size="small" icon={<VisibilityOffOutlinedIcon />} label="Hidden" sx={{ my: 0.5, fontWeight: 800, bgcolor: '#F1F5F9', color: '#475569' }} />
+                          )}
                           <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>
                             Fixed checklist + {formioForm ? 'temporary external form' : grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom form'} + Biomed Notes
                           </Typography>
@@ -4851,23 +4918,52 @@ const Inspections = () => {
         >
           <PrintOutlinedIcon fontSize="small" sx={{ mr: 1 }} /> Print Form
         </MenuItem>
+        {/* An exact copy under the next free "(Copy)" name, to change
+            without touching the original. */}
+        <MenuItem
+          disabled={!canAddInspections || duplicateFormMut.isPending}
+          onClick={() => {
+            if (!formActionItem) return
+            duplicateFormMut.mutate(formActionItem)
+            setFormActionAnchor(null)
+            setFormActionItem(null)
+          }}
+        >
+          <ContentCopyOutlinedIcon fontSize="small" sx={{ mr: 1 }} /> Duplicate Form
+        </MenuItem>
         {/* Removing a form. The default report is left out entirely: it is
             recreated on demand, so removing it would achieve nothing. */}
         {!formActionItem?.is_default && [
           <Divider key="remove-divider" sx={{ my: 0.5 }} />,
-          <MenuItem
-            key="archive"
-            disabled={!canEditInspections || Boolean(formActionItem?.archived_at)}
-            onClick={() => {
-              if (!formActionItem) return
-              setRemovingForm(formActionItem)
-              setFormActionAnchor(null)
-              setFormActionItem(null)
-            }}
-          >
-            <Inventory2OutlinedIcon fontSize="small" sx={{ mr: 1 }} />
-            {formActionItem?.archived_at ? 'Archived' : 'Archive Form'}
-          </MenuItem>,
+          // Hiding takes the form out of the list and every picker; it is
+          // undone from the Hidden forms view, so it needs no confirming.
+          formActionItem?.archived_at ? (
+            <MenuItem
+              key="unhide"
+              disabled={!canEditInspections || unhideFormMut.isPending}
+              onClick={() => {
+                if (!formActionItem) return
+                unhideFormMut.mutate(formActionItem)
+                setFormActionAnchor(null)
+                setFormActionItem(null)
+              }}
+            >
+              <VisibilityOutlinedIcon fontSize="small" sx={{ mr: 1 }} /> Unhide Form
+            </MenuItem>
+          ) : (
+            <MenuItem
+              key="hide"
+              disabled={!canEditInspections || archiveFormMut.isPending}
+              onClick={() => {
+                if (!formActionItem) return
+                archiveFormMut.mutate(formActionItem)
+                setFormActionAnchor(null)
+                setFormActionItem(null)
+              }}
+            >
+              <VisibilityOffOutlinedIcon fontSize="small" sx={{ mr: 1 }} /> Hide Form
+            </MenuItem>
+          ),
           <MenuItem
             key="delete"
             disabled={!canEditInspections}
@@ -4929,9 +5025,9 @@ const Inspections = () => {
                 inspections would no longer open.
               </Typography>
               <Typography sx={{ fontSize: 13.5, color: '#64748B' }}>
-                Archiving takes it out of the picker so nobody starts a new
-                inspection with it. Everything already built on it is
-                untouched.
+                Hiding takes it out of the list and the picker so nobody starts
+                a new inspection with it. Everything already built on it is
+                untouched, and it can be unhidden from Hidden forms.
               </Typography>
             </Box>
           )}
@@ -4946,7 +5042,7 @@ const Inspections = () => {
             variant="outlined"
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
           >
-            {removingForm?.archived_at ? 'Already archived' : 'Archive'}
+            {removingForm?.archived_at ? 'Already hidden' : 'Hide'}
           </Button>
           {removingForm?.can_delete && (
             <Button
@@ -5340,7 +5436,7 @@ const Inspections = () => {
                       // nothing to delete, and Cancel already discards it.
                       formBuilderMode === 'edit' && formBuilderId && canEditInspections
                         ? () => {
-                            const target = (formsQ.data?.items || [])
+                            const target = [...(formsQ.data?.items || []), ...(hiddenFormsQ.data?.items || [])]
                               .find((item: InspectionFormOption) => item.id === formBuilderId)
                             if (target) setRemovingForm(target)
                           }

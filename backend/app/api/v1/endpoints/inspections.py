@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any, Optional
@@ -1271,6 +1272,53 @@ def unarchive_inspection_form(
         db.commit()
         db.refresh(form)
     return _form_response(form)
+
+
+def _copy_name(db: Session, name: str) -> str:
+    """The first free "<name> (Copy)", "<name> (Copy 2)", ... -- names are
+    unique across every form, archived ones included."""
+    taken = {
+        row[0] for row in db.query(InspectionForm.name)
+        .filter(InspectionForm.name.like(f"{name} (Copy%")).all()
+    }
+    candidate, number = f"{name} (Copy)", 1
+    while candidate in taken:
+        number += 1
+        candidate = f"{name} (Copy {number})"
+    return candidate
+
+
+@router.post("/forms/{form_id}/duplicate", status_code=status.HTTP_201_CREATED)
+def duplicate_inspection_form(
+    form_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """A new form exactly like this one: its layout, description and modality.
+
+    Only the name differs, as names are unique. The copy starts in the
+    picker even when the original is archived, and nothing built on the
+    original moves to it.
+    """
+    require_module_permission(current_user, "inspections", "add")
+    form = db.query(InspectionForm).filter(InspectionForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Inspection form not found")
+    copy = InspectionForm(
+        name=_copy_name(db, form.name),
+        description=form.description,
+        modality_id=form.modality_id,
+        schema=deepcopy(form.schema),
+    )
+    db.add(copy)
+    db.flush()
+    log_activity(db, "inspection_forms", copy.id, "CREATE", current_user, {
+        "name": copy.name,
+        "duplicated_from": form.id,
+    })
+    db.commit()
+    db.refresh(copy)
+    return _form_response(copy)
 
 
 @router.get("/facilities")

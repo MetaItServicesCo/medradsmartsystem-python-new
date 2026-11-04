@@ -354,12 +354,15 @@ export const fetchInspectionForms = async (
   modalityId?: number,
   search?: string,
   searchField?: string,
+  includeHidden?: boolean,
 ): Promise<{ items: InspectionFormOption[]; total: number }> => {
   const res = await apiClient.get('/inspections/forms', {
     params: {
       modality_id: modalityId,
       search,
       search_field: searchField,
+      // Hidden forms are the archived ones; only the forms screen asks for them.
+      include_archived: includeHidden || undefined,
     },
   })
   return res.data
@@ -398,6 +401,12 @@ export const archiveInspectionForm = async (id: number): Promise<InspectionFormO
 /** Put an archived form back in the picker. */
 export const unarchiveInspectionForm = async (id: number): Promise<InspectionFormOption> => {
   const res = await apiClient.post(`/inspections/forms/${id}/unarchive`)
+  return res.data as InspectionFormOption
+}
+
+/** A new form exactly like this one, named "<name> (Copy)" (or the next free number). */
+export const duplicateInspectionForm = async (id: number): Promise<InspectionFormOption> => {
+  const res = await apiClient.post(`/inspections/forms/${id}/duplicate`)
   return res.data as InspectionFormOption
 }
 
