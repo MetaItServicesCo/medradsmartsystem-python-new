@@ -86,7 +86,7 @@ export const useAuthStore = create<AuthState>()(
 // Keep every open tab on one session: a sign-out, sign-in or renewed token in
 // one tab is taken up by the others at once, rather than a tab carrying on with
 // a session that has ended (and being refused) or with a token since replaced.
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   window.addEventListener('storage', (event) => {
     if (event.key === 'auth-storage') void useAuthStore.persist.rehydrate()
   })
