@@ -29,6 +29,7 @@ from app.api.v1.endpoints import (
     attendance,
     hr,
     tracking,
+    tracking_screen,
     reports,
     billing,
     square_webhooks,
@@ -67,6 +68,8 @@ api_router.include_router(lease_portal.router, tags=["lease-portal"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["attendance"])
 api_router.include_router(hr.router, prefix="/hr", tags=["hr"])
 api_router.include_router(tracking.router, prefix="/tracking", tags=["tracking"])
+# No prefix: live screen view sockets must stay under /api/v1/ws/ for the proxy to upgrade them.
+api_router.include_router(tracking_screen.router, tags=["tracking"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(square_webhooks.router, prefix="/webhooks", tags=["webhooks"])

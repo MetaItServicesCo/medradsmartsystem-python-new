@@ -23,6 +23,27 @@ logger = logging.getLogger("medrad.tracking")
 _LOCATION_KEY = "medrad:tracking:location:{user_id}"
 _PRUNE_LOCK_KEY = "medrad:tracking:pruned"
 
+# Live screen view (see app.api.v1.endpoints.tracking_screen): a desktop agent
+# that is connected and allowed to stream holds SCREEN_AGENT_KEY; viewers sit in
+# SCREEN_VIEWERS_KEY (a sorted set scored by when each one expires); frames go
+# out on SCREEN_FRAMES_CHANNEL and are never stored.
+SCREEN_AGENT_KEY = "medrad:tracking:screen:agent:{user_id}"
+SCREEN_VIEWERS_KEY = "medrad:tracking:screen:viewers:{user_id}"
+SCREEN_FRAMES_CHANNEL = "medrad:tracking:screen:frames:{user_id}"
+
+
+def screens_live(user_ids: Iterable[int]) -> set[int]:
+    """Who has a desktop agent connected for live screen view right now."""
+    client = _client()
+    ids = list(user_ids)
+    if client is None or not ids:
+        return set()
+    try:
+        values = client.mget([SCREEN_AGENT_KEY.format(user_id=user_id) for user_id in ids])
+    except redis.RedisError:
+        return set()
+    return {user_id for user_id, value in zip(ids, values) if value}
+
 
 @lru_cache(maxsize=1)
 def _client() -> Optional[redis.Redis]:

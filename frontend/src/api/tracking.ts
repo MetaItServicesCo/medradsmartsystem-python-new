@@ -43,6 +43,97 @@ export interface MyTracking {
   on_shift: boolean
 }
 
+/** Something about a tracked person that needs attention. */
+export type TrackingWarning = 'no_consent' | 'no_desktop_device' | 'no_phone_device' | 'desktop_silent' | 'phone_silent'
+
+export interface TrackingLocation {
+  lat: number
+  lon: number
+  accuracy_m: number | null
+  speed_mps: number | null
+  heading_deg: number | null
+  recorded_at: string
+  source: 'live' | 'saved'
+}
+
+export interface TrackingOverviewPerson extends TrackingSwitches {
+  user_id: number
+  full_name: string
+  username: string
+  role: string | null
+  consent_required: boolean
+  on_shift: boolean
+  shift_started_at: string | null
+  desktop_devices: number
+  desktop_last_seen_at: string | null
+  phone_devices: number
+  phone_last_seen_at: string | null
+  activity: {
+    minutes: number
+    keys: number
+    clicks: number
+    active_ratio: number | null
+    last_at: string | null
+    top_app: string | null
+  }
+  /** Where they are now. `location` is the switch. */
+  position: TrackingLocation | null
+  screen_live: boolean
+  warnings: TrackingWarning[]
+}
+
+export interface TrackingOverview {
+  date: string
+  people: TrackingOverviewPerson[]
+}
+
+export interface TrackingDayBlock {
+  started_at: string
+  ended_at: string
+  app: string
+  titles: string[]
+  minutes: number
+  keys: number
+  clicks: number
+  scrolls: number
+  active_ratio: number | null
+}
+
+export interface TrackingDayPoint {
+  lat: number
+  lon: number
+  accuracy_m: number | null
+  speed_mps: number | null
+  recorded_at: string
+}
+
+export interface TrackingPersonDay {
+  user: { id: number; full_name: string; username: string }
+  date: string
+  tz: string
+  shifts: { start: string; end: string; open: boolean }[]
+  totals: { minutes: number; keys: number; clicks: number; scrolls: number; active_ratio: number | null; points: number }
+  apps: { app: string; minutes: number; keys: number; clicks: number }[]
+  blocks: TrackingDayBlock[]
+  points: TrackingDayPoint[]
+}
+
+export const fetchTrackingOverview = async (date: string): Promise<TrackingOverview> => {
+  const res = await apiClient.get('/tracking/overview', { params: { date } })
+  return res.data
+}
+
+export const fetchTrackingPersonDay = async (userId: number, date: string, tz: string): Promise<TrackingPersonDay> => {
+  const res = await apiClient.get(`/tracking/people/${userId}/day`, { params: { date, tz } })
+  return res.data
+}
+
+/** The live screen-view socket. Under /ws/ because that is the path the production proxy upgrades. */
+export const screenViewUrl = (userId: number, token: string) => {
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+  return `${base.replace(/^http/, 'ws')}/ws/tracking/view/${userId}/${encodeURIComponent(token)}`
+}
+
 export const fetchTrackedPeople = async (search?: string): Promise<TrackedPerson[]> => {
   const res = await apiClient.get('/tracking/people', { params: search ? { search } : undefined })
   return res.data

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatedNumber } from '@/components/motion'
 import {
@@ -61,7 +61,9 @@ import {
 } from '@/api/attendance'
 import { resolveUploadUrl } from '@/api/users'
 import { AttendancePhoto, AttendancePhotoButton } from './AttendancePhoto'
-import TrackingPanel from './TrackingPanel'
+// Loaded only when the Tracking tab opens, so the map library is not part of
+// the Attendance page for everyone else.
+const TrackingPanel = lazy(() => import('./TrackingPanel'))
 import { asUtc } from '@/utils/attendanceTime'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -200,8 +202,9 @@ const Attendance = () => {
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const currentUser = useAuthStore((s) => s.user)
-  // Who is tracked is the super admin's decision alone.
+  // Who is tracked is the super admin's decision alone; HR reviews what came in.
   const isSuperAdmin = currentUser?.role === 'superadmin'
+  const canReviewTracking = isSuperAdmin || currentUser?.role === 'hr_manager'
   const [tab, setTab] = useState(0)
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [selectedDate, setSelectedDate] = useState(todayIso())
@@ -664,7 +667,7 @@ const Attendance = () => {
           <Tab label="Today" />
           <Tab label="Employees" />
           <Tab label="History" />
-          {isSuperAdmin && <Tab label="Tracking" />}
+          {canReviewTracking && <Tab label="Tracking" />}
         </Tabs>
 
         {tab === 0 && (
@@ -810,7 +813,11 @@ const Attendance = () => {
           </Box>
         )}
 
-        {tab === 3 && isSuperAdmin && <TrackingPanel />}
+        {tab === 3 && canReviewTracking && (
+          <Suspense fallback={<Box sx={{ p: 3, color: '#6B7280' }}>Loading...</Box>}>
+            <TrackingPanel isSuperAdmin={isSuperAdmin} />
+          </Suspense>
+        )}
 
         {tab === 2 && (
           <Box sx={{ p: 3 }}>

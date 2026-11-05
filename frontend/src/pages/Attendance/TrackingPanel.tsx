@@ -18,9 +18,12 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material'
+import TrackingOverviewPanel from './TrackingOverviewPanel'
 import CloseIcon from '@mui/icons-material/Close'
 import DevicesIcon from '@mui/icons-material/Devices'
 import SearchIcon from '@mui/icons-material/Search'
@@ -48,12 +51,51 @@ const errorMessage = (error: unknown, fallback: string) => {
 
 const when = (value: string | null) => (value ? new Date(asUtc(value)).toLocaleString() : '-')
 
+interface PanelProps {
+  /** Sets the switches and watches screens. HR sees the overview only. */
+  isSuperAdmin: boolean
+}
+
 /**
- * Super admin only: who is tracked, and for what. Tracking never affects pay
- * and collects nothing outside the person's attendance shift; the person must
- * consent before anything is collected.
+ * The Tracking tab. HR and the super admin see who is tracked and what came
+ * in; only the super admin sets who is tracked and for what. Tracking never
+ * affects pay and collects nothing outside the person's attendance shift; the
+ * person must consent before anything is collected.
  */
-const TrackingPanel = () => {
+const TrackingPanel = ({ isSuperAdmin }: PanelProps) => {
+  const [view, setView] = useState<'overview' | 'switches'>('overview')
+  return (
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+        <Box>
+          <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Tracking</Typography>
+          <Typography sx={{ color: '#6B7280', fontSize: '0.875rem', maxWidth: 760 }}>
+            Nothing is collected until the person agrees, and nothing outside their attendance shift.
+            Tracking does not affect pay; pay comes only from attendance hours.
+          </Typography>
+        </Box>
+        {isSuperAdmin && (
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={view}
+            onChange={(_, next) => next && setView(next)}
+            sx={{ '& .MuiToggleButton-root': { fontWeight: 800, textTransform: 'none', px: 2 } }}
+          >
+            <ToggleButton value="overview">Overview</ToggleButton>
+            <ToggleButton value="switches">Who is tracked</ToggleButton>
+          </ToggleButtonGroup>
+        )}
+      </Box>
+      {isSuperAdmin && view === 'switches'
+        ? <TrackingSwitchesView />
+        : <TrackingOverviewPanel canWatchScreens={isSuperAdmin} />}
+    </Box>
+  )
+}
+
+/** Super admin only: who is tracked, and for what. */
+const TrackingSwitchesView = () => {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [devicesFor, setDevicesFor] = useState<TrackedPerson | null>(null)
@@ -102,12 +144,7 @@ const TrackingPanel = () => {
   const people = peopleQuery.data ?? []
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Tracking</Typography>
-      <Typography sx={{ color: '#6B7280', fontSize: '0.875rem', mb: 2, maxWidth: 760 }}>
-        Choose who is tracked and for what. Nothing is collected until the person agrees, and nothing outside their
-        attendance shift. Tracking does not affect pay; pay comes only from attendance hours.
-      </Typography>
+    <Box>
       <TextField
         placeholder="Search people..."
         value={search}

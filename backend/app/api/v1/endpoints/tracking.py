@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
@@ -28,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints.auth import authenticate_credentials
 from app.core.config import settings
-from app.core.deps import get_current_user, get_superadmin_user
+from app.core.deps import get_current_user, get_superadmin_user, require_roles
 from app.core.security import password_token_version
 from app.db.base import get_db
 from app.models.attendance import AttendanceEvent, AttendanceEventType, AttendanceVerificationStatus
@@ -334,6 +335,248 @@ def revoke_device(
     return _device_payload(device)
 
 
+# ---------------------------------------------------------------- evidence for HR
+
+# Who reviews what was collected: the super admin and HR. Only the super admin
+# sets the switches and watches a screen live.
+get_tracking_reviewer = require_roles("superadmin", "hr_manager")
+
+# Checked in this long with a device that has not reported is worth flagging.
+SILENT_DEVICE_GRACE = timedelta(minutes=30)
+
+
+def _current_shift_start(db: Session, user_id: int, now: datetime) -> Optional[datetime]:
+    for start, end in _shift_intervals(db, user_id, now, now):
+        if start <= now <= end:
+            return start
+    return None
+
+
+@router.get("/overview")
+def tracking_overview(
+    day: Optional[date] = Query(None, alias="date"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_tracking_reviewer),
+) -> Any:
+    """Everyone tracked: on shift or not, what came in on `date`, where they are
+    now, and what needs attention - no consent, no device, a device silent
+    while they are checked in."""
+    day = day or date.today()
+    now = datetime.utcnow()
+    tracked = (
+        db.query(TrackingSetting)
+        .filter(or_(TrackingSetting.desktop_activity, TrackingSetting.location, TrackingSetting.screen_view))
+        .all()
+    )
+    users = {
+        user.id: user
+        for user in db.query(User).filter(User.id.in_([s.user_id for s in tracked])).all()
+    } if tracked else {}
+    tracked = [s for s in tracked if s.user_id in users and not is_facility_scoped_user(users[s.user_id])]
+    ids = [s.user_id for s in tracked]
+    if not ids:
+        return {"date": day, "people": []}
+
+    devices: dict[tuple[int, str], dict[str, Any]] = {}
+    for user_id, kind, count, last_seen in (
+        db.query(TrackingDevice.user_id, TrackingDevice.kind, func.count(TrackingDevice.id), func.max(TrackingDevice.last_seen_at))
+        .filter(TrackingDevice.user_id.in_(ids), TrackingDevice.revoked_at.is_(None))
+        .group_by(TrackingDevice.user_id, TrackingDevice.kind)
+        .all()
+    ):
+        devices[(user_id, kind)] = {"count": count, "last_seen": last_seen}
+
+    totals = {
+        row[0]: row
+        for row in db.query(
+            TrackingActivityBlock.user_id,
+            func.sum(TrackingActivityBlock.minutes),
+            func.sum(TrackingActivityBlock.keys),
+            func.sum(TrackingActivityBlock.clicks),
+            func.sum(TrackingActivityBlock.active_samples),
+            func.sum(TrackingActivityBlock.samples),
+            func.max(TrackingActivityBlock.ended_at),
+        )
+        .filter(TrackingActivityBlock.user_id.in_(ids), TrackingActivityBlock.local_day == day)
+        .group_by(TrackingActivityBlock.user_id)
+        .all()
+    }
+    top_app: dict[int, tuple[str, int]] = {}
+    for user_id, app_name, minutes in (
+        db.query(TrackingActivityBlock.user_id, TrackingActivityBlock.app, func.sum(TrackingActivityBlock.minutes))
+        .filter(TrackingActivityBlock.user_id.in_(ids), TrackingActivityBlock.local_day == day)
+        .group_by(TrackingActivityBlock.user_id, TrackingActivityBlock.app)
+        .all()
+    ):
+        if user_id not in top_app or (minutes or 0) > top_app[user_id][1]:
+            top_app[user_id] = (app_name, int(minutes or 0))
+
+    location_ids = [s.user_id for s in tracked if _has_consented_to(s, "location")]
+    live = tracking_live.live_locations(location_ids)
+    screens_live = tracking_live.screens_live([s.user_id for s in tracked if _has_consented_to(s, "screen_view")])
+    # Without the tracking Redis, the last saved point stands in for the live one.
+    saved = {}
+    missing = [user_id for user_id in location_ids if user_id not in live]
+    if missing:
+        recent = now - timedelta(seconds=settings.TRACKING_LIVE_LOCATION_TTL_SECONDS)
+        latest = dict(
+            db.query(TrackingLocationSample.user_id, func.max(TrackingLocationSample.recorded_at))
+            .filter(TrackingLocationSample.user_id.in_(missing), TrackingLocationSample.recorded_at >= recent)
+            .group_by(TrackingLocationSample.user_id)
+            .all()
+        )
+        for sample in (
+            db.query(TrackingLocationSample)
+            .filter(TrackingLocationSample.user_id.in_(list(latest)), TrackingLocationSample.recorded_at.in_(list(latest.values())))
+            .all()
+        ) if latest else []:
+            if latest.get(sample.user_id) == sample.recorded_at:
+                saved[sample.user_id] = {
+                    "lat": sample.lat, "lon": sample.lon, "accuracy_m": sample.accuracy_m,
+                    "speed_mps": sample.speed_mps, "heading_deg": sample.heading_deg,
+                    "recorded_at": sample.recorded_at.isoformat() + "Z",
+                }
+
+    people = []
+    for setting in sorted(tracked, key=lambda s: (users[s.user_id].full_name or "").lower()):
+        user = users[setting.user_id]
+        desktop = devices.get((user.id, "desktop"), {"count": 0, "last_seen": None})
+        phone = devices.get((user.id, "phone"), {"count": 0, "last_seen": None})
+        shift_start = _current_shift_start(db, user.id, now)
+        consent_required = _consent_required(setting)
+        wants_desktop = setting.desktop_activity or setting.screen_view
+        warnings = []
+        if consent_required:
+            warnings.append("no_consent")
+        if wants_desktop and not desktop["count"]:
+            warnings.append("no_desktop_device")
+        if setting.location and not phone["count"]:
+            warnings.append("no_phone_device")
+        if shift_start is not None and now - shift_start >= SILENT_DEVICE_GRACE and not consent_required:
+            if wants_desktop and desktop["count"] and (desktop["last_seen"] is None or now - desktop["last_seen"] > SILENT_DEVICE_GRACE):
+                warnings.append("desktop_silent")
+            if setting.location and phone["count"] and (phone["last_seen"] is None or now - phone["last_seen"] > SILENT_DEVICE_GRACE):
+                warnings.append("phone_silent")
+        total = totals.get(user.id)
+        samples = int(total[5] or 0) if total else 0
+        people.append({
+            "user_id": user.id,
+            "full_name": user.full_name,
+            "username": user.username,
+            "role": user.role.value if user.role else None,
+            **_features_payload(setting),
+            "consent_required": consent_required,
+            "on_shift": shift_start is not None,
+            "shift_started_at": shift_start,
+            "desktop_devices": desktop["count"],
+            "desktop_last_seen_at": desktop["last_seen"],
+            "phone_devices": phone["count"],
+            "phone_last_seen_at": phone["last_seen"],
+            "activity": {
+                "minutes": int(total[1] or 0) if total else 0,
+                "keys": int(total[2] or 0) if total else 0,
+                "clicks": int(total[3] or 0) if total else 0,
+                "active_ratio": round(int(total[4] or 0) / samples, 3) if samples else None,
+                "last_at": total[6] if total else None,
+                "top_app": top_app[user.id][0] if user.id in top_app else None,
+            },
+            # Where they are now; "location" above is the switch.
+            "position": (
+                {**live[user.id], "source": "live"} if user.id in live
+                else {**saved[user.id], "source": "saved"} if user.id in saved
+                else None
+            ),
+            "screen_live": user.id in screens_live,
+            "warnings": warnings,
+        })
+    return {"date": day, "people": people}
+
+
+@router.get("/people/{user_id}/day")
+def person_day(
+    user_id: int,
+    day: date = Query(..., alias="date"),
+    tz: str = Query("Asia/Karachi", max_length=64),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_tracking_reviewer),
+) -> Any:
+    """One person's evidence for one day: shifts, apps, a timeline, the route.
+    Every look is written to the audit log."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or is_facility_scoped_user(user):
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        zone = ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(status_code=400, detail="Unknown time zone")
+    start = datetime.combine(day, time.min, tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None)
+
+    blocks = (
+        db.query(TrackingActivityBlock)
+        .filter(TrackingActivityBlock.user_id == user.id, TrackingActivityBlock.local_day == day)
+        .order_by(TrackingActivityBlock.started_at, TrackingActivityBlock.id)
+        .all()
+    )
+    points = (
+        db.query(TrackingLocationSample)
+        .filter(
+            TrackingLocationSample.user_id == user.id,
+            TrackingLocationSample.recorded_at >= start,
+            TrackingLocationSample.recorded_at < end,
+        )
+        .order_by(TrackingLocationSample.recorded_at)
+        .all()
+    )
+    shifts = [
+        {"start": max(a, start), "end": min(b, end), "open": b > datetime.utcnow()}
+        for a, b in _shift_intervals(db, user.id, start, end)
+    ]
+
+    apps: dict[str, dict[str, int]] = {}
+    for block in blocks:
+        entry = apps.setdefault(block.app, {"minutes": 0, "keys": 0, "clicks": 0})
+        entry["minutes"] += block.minutes or 0
+        entry["keys"] += block.keys or 0
+        entry["clicks"] += block.clicks or 0
+    samples = sum(block.samples or 0 for block in blocks)
+    active = sum(block.active_samples or 0 for block in blocks)
+
+    log_activity(db, "users", user.id, "TRACKING_EVIDENCE_VIEWED", current_user, {"date": day.isoformat()})
+    db.commit()
+    return {
+        "user": {"id": user.id, "full_name": user.full_name, "username": user.username},
+        "date": day,
+        "tz": tz,
+        "shifts": shifts,
+        "totals": {
+            "minutes": sum(block.minutes or 0 for block in blocks),
+            "keys": sum(block.keys or 0 for block in blocks),
+            "clicks": sum(block.clicks or 0 for block in blocks),
+            "scrolls": sum(block.scrolls or 0 for block in blocks),
+            "active_ratio": round(active / samples, 3) if samples else None,
+            "points": len(points),
+        },
+        "apps": sorted(
+            ({"app": name, **values} for name, values in apps.items()),
+            key=lambda item: item["minutes"], reverse=True,
+        ),
+        "blocks": [
+            {
+                "started_at": block.started_at, "ended_at": block.ended_at, "app": block.app,
+                "titles": block.titles or [], "minutes": block.minutes, "keys": block.keys,
+                "clicks": block.clicks, "scrolls": block.scrolls,
+                "active_ratio": round(block.active_samples / block.samples, 3) if block.samples else None,
+            }
+            for block in blocks
+        ],
+        "points": [
+            {"lat": p.lat, "lon": p.lon, "accuracy_m": p.accuracy_m, "speed_mps": p.speed_mps, "recorded_at": p.recorded_at}
+            for p in points
+        ],
+    }
+
+
 def _device_payload(device: TrackingDevice) -> dict[str, Any]:
     return {
         "id": device.id,
@@ -420,34 +663,48 @@ def _device_features(kind: str) -> tuple[str, ...]:
     return ("desktop_activity", "screen_view") if kind == "desktop" else ("location",)
 
 
+def device_from_authorization(db: Session, authorization: Optional[str]) -> Optional[TrackingDevice]:
+    """The device behind a "Bearer <device token>" header, or None once it is
+    revoked, the person is deactivated or locked, or their password has
+    changed since it signed in."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    raw = authorization[7:].strip()
+    if not raw or len(raw) > 256:
+        return None
+    device = db.query(TrackingDevice).filter(TrackingDevice.token_hash == _hash_token(raw)).first()
+    if device is None:
+        return None
+    user = db.query(User).filter(User.id == device.user_id).first()
+    if not device_is_valid(device, user):
+        return None
+    device.user = user
+    return device
+
+
+def device_is_valid(device: TrackingDevice, user: Optional[User]) -> bool:
+    return (
+        device.revoked_at is None
+        and user is not None
+        and bool(user.is_active)
+        and not user.is_locked
+        and not is_facility_scoped_user(user)
+        and device.password_version == password_token_version(user.hashed_password)
+    )
+
+
 def get_current_device(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ) -> TrackingDevice:
-    """The device behind a device token - refused once it is revoked, the
-    person is deactivated or locked, or their password has changed since."""
-    unauthorized = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="This device is signed out. Please sign in again.",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise unauthorized
-    raw = authorization[7:].strip()
-    if not raw or len(raw) > 256:
-        raise unauthorized
-    device = db.query(TrackingDevice).filter(TrackingDevice.token_hash == _hash_token(raw)).first()
-    if device is None or device.revoked_at is not None:
-        raise unauthorized
-    user = db.query(User).filter(User.id == device.user_id).first()
-    if (
-        user is None
-        or not user.is_active
-        or user.is_locked
-        or is_facility_scoped_user(user)
-        or device.password_version != password_token_version(user.hashed_password)
-    ):
-        raise unauthorized
+    device = device_from_authorization(db, authorization)
+    if device is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This device is signed out. Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = device.user
     now = datetime.utcnow()
     if device.last_seen_at is None or now - device.last_seen_at >= LAST_SEEN_RESOLUTION:
         device.last_seen_at = now
