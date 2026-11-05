@@ -5,7 +5,7 @@ import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import { toast } from 'react-toastify'
 import { consentToTracking, fetchMyTracking } from '@/api/tracking'
 import { useAuthStore } from '@/stores/authStore'
-import { isFacilityServiceUser } from '@/utils/serviceRolePolicy'
+import { isCustomerAccount } from '@/utils/staffAccount'
 
 /**
  * Shown only to someone a super admin has switched tracking on for, until they
@@ -16,7 +16,7 @@ const TrackingConsentNotice = () => {
   const user = useAuthStore((state) => state.user)
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  const staff = Boolean(user) && !isFacilityServiceUser(user)
+  const staff = Boolean(user) && !isCustomerAccount(user)
 
   const query = useQuery({
     queryKey: ['tracking-me', user?.id],

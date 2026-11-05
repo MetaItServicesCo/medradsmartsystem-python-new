@@ -16,7 +16,7 @@ import {
 
 import { fetchMyAttendanceRegister, type RegisterDay } from '@/api/attendance'
 import { useAuthStore } from '@/stores/authStore'
-import { isFacilityServiceUser } from '@/utils/serviceRolePolicy'
+import { isCustomerAccount } from '@/utils/staffAccount'
 import SelfCheckIn from './SelfCheckIn'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -79,7 +79,7 @@ const MyAttendance = () => {
       </Typography>
 
       {/* Staff mark their own attendance here; customers' accounts do not. */}
-      {!isFacilityServiceUser(user) && <SelfCheckIn />}
+      {!isCustomerAccount(user) && <SelfCheckIn />}
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <Grid container spacing={2} alignItems="flex-start">
