@@ -25,13 +25,11 @@ router = APIRouter()
 _UNKNOWN_USER_HASH = get_password_hash("unknown-user-timing-equaliser")
 logout_token_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
 
-@router.post("/login")
-def login(
-    request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
-    normalized_username = form_data.username.strip().lower()
+def authenticate_credentials(request: Request, db: Session, username: str, password: str) -> User:
+    """The password check every sign-in uses - the web login and a tracking
+    device's - so both are throttled and refused identically. Returns the
+    user once the password is right and the account may sign in."""
+    normalized_username = username.strip().lower()
     client_identity = request_ip(request)
     limiter_args = {
         "window_seconds": settings.AUTH_LOGIN_WINDOW_SECONDS,
@@ -57,7 +55,7 @@ def login(
     )
     user = db.query(User).filter(func.lower(User.username) == normalized_username).first()
     
-    password_ok = verify_password(form_data.password, user.hashed_password if user else _UNKNOWN_USER_HASH)
+    password_ok = verify_password(password, user.hashed_password if user else _UNKNOWN_USER_HASH)
     if not user or not password_ok:
         if user:
             user.failed_login_attempts = int(user.failed_login_attempts or 0) + 1
@@ -109,6 +107,16 @@ def login(
         window_seconds=settings.AUTH_LOGIN_WINDOW_SECONDS,
     )
     user.failed_login_attempts = 0
+    return user
+
+
+@router.post("/login")
+def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    user = authenticate_credentials(request, db, form_data.username, form_data.password)
     user.last_login = func.now()
     
     log_activity(db, "users", user.id, "LOGIN", user)

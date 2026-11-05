@@ -75,3 +75,7 @@ from app.models.hr import (
 )
 
 from app.models.assistant_action import ActionStatus, AssistantAction
+
+from app.models.tracking import (
+    TrackingActivityBlock, TrackingDevice, TrackingLocationSample, TrackingSetting,
+)

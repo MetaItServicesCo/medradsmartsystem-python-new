@@ -11,6 +11,7 @@ import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { useSessionRenewal } from '@/hooks/useSessionRenewal'
 import { useContentReveal } from '@/hooks/useContentReveal'
 import AssistantWidget from '@/components/Assistant'
+import TrackingConsentNotice from '@/components/TrackingConsentNotice'
 
 // Sign the user out after this much inactivity.
 const SESSION_IDLE_TIMEOUT_MS = 420_000 // 7 minutes
@@ -111,6 +112,7 @@ const Layout = () => {
           <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
             <Header title={title} />
             <WorkingContextBar />
+            <TrackingConsentNotice />
             <Box
               component="main"
               sx={{

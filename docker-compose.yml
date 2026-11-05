@@ -42,6 +42,23 @@ services:
       timeout: 3s
       retries: 5
 
+  # Live tracking positions only - the latest point per tracked person, each
+  # expiring on its own. Memory-capped and never written to disk; kept apart
+  # from the main Redis so it can never crowd out sessions or rate limits.
+  # Losing it loses nothing: the evidence HR keeps is in Postgres.
+  tracking_redis:
+    image: redis:7-alpine
+    container_name: medrad_tracking_redis
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    networks:
+      - medrad_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   coturn:
     image: coturn/coturn:4.6-alpine
     container_name: medrad_coturn
@@ -144,11 +161,16 @@ services:
       - SQUARE_WEBHOOK_NOTIFICATION_URL=${SQUARE_WEBHOOK_NOTIFICATION_URL:-https://medcodesolution.com/api/v1/webhooks/square}
       - PAYMENT_DATA_ENCRYPTION_KEYS=${PAYMENT_DATA_ENCRYPTION_KEYS:-}
       - RENTAL_BILLING_INTERVAL_SECONDS=${RENTAL_BILLING_INTERVAL_SECONDS:-900}
+      - TRACKING_REDIS_URL=redis://tracking_redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # Started with the backend, but not waited on: without it only live
+      # positions are skipped.
+      tracking_redis:
+        condition: service_started
     networks:
       - medrad_network
     healthcheck:

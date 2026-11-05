@@ -61,6 +61,7 @@ import {
 } from '@/api/attendance'
 import { resolveUploadUrl } from '@/api/users'
 import { AttendancePhoto, AttendancePhotoButton } from './AttendancePhoto'
+import TrackingPanel from './TrackingPanel'
 import { asUtc } from '@/utils/attendanceTime'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -199,6 +200,8 @@ const Attendance = () => {
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const currentUser = useAuthStore((s) => s.user)
+  // Who is tracked is the super admin's decision alone.
+  const isSuperAdmin = currentUser?.role === 'superadmin'
   const [tab, setTab] = useState(0)
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [selectedDate, setSelectedDate] = useState(todayIso())
@@ -661,6 +664,7 @@ const Attendance = () => {
           <Tab label="Today" />
           <Tab label="Employees" />
           <Tab label="History" />
+          {isSuperAdmin && <Tab label="Tracking" />}
         </Tabs>
 
         {tab === 0 && (
@@ -805,6 +809,8 @@ const Attendance = () => {
             </Menu>
           </Box>
         )}
+
+        {tab === 3 && isSuperAdmin && <TrackingPanel />}
 
         {tab === 2 && (
           <Box sx={{ p: 3 }}>

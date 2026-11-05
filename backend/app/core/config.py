@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
@@ -180,6 +180,17 @@ class Settings(BaseSettings):
     # also drains failed receipt deliveries promptly.
     RENTAL_BILLING_INTERVAL_SECONDS: int = 900
     
+    # Employee tracking (merged in from Tracker). Live data goes to its own,
+    # memory-capped Redis so it can never push out sessions or rate limits;
+    # unset, live positions are simply not kept. Evidence is kept in Postgres
+    # for the retention periods below and pruned once a day.
+    TRACKING_REDIS_URL: Optional[str] = None
+    TRACKING_UPLOAD_INTERVAL_SECONDS: int = 300
+    TRACKING_LOCATION_SAMPLE_MINUTES: int = 5
+    TRACKING_LIVE_LOCATION_TTL_SECONDS: int = 600
+    TRACKING_ACTIVITY_RETENTION_DAYS: int = 90
+    TRACKING_LOCATION_RETENTION_DAYS: int = 30
+
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     WEBSOCKET_CHANNEL_PREFIX: str = "medrad:realtime"
