@@ -15,6 +15,9 @@ import {
 } from '@mui/material'
 
 import { fetchMyAttendanceRegister, type RegisterDay } from '@/api/attendance'
+import { useAuthStore } from '@/stores/authStore'
+import { isFacilityServiceUser } from '@/utils/serviceRolePolicy'
+import SelfCheckIn from './SelfCheckIn'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -39,6 +42,7 @@ const hoursLabel = (hours: number) => {
 const dayOfWeek = (dateStr: string) => new Date(`${dateStr}T00:00:00Z`).getUTCDay()
 
 const MyAttendance = () => {
+  const user = useAuthStore(state => state.user)
   const now = new Date()
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -73,6 +77,9 @@ const MyAttendance = () => {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Your own check-ins and check-outs. These are the same records your timesheet is built from.
       </Typography>
+
+      {/* Staff mark their own attendance here; customers' accounts do not. */}
+      {!isFacilityServiceUser(user) && <SelfCheckIn />}
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <Grid container spacing={2} alignItems="flex-start">

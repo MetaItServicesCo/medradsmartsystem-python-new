@@ -88,6 +88,13 @@ class AttendanceEvent(Base):
     remark = Column(String, nullable=True)
     device_label = Column(String, nullable=True)
     image_url = Column(String, nullable=True)
+    # Where a self check-in was marked (the phone's or browser's location), and
+    # the employee's own note - why it was marked by hand, or a dispute. HR's
+    # note stays in `remark`.
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    location_accuracy_m = Column(Float, nullable=True)
+    employee_note = Column(Text, nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

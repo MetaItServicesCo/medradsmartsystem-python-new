@@ -50,6 +50,7 @@ import {
   fetchAttendanceProfiles,
   fetchAttendanceSummary,
   recognizeAttendanceFace,
+  reviewAttendanceEvent,
   trainAttendanceFaceModel,
   uploadAttendanceFaceSample,
   type AttendanceEvent,
@@ -201,6 +202,9 @@ const Attendance = () => {
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [selectedDate, setSelectedDate] = useState(todayIso())
   const [eventDialog, setEventDialog] = useState<AttendanceProfile | null>(null)
+  // HR's decision on a flagged mark (a manual one, or a disputed one), with a note.
+  const [reviewing, setReviewing] = useState<{ event: AttendanceEvent; status: 'verified' | 'rejected' } | null>(null)
+  const [reviewNote, setReviewNote] = useState('')
   const [enrollDialog, setEnrollDialog] = useState<AttendanceProfile | null>(null)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
@@ -427,6 +431,23 @@ const Attendance = () => {
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to record attendance'),
   })
 
+  const reviewMut = useMutation({
+    mutationFn: ({ event, status, note }: { event: AttendanceEvent; status: 'verified' | 'rejected'; note: string }) =>
+      reviewAttendanceEvent(event.id, { verification_status: status, remark: note || undefined }),
+    onSuccess: (_saved, { status }) => {
+      toast.success(status === 'verified' ? 'Attendance approved' : 'Attendance rejected - it no longer counts towards hours')
+      setReviewing(null)
+      setReviewNote('')
+      invalidateAttendance()
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to review attendance'),
+  })
+
+  const startReview = (event: AttendanceEvent, status: 'verified' | 'rejected') => {
+    setReviewNote('')
+    setReviewing({ event, status })
+  }
+
   const stats = summaryQ.data
   const latestEvents = stats?.latest_events || []
   const eventRows = eventsQ.data?.items || []
@@ -644,7 +665,7 @@ const Attendance = () => {
         {tab === 0 && (
           <Box sx={{ p: 3 }}>
             <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Recent Activity</Typography>
-            <EventTable rows={latestEvents} />
+            <EventTable rows={latestEvents} onReview={startReview} />
           </Box>
         )}
 
@@ -786,7 +807,7 @@ const Attendance = () => {
 
         {tab === 2 && (
           <Box sx={{ p: 3 }}>
-            <EventTable rows={eventRows} />
+            <EventTable rows={eventRows} onReview={startReview} />
           </Box>
         )}
       </Card>
@@ -1033,11 +1054,65 @@ const Attendance = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={Boolean(reviewing)} onClose={() => setReviewing(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900 }}>
+          {reviewing?.status === 'verified' ? 'Approve attendance' : 'Reject attendance'}
+        </DialogTitle>
+        <DialogContent dividers>
+          {reviewing && (
+            <Box sx={{ display: 'grid', gap: 1.5 }}>
+              <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>
+                {reviewing.event.user.full_name} · {EVENT_LABELS[reviewing.event.event_type] || reviewing.event.event_type} · {formatDateTime(reviewing.event.event_time)}
+              </Typography>
+              {reviewing.event.employee_note && (
+                <Typography sx={{ fontSize: 14 }}><b>Employee's note:</b> {reviewing.event.employee_note}</Typography>
+              )}
+              {reviewing.event.image_url && (
+                <Box component="img" src={resolveUploadUrl(reviewing.event.image_url)} alt="Photo taken at the time"
+                  sx={{ width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: '12px', bgcolor: '#0F172A' }} />
+              )}
+              <Typography sx={{ fontSize: 13, color: '#64748B' }}>
+                {reviewing.status === 'verified'
+                  ? 'Approving keeps this mark counting towards worked hours and clears the flag.'
+                  : 'A rejected mark no longer counts towards worked hours or pay.'}
+              </Typography>
+              <TextField
+                label={reviewing.status === 'rejected' ? 'Reason for rejecting (required)' : 'HR note (optional)'}
+                value={reviewNote}
+                onChange={(e) => setReviewNote(e.target.value)}
+                multiline
+                minRows={2}
+                inputProps={{ maxLength: 1000 }}
+                autoFocus
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReviewing(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color={reviewing?.status === 'rejected' ? 'error' : 'success'}
+            disabled={reviewMut.isPending || (reviewing?.status === 'rejected' && reviewNote.trim().length < 3)}
+            onClick={() => reviewing && reviewMut.mutate({ event: reviewing.event, status: reviewing.status, note: reviewNote.trim() })}
+            sx={{ fontWeight: 900, textTransform: 'none' }}
+          >
+            {reviewing?.status === 'verified' ? 'Approve' : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
 
-const EventTable = ({ rows }: { rows: AttendanceEvent[] }) => (
+const STATUS_LOOK: Record<string, { label: string; bg: string; color: string }> = {
+  verified: { label: 'Verified', bg: '#D1FAE5', color: '#047857' },
+  needs_review: { label: 'Needs review', bg: '#FEF3C7', color: '#B45309' },
+  rejected: { label: 'Rejected', bg: '#FEE2E2', color: '#DC2626' },
+}
+
+const EventTable = ({ rows, onReview }: { rows: AttendanceEvent[]; onReview?: (event: AttendanceEvent, status: 'verified' | 'rejected') => void }) => (
   <TableContainer className="list-scroll-panel">
     <Table stickyHeader>
       <TableHead>
@@ -1047,7 +1122,10 @@ const EventTable = ({ rows }: { rows: AttendanceEvent[] }) => (
           <TableCell>Time</TableCell>
           <TableCell>Facility</TableCell>
           <TableCell>Source</TableCell>
-          <TableCell>Remark</TableCell>
+          <TableCell>Status</TableCell>
+          <TableCell sx={{ minWidth: 220 }}>Notes</TableCell>
+          <TableCell>Evidence</TableCell>
+          {onReview && <TableCell align="right">Review</TableCell>}
         </TableRow>
       </TableHead>
       <TableBody>
@@ -1064,11 +1142,65 @@ const EventTable = ({ rows }: { rows: AttendanceEvent[] }) => (
               <TableCell>{formatDateTime(event.event_time)}</TableCell>
               <TableCell>{event.facility?.name || '-'}</TableCell>
               <TableCell sx={{ textTransform: 'capitalize' }}>{event.source}</TableCell>
-              <TableCell>{event.remark || '-'}</TableCell>
+              <TableCell>
+                {(() => {
+                  const look = STATUS_LOOK[event.verification_status] || STATUS_LOOK.needs_review
+                  return <Chip size="small" label={look.label} sx={{ bgcolor: look.bg, color: look.color, fontWeight: 800 }} />
+                })()}
+              </TableCell>
+              <TableCell sx={{ maxWidth: 320 }}>
+                {/* The employee's own note (why it was marked by hand, or a dispute), then HR's. */}
+                {event.employee_note && (
+                  <Typography sx={{ fontSize: 13, color: '#1E1B4B', whiteSpace: 'pre-wrap' }}>
+                    <b>Employee:</b> {event.employee_note}
+                  </Typography>
+                )}
+                {event.remark && (
+                  <Typography sx={{ fontSize: 13, color: '#475569', whiteSpace: 'pre-wrap', mt: event.employee_note ? 0.5 : 0 }}>
+                    <b>{event.employee_note ? 'HR / system:' : 'Note:'}</b> {event.remark}
+                  </Typography>
+                )}
+                {!event.employee_note && !event.remark && '-'}
+              </TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                {event.image_url && (
+                  <Button size="small" href={resolveUploadUrl(event.image_url) || ''} target="_blank" rel="noreferrer"
+                    sx={{ textTransform: 'none', fontWeight: 800, minWidth: 0 }}>
+                    Photo
+                  </Button>
+                )}
+                {event.latitude != null && event.longitude != null && (
+                  <Button size="small" href={`https://www.google.com/maps?q=${event.latitude},${event.longitude}`}
+                    target="_blank" rel="noreferrer" sx={{ textTransform: 'none', fontWeight: 800, minWidth: 0 }}
+                    title={event.location_accuracy_m != null ? `Accurate to about ${Math.round(event.location_accuracy_m)} m` : undefined}>
+                    Location
+                  </Button>
+                )}
+                {typeof event.confidence === 'number' && (
+                  <Typography component="span" sx={{ fontSize: 12, color: '#64748B', ml: 0.5 }} title="How closely the photo matched the enrolled face">
+                    match {Math.round(event.confidence * 100)}%
+                  </Typography>
+                )}
+                {!event.image_url && event.latitude == null && typeof event.confidence !== 'number' && '-'}
+              </TableCell>
+              {onReview && (
+                <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                  {event.verification_status !== 'verified' && (
+                    <Button size="small" onClick={() => onReview(event, 'verified')} sx={{ textTransform: 'none', fontWeight: 800, color: '#047857' }}>
+                      Approve
+                    </Button>
+                  )}
+                  {event.verification_status !== 'rejected' && (
+                    <Button size="small" onClick={() => onReview(event, 'rejected')} sx={{ textTransform: 'none', fontWeight: 800, color: '#DC2626' }}>
+                      Reject
+                    </Button>
+                  )}
+                </TableCell>
+              )}
             </ContextTableRow>
           )
         })}
-        {rows.length === 0 && <TableRow><TableCell colSpan={6}>No attendance events found</TableCell></TableRow>}
+        {rows.length === 0 && <TableRow><TableCell colSpan={onReview ? 9 : 8}>No attendance events found</TableCell></TableRow>}
       </TableBody>
     </Table>
   </TableContainer>

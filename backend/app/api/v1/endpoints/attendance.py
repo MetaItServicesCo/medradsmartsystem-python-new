@@ -36,6 +36,7 @@ from app.schemas.attendance import (
 )
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
 from app.utils.logging import log_activity
+from app.utils.permissions import has_module_permission
 from app.utils import face_engine
 from app.core.config import settings
 
@@ -108,6 +109,10 @@ def _event_payload(event: AttendanceEvent) -> dict[str, Any]:
         "remark": event.remark,
         "device_label": event.device_label,
         "image_url": event.image_url,
+        "latitude": event.latitude,
+        "longitude": event.longitude,
+        "location_accuracy_m": event.location_accuracy_m,
+        "employee_note": event.employee_note,
         "created_by_id": event.created_by_id,
         "created_at": event.created_at,
         "user": {
@@ -789,6 +794,19 @@ def create_event(
     event_type = _enum_value(AttendanceEventType, event_in.event_type, "event_type")
     source = _enum_value(AttendanceSource, event_in.source, "source")
     verification_status = _enum_value(AttendanceVerificationStatus, event_in.verification_status, "verification_status")
+    event_time = event_in.event_time or datetime.utcnow()
+    remark = event_in.remark
+    employee_note = None
+    if not has_module_permission(current_user, "attendance", "add"):
+        # Hours here are pay. Someone who does not manage attendance records
+        # only their own, at the moment it happens, as a manual entry HR
+        # reviews - never a back-dated, "face" or "verified" one of their own
+        # choosing. Their text is kept as their note.
+        source = AttendanceSource.MANUAL
+        verification_status = AttendanceVerificationStatus.NEEDS_REVIEW
+        event_time = datetime.utcnow()
+        employee_note = (event_in.remark or "").strip() or None
+        remark = "Entered by the employee - needs HR review"
     profile = _get_or_create_profile(db, target_user, facility_id)
 
     event = AttendanceEvent(
@@ -796,12 +814,13 @@ def create_event(
         profile_id=profile.id,
         facility_id=facility_id,
         event_type=event_type,
-        event_time=event_in.event_time or datetime.utcnow(),
+        event_time=event_time,
         timezone=event_in.timezone,
         source=source,
         verification_status=verification_status,
         confidence=event_in.confidence,
-        remark=event_in.remark,
+        remark=remark,
+        employee_note=employee_note,
         device_label=event_in.device_label,
         created_by_id=current_user.id,
     )
@@ -835,7 +854,9 @@ def review_attendance_event(
         "verification_status": review.verification_status,
     })
     db.commit()
-    return _event_query(db).filter(AttendanceEvent.id == event.id).first()
+    # Returned as the payload every other attendance endpoint returns: the bare
+    # ORM row cannot be serialised, which failed every review after saving it.
+    return _event_payload(_event_query(db).filter(AttendanceEvent.id == event.id).first())
 
 
 # ── The attendance register ──────────────────────────────────────────────────
@@ -900,6 +921,8 @@ def _register_payload(
             date_from - timedelta(days=1), time.min),
         AttendanceEvent.event_time <= datetime.combine(
             date_to + timedelta(days=1), time.max),
+        # A scan HR rejected is not attendance - here as in the timesheets.
+        AttendanceEvent.verification_status != AttendanceVerificationStatus.REJECTED,
     ).all()
     events_by_user: dict[int, list] = {}
     for event in events:
@@ -1091,6 +1114,221 @@ def dispute_my_attendance_event(
                  current_user, {"reason": reason[:500]})
     db.commit()
     return _event_payload(_event_query(db).filter(AttendanceEvent.id == event.id).first())
+
+
+# ── Self check-in ────────────────────────────────────────────────────────────
+# Every employee and technician marks their own attendance, from a phone or the
+# web. The photo is checked against their own enrolled face only (one to one),
+# never searched across everybody, so nobody can mark somebody else. When the
+# face check does not pass they may mark it by hand with a note: it counts, but
+# is flagged for HR with the photo they took. Customers' accounts (facility and
+# client users) do not mark attendance.
+
+SELF_CHECKIN_DUPLICATE_WINDOW = timedelta(seconds=60)
+
+
+def _require_staff_member(user: User) -> None:
+    if is_facility_scoped_user(user):
+        raise HTTPException(status_code=403, detail="Attendance is marked by staff accounts only")
+
+
+def _own_face_references(db: Session, user: User) -> tuple[Optional[AttendanceProfile], list[list[float]]]:
+    profile = (
+        db.query(AttendanceProfile)
+        .options(joinedload(AttendanceProfile.face_samples))
+        .filter(AttendanceProfile.user_id == user.id)
+        .first()
+    )
+    if not profile:
+        return None, []
+    references = [sample.embedding for sample in profile.face_samples if sample.embedding]
+    if profile.face_embedding:
+        references.append(profile.face_embedding)
+    return profile, references
+
+
+def _store_event_photo(content: bytes) -> str:
+    os.makedirs(ATTENDANCE_UPLOAD_DIR, exist_ok=True)
+    stored_name = f"self_event_{uuid.uuid4().hex}.jpg"
+    with open(os.path.join(ATTENDANCE_UPLOAD_DIR, stored_name), "wb") as handle:
+        handle.write(content)
+    return f"/uploads/attendance_faces/{stored_name}"
+
+
+def _checked_location(latitude: Optional[float], longitude: Optional[float], accuracy: Optional[float]):
+    if latitude is None or longitude is None:
+        return None, None, None
+    if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+        raise HTTPException(status_code=400, detail="Location is out of range")
+    if accuracy is not None and accuracy < 0:
+        raise HTTPException(status_code=400, detail="Location accuracy cannot be negative")
+    return latitude, longitude, accuracy
+
+
+@router.get("/me/status")
+def read_my_attendance_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Whether my face is enrolled, and my last attendance mark in the past day."""
+    _require_staff_member(current_user)
+    _profile, references = _own_face_references(db, current_user)
+    last = (
+        _event_query(db)
+        .filter(
+            AttendanceEvent.user_id == current_user.id,
+            AttendanceEvent.event_time >= datetime.utcnow() - timedelta(hours=24),
+            AttendanceEvent.verification_status != AttendanceVerificationStatus.REJECTED,
+        )
+        .order_by(desc(AttendanceEvent.event_time))
+        .first()
+    )
+    return {
+        "face_enrolled": bool(references),
+        "last_event": _event_payload(last) if last else None,
+    }
+
+
+@router.post("/me/check")
+def mark_my_attendance(
+    event_type: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+    manual: bool = Form(False),
+    note: Optional[str] = Form(None),
+    latitude: Optional[float] = Form(None),
+    longitude: Optional[float] = Form(None),
+    location_accuracy_m: Optional[float] = Form(None),
+    device_timezone: Optional[str] = Form(None),
+    device_label: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Mark my own check-in, break or check-out.
+
+    By face (the default): the photo must match my own enrolment, and pass the
+    liveness check, to count as verified. If it does not, nothing is recorded
+    and I am told I may mark it by hand. By hand (`manual`): a note is
+    required; it counts, flagged for HR, with the photo if one was taken. The
+    time is always the server's, so nothing can be back-dated.
+    """
+    _require_staff_member(current_user)
+    event_enum = _enum_value(AttendanceEventType, event_type, "event_type")
+    latitude, longitude, location_accuracy_m = _checked_location(latitude, longitude, location_accuracy_m)
+    note = (note or "").strip()[:1000] or None
+
+    recent = (
+        db.query(AttendanceEvent)
+        .filter(
+            AttendanceEvent.user_id == current_user.id,
+            AttendanceEvent.event_type == event_enum,
+            AttendanceEvent.event_time >= datetime.utcnow() - SELF_CHECKIN_DUPLICATE_WINDOW,
+        )
+        .order_by(desc(AttendanceEvent.event_time))
+        .first()
+    )
+    if recent:
+        status_value = recent.verification_status.value if hasattr(recent.verification_status, "value") else recent.verification_status
+        return {
+            "recorded": True,
+            "duplicate": True,
+            "verification_status": status_value,
+            "message": "Already marked a moment ago",
+            "event": _event_payload(_event_query(db).filter(AttendanceEvent.id == recent.id).first()),
+        }
+
+    profile, references = _own_face_references(db, current_user)
+    content: Optional[bytes] = None
+    image = None
+    if file is not None:
+        image, content = _read_upload_image(file)
+
+    if not manual:
+        if image is None:
+            raise HTTPException(status_code=400, detail="Take a photo to check in by face")
+        if not references:
+            return {"recorded": False, "reason": "not_enrolled", "can_mark_manually": True,
+                    "message": "Your face is not enrolled yet. Mark it by hand with a note - HR will review it."}
+        embedding, face, _faces, top_face = _extract_embedding(image)
+        if not face or not embedding:
+            return {"recorded": False, "reason": "no_face", "can_mark_manually": True,
+                    "message": "No face was found in the photo. Try again, or mark it by hand with a note."}
+        score = max(face_engine.similarity(embedding, reference) for reference in references)
+        liveness_score = face_engine.liveness(image, top_face) if top_face else 1.0
+        liveness_mode = (settings.FACE_LIVENESS_MODE or "advisory").strip().lower()
+        liveness_suspect = liveness_mode != "off" and liveness_score < settings.FACE_LIVENESS_MIN_SCORE
+        if score < settings.FACE_MATCH_THRESHOLD or liveness_suspect:
+            return {
+                "recorded": False,
+                "reason": "liveness" if liveness_suspect and score >= settings.FACE_MATCH_THRESHOLD else "not_matched",
+                "confidence": round(score, 3),
+                "can_mark_manually": True,
+                "message": "Your face could not be confirmed. Try again, or mark it by hand with a note - HR will review it.",
+            }
+        source = AttendanceSource.FACE
+        verification_status = AttendanceVerificationStatus.VERIFIED
+        confidence: Optional[float] = round(score, 3)
+        remark = "Self check-in, face verified"
+        audit = {"confidence": round(score, 3), "liveness_score": round(liveness_score, 4)}
+    else:
+        if not note or len(note) < 3:
+            raise HTTPException(status_code=400, detail="Add a note saying why it is marked by hand")
+        confidence = None
+        if image is not None and references:
+            # For HR's eyes only: how close the photo came. A failure here
+            # never stops the manual mark.
+            try:
+                embedding, face, _faces, _top = _extract_embedding(image)
+                if embedding:
+                    confidence = round(max(face_engine.similarity(embedding, ref) for ref in references), 3)
+            except HTTPException:
+                confidence = None
+        source = AttendanceSource.MANUAL
+        verification_status = AttendanceVerificationStatus.NEEDS_REVIEW
+        remark = (
+            "Marked by hand after the face check did not pass - needs HR review"
+            if content is not None
+            else "Marked by hand without a photo - needs HR review"
+        )
+        audit = {"confidence": confidence, "photo": content is not None}
+
+    if profile is None:
+        profile = _get_or_create_profile(db, current_user)
+    event = AttendanceEvent(
+        user_id=current_user.id,
+        profile_id=profile.id,
+        facility_id=profile.facility_id or current_user.facility_id,
+        event_type=event_enum,
+        event_time=datetime.utcnow(),
+        timezone=_device_timezone(device_timezone),
+        source=source,
+        verification_status=verification_status,
+        confidence=confidence,
+        remark=remark,
+        employee_note=note,
+        device_label=(device_label or "Self check-in")[:120],
+        image_url=_store_event_photo(content) if content is not None else None,
+        latitude=latitude,
+        longitude=longitude,
+        location_accuracy_m=location_accuracy_m,
+        created_by_id=current_user.id,
+    )
+    db.add(event)
+    db.flush()
+    log_activity(db, "attendance_events", event.id, "ATTENDANCE_SELF_CHECKIN", current_user, {
+        "event_type": event_enum.value,
+        "source": source.value,
+        "verification_status": verification_status.value,
+        "located": latitude is not None,
+        **audit,
+    })
+    db.commit()
+    return {
+        "recorded": True,
+        "duplicate": False,
+        "verification_status": verification_status.value,
+        "message": "Marked" if verification_status == AttendanceVerificationStatus.VERIFIED else "Marked - flagged for HR review",
+        "event": _event_payload(_event_query(db).filter(AttendanceEvent.id == event.id).first()),
+    }
 
 
 @router.get("/summary/today", response_model=AttendanceSummaryResponse)

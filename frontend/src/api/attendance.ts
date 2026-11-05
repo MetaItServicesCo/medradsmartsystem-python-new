@@ -44,6 +44,12 @@ export interface AttendanceEvent {
   remark?: string | null
   device_label?: string | null
   image_url?: string | null
+  // Where a self check-in was marked, and the employee's own note (why it was
+  // marked by hand, or a dispute). HR's note is `remark`.
+  latitude?: number | null
+  longitude?: number | null
+  location_accuracy_m?: number | null
+  employee_note?: string | null
   created_by_id?: number | null
   created_at: string
   user: AttendanceUserBrief
@@ -276,6 +282,63 @@ export const createAttendanceEvent = async (payload: AttendanceEventPayload): Pr
 export type AttendanceDayStatus =
   | 'full_day' | 'early_leave' | 'half_day' | 'absent'
   | 'on_leave' | 'holiday'
+
+// ── Self check-in: every employee marks their own attendance ─────────────────
+
+export type AttendanceEventType = 'check_in' | 'check_out' | 'break_start' | 'break_end'
+
+export interface MyAttendanceStatus {
+  face_enrolled: boolean
+  last_event: AttendanceEvent | null
+}
+
+export interface MyAttendanceMarkResult {
+  recorded: boolean
+  duplicate?: boolean
+  verification_status?: 'verified' | 'needs_review'
+  reason?: 'not_enrolled' | 'no_face' | 'not_matched' | 'liveness'
+  can_mark_manually?: boolean
+  confidence?: number
+  message: string
+  event?: AttendanceEvent
+}
+
+export interface MyAttendanceMark {
+  event_type: AttendanceEventType
+  photo?: Blob | null
+  manual?: boolean
+  note?: string
+  latitude?: number
+  longitude?: number
+  location_accuracy_m?: number
+}
+
+export const fetchMyAttendanceStatus = async (): Promise<MyAttendanceStatus> => {
+  const res = await apiClient.get('/attendance/me/status')
+  return res.data
+}
+
+/** By face (checked against my own enrolment), or by hand with a note - flagged for HR. */
+export const markMyAttendance = async (mark: MyAttendanceMark): Promise<MyAttendanceMarkResult> => {
+  const form = new FormData()
+  form.append('event_type', mark.event_type)
+  if (mark.photo) form.append('file', mark.photo, 'check-in.jpg')
+  if (mark.manual) form.append('manual', 'true')
+  if (mark.note) form.append('note', mark.note)
+  if (mark.latitude !== undefined && mark.longitude !== undefined) {
+    form.append('latitude', String(mark.latitude))
+    form.append('longitude', String(mark.longitude))
+    if (mark.location_accuracy_m !== undefined) form.append('location_accuracy_m', String(mark.location_accuracy_m))
+  }
+  try {
+    form.append('device_timezone', Intl.DateTimeFormat().resolvedOptions().timeZone)
+  } catch {
+    // An unknown zone is recorded as the default.
+  }
+  form.append('device_label', /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'Self check-in (phone)' : 'Self check-in (web)')
+  const res = await apiClient.post('/attendance/me/check', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return res.data
+}
 
 export interface RegisterDay {
   date: string

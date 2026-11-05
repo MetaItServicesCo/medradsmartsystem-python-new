@@ -2125,7 +2125,7 @@ def generate_timesheets(
     """
     from calendar import monthrange
 
-    from app.models.attendance import AttendanceEvent, AttendanceProfile
+    from app.models.attendance import AttendanceEvent, AttendanceProfile, AttendanceVerificationStatus
     from app.utils.attendance_rules import (
         ABSENT, classify_range, deduction_for, resolve_policy, wage_for,
     )
@@ -2184,6 +2184,8 @@ def generate_timesheets(
             month_start - timedelta(days=1), datetime.min.time()),
         AttendanceEvent.event_time < datetime.combine(
             month_end + timedelta(days=2), datetime.min.time()),
+        # A scan HR rejected is not attendance, so it earns no hours.
+        AttendanceEvent.verification_status != AttendanceVerificationStatus.REJECTED,
     ).all()
     events_by_user: dict[int, list] = {}
     for evt in raw_events:
