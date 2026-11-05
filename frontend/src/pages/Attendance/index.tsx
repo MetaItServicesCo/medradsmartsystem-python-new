@@ -60,6 +60,7 @@ import {
   type AttendanceProfile,
 } from '@/api/attendance'
 import { resolveUploadUrl } from '@/api/users'
+import { AttendancePhoto, AttendancePhotoButton } from './AttendancePhoto'
 import { asUtc } from '@/utils/attendanceTime'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -1068,10 +1069,7 @@ const Attendance = () => {
               {reviewing.event.employee_note && (
                 <Typography sx={{ fontSize: 14 }}><b>Employee's note:</b> {reviewing.event.employee_note}</Typography>
               )}
-              {reviewing.event.image_url && (
-                <Box component="img" src={resolveUploadUrl(reviewing.event.image_url)} alt="Photo taken at the time"
-                  sx={{ width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: '12px', bgcolor: '#0F172A' }} />
-              )}
+              {reviewing.event.image_url && <AttendancePhoto eventId={reviewing.event.id} />}
               <Typography sx={{ fontSize: 13, color: '#64748B' }}>
                 {reviewing.status === 'verified'
                   ? 'Approving keeps this mark counting towards worked hours and clears the flag.'
@@ -1164,10 +1162,8 @@ const EventTable = ({ rows, onReview }: { rows: AttendanceEvent[]; onReview?: (e
               </TableCell>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>
                 {event.image_url && (
-                  <Button size="small" href={resolveUploadUrl(event.image_url) || ''} target="_blank" rel="noreferrer"
-                    sx={{ textTransform: 'none', fontWeight: 800, minWidth: 0 }}>
-                    Photo
-                  </Button>
+                  <AttendancePhotoButton eventId={event.id}
+                    label={`${event.user.full_name} · ${EVENT_LABELS[event.event_type] || event.event_type} · ${formatDateTime(event.event_time)}`} />
                 )}
                 {event.latitude != null && event.longitude != null && (
                   <Button size="small" href={`https://www.google.com/maps?q=${event.latitude},${event.longitude}`}

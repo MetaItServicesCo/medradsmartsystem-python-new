@@ -252,6 +252,28 @@ saved = events_of("newbie")[-1] if events_of("newbie") else None
 ok("without any photo it can still be marked by hand, flagged", r.json().get("recorded") is True and saved is not None
    and saved.image_url is None and "without a photo" in (saved.remark or ""))
 
+# ── C2. the photo is private ─────────────────────────────────────────────────
+section("C2. Who may see a check-in photo")
+staff_event = next(e for e in events_of("staff") if e.image_url)
+newbie_event = events_of("newbie")[-1]
+
+
+def photo(who, event_id):
+    return as_user(who).get(f"/api/v1/attendance/events/{event_id}/photo")
+
+
+r = photo("staff", staff_event.id)
+ok("the employee sees their own photo", r.status_code == 200 and r.content == b"stored-photo"
+   and "no-store" in r.headers.get("cache-control", ""), str(r.status_code))
+ok("HR sees it", photo("hr", staff_event.id).status_code == 200)
+ok("an admin sees it", photo("boss", staff_event.id).status_code == 200)
+for who in ("newbie", "tech", "facadmin", "client"):
+    ok(f"{who} cannot see someone else's photo (same 404 as a missing one)", photo(who, staff_event.id).status_code == 404)
+ok("a mark without a photo has none to show", photo("hr", newbie_event.id).status_code == 404)
+ok("an unknown mark is a 404", photo("hr", 999999).status_code == 404)
+public = as_user("hr").get(staff_event.image_url)
+ok("the public uploads address still never serves it", public.status_code == 404, f"{staff_event.image_url} -> {public.status_code}")
+
 # ── D. the loophole ──────────────────────────────────────────────────────────
 section("D. No more self-awarded verified hours")
 yesterday = (datetime.utcnow() - timedelta(days=1)).replace(microsecond=0).isoformat()

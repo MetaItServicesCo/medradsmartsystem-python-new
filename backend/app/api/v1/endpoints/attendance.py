@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import uuid
 from datetime import date, datetime, time, timedelta
@@ -5,6 +6,7 @@ from math import sqrt
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -37,6 +39,7 @@ from app.schemas.attendance import (
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
 from app.utils.logging import log_activity
 from app.utils.permissions import has_module_permission
+from app.utils.upload_security import protected_upload_path
 from app.utils import face_engine
 from app.core.config import settings
 
@@ -829,6 +832,42 @@ def create_event(
     log_activity(db, "attendance_events", event.id, "ATTENDANCE_EVENT_CREATED", current_user, event_in.model_dump())
     db.commit()
     return _event_query(db).filter(AttendanceEvent.id == event.id).first()
+
+
+@router.get("/events/{event_id}/photo")
+def read_attendance_event_photo(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """The photo taken when an attendance mark was made.
+
+    Attendance photos are biometric, so the upload folder never serves them
+    publicly: they come only from here, to the person in the photo and to
+    those who manage attendance - scoped to their facilities exactly as the
+    attendance list is. Anyone else gets the same 404 as a missing photo.
+    """
+    event = db.query(AttendanceEvent).filter(AttendanceEvent.id == event_id).first()
+    if not event or not event.image_url:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if event.user_id != current_user.id:
+        allowed = has_module_permission(current_user, "attendance", "view") and current_user.role != UserRole.EMPLOYEE
+        if allowed and is_facility_scoped_user(current_user):
+            allowed = event.facility_id is not None and event.facility_id in get_user_facility_ids(db, current_user)
+        if not allowed:
+            raise HTTPException(status_code=404, detail="Photo not found")
+    try:
+        file_path = protected_upload_path(ATTENDANCE_UPLOAD_DIR, event.image_url, "attendance_faces")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return FileResponse(
+        file_path,
+        media_type=mimetypes.guess_type(file_path)[0] or "image/jpeg",
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 class AttendanceEventReview(BaseModel):

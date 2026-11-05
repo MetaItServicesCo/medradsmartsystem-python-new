@@ -313,6 +313,12 @@ export interface MyAttendanceMark {
   location_accuracy_m?: number
 }
 
+/** A mark's photo. Biometric, so never a public link: fetched with the user's login. */
+export const fetchAttendanceEventPhoto = async (eventId: number): Promise<Blob> => {
+  const res = await apiClient.get(`/attendance/events/${eventId}/photo`, { responseType: 'blob' })
+  return res.data
+}
+
 export const fetchMyAttendanceStatus = async (): Promise<MyAttendanceStatus> => {
   const res = await apiClient.get('/attendance/me/status')
   return res.data
