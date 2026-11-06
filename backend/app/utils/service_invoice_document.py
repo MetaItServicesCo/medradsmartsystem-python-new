@@ -185,7 +185,11 @@ def build_service_invoice_document(
             "make": equipment.make if equipment else None,
             "model": equipment.model if equipment else None,
         },
-        "work_entries": entries,
+        # The customer sees one technician: the one assigned to the request. Who
+        # logged each visit stays on the work order and in the invoice's saved rows.
+        "work_entries": [
+            {**row, "technician": technician or ""} if isinstance(row, dict) else row for row in entries
+        ],
         "total_hours": float(sr.time_spent_hours or 0) if sr else 0,
         "parts": parts,
         "test_equipment": test_equipment,

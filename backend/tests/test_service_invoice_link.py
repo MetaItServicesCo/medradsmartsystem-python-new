@@ -284,8 +284,25 @@ ok("generated with the administrator's wording", r.status_code == 200, r.text[:1
 doc = document(invoice_a["id"]).json()
 row = doc["work_entries"][0]
 ok("  the wording is on the invoice", row["diagnosis"] == "Brakes locked" and row["work_done"] == "Removed the damaged pedal.", row)
-ok("  times, hours and technician came from the work order", row["hours"] == 2.0 and row["technician"] == "Omar Ahmad"
+ok("  times and hours came from the work order", row["hours"] == 2.0
    and row["check_in"] == "2026-11-05T09:00:00" and row["date"] == "2026-11-05", row)
+ok("  only the assigned technician is named, not who logged the work",
+   all(e["technician"] == "Tech" for e in doc["work_entries"]) and doc["technician"] == "Tech" and "Omar Ahmad" not in str(doc), row)
+_check = Session()
+_saved = _check.get(Invoice, invoice_a["id"]).service_work_entries
+_check.close()
+ok("  who logged it is still kept on record", _saved[0]["technician"] == "Omar Ahmad", _saved[0])
+_check = Session()
+_check.get(ServiceRequest, SR_A).assigned_technician_id = None
+_check.commit()
+_check.close()
+_doc = document(invoice_a["id"]).json()
+ok("  with nobody assigned, no technician is named", _doc["technician"] is None and all(e["technician"] == "" for e in _doc["work_entries"]), _doc["work_entries"])
+_check = Session()
+_check.get(ServiceRequest, SR_A).assigned_technician_id = IDS["tech"]
+_check.commit()
+_check.close()
+ok("  assigned again: named again", document(invoice_a["id"]).json()["work_entries"][0]["technician"] == "Tech")
 ok("  a row that does not exist was ignored", all(e["key"] != "not-a-row" for e in doc["work_entries"]))
 ok("  the addition's row is there", doc["work_entries"][1]["work_done"] == "Fitted the new pedal")
 ok("the header and service report block", doc["po"] == "PO-77" and doc["installment_plan"] == "Monthly"

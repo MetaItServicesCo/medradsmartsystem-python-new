@@ -2255,7 +2255,7 @@ const ServiceRequestDetail = () => {
                   </Box>
                   {invoiceWorkEntries.map((entry, index) => (
                     <Box key={entry.key} sx={{ display: 'grid', gap: 1 }}>
-                      <Typography sx={{ color: '#475569', fontWeight: 800, fontSize: 12 }}>{entry.date} · {entry.technician}</Typography>
+                      <Typography sx={{ color: '#475569', fontWeight: 800, fontSize: 12 }}>{entry.date}</Typography>
                       {(['diagnosis', 'work_done'] as const).map(field => (
                         <TextField
                           key={field}
