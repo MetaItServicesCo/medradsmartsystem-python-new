@@ -9,6 +9,12 @@ import { NEW_MODALITIES } from './newModalities'
 
 const COLOR = '#7C3AED'
 
+// Ignoring case, and with numbers in order: Or Monitor_1 before Or Monitor_2.
+const alphabetical = new Intl.Collator('en', { sensitivity: 'base', numeric: true }).compare
+const SORTED_MODALITIES = [...NEW_MODALITIES]
+  .sort((a, b) => alphabetical(a.name, b.name))
+  .map(modality => ({ ...modality, subModalities: [...modality.subModalities].sort(alphabetical) }))
+
 /** The proposed list, read only: nothing here changes any asset or modality. */
 const NewModalitiesTab = () => {
   const [search, setSearch] = useState('')
@@ -16,8 +22,8 @@ const NewModalitiesTab = () => {
   const term = search.trim().toLowerCase()
 
   const visible = useMemo(() => {
-    if (!term) return NEW_MODALITIES
-    return NEW_MODALITIES.flatMap(modality => {
+    if (!term) return SORTED_MODALITIES
+    return SORTED_MODALITIES.flatMap(modality => {
       if (modality.name.toLowerCase().includes(term)) return [modality]
       const subModalities = modality.subModalities.filter(name => name.toLowerCase().includes(term))
       return subModalities.length ? [{ ...modality, subModalities }] : []
