@@ -84,6 +84,15 @@ class Invoice(Base):
     approved_for_billing_at = Column(DateTime, nullable=True)
     approved_total_amount = Column(Numeric(10, 2), nullable=True)
     approval_invalidated_at = Column(DateTime, nullable=True)
+    # Service invoices: the diagnosis and work done as issued, and the link the
+    # customer views and pays it through. The token itself is never stored; only
+    # its hash, and the nonce it is derived from so the same link can be shown again.
+    service_work_entries = Column(JSON, nullable=True)
+    public_link_nonce = Column(String(64), nullable=True)
+    public_link_hash = Column(String(64), nullable=True, unique=True, index=True)
+    public_link_expires_at = Column(DateTime, nullable=True)
+    public_link_sent_at = Column(DateTime, nullable=True)
+    public_link_email = Column(String(320), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

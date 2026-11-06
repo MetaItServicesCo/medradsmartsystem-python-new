@@ -13,6 +13,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import AttachFileIcon from '@mui/icons-material/AttachFile'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
+import LinkIcon from '@mui/icons-material/Link'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FilterListIcon from '@mui/icons-material/FilterList'
@@ -64,6 +66,8 @@ import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
+import { useServiceInvoiceHtml } from './useServiceInvoiceHtml'
+import ServiceInvoiceShareDialog, { type ServiceInvoiceShareTarget } from './ServiceInvoiceShareDialog'
 import {
   approveInvoiceForBilling,
   approveInvoicePaymentProof,
@@ -468,6 +472,7 @@ const Billing = () => {
   const [payOpen, setPayOpen] = useState<BillingItem | null>(null)
   const [viewItem, setViewItem] = useState<BillingItem | null>(null)
   const [printItem, setPrintItem] = useState<BillingItem | null>(null)
+  const [shareTarget, setShareTarget] = useState<ServiceInvoiceShareTarget | null>(null)
   const [printDocumentType, setPrintDocumentType] = useState<PrintDocumentType>('invoice')
   const [editItem, setEditItem] = useState<BillingItem | null>(null)
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
@@ -606,6 +611,12 @@ const Billing = () => {
     enabled: Boolean(printInvoiceId),
     staleTime: 15_000,
   })
+
+  const serviceInvoiceId = (item: BillingItem | null) => (
+    item?.source === 'service' && item.billingKind === 'service_invoice' ? item.id : null
+  )
+  const viewDocument = useServiceInvoiceHtml(serviceInvoiceId(viewItem))
+  const printDocument = useServiceInvoiceHtml(printDocumentType === 'ledger' ? null : serviceInvoiceId(printItem))
 
   // Fetch full SR data (with history) when printing a service invoice — needed to append the service report
   const printSrId = printItem?.source === 'service' && printItem?.billingKind === 'service_invoice'
@@ -1238,10 +1249,10 @@ const Billing = () => {
       const invoice = item.raw as ServiceInvoice
       const laborLine = invoice.line_items?.find(l => l.description?.startsWith('Service labor'))
       const travelLine = invoice.line_items?.find(l => l.description === 'Travel Charges')
-      const serviceCallLine = invoice.line_items?.find(l => l.description === 'Service Call Fee')
+      const serviceCallLine = invoice.line_items?.find(l => l.description === 'Service Fee')
       return {
         ...base,
-        labels: { serviceCharges: 'Service Call Fee', ...(base.labels || {}) },
+        labels: { serviceCharges: 'Service Fee', ...(base.labels || {}) },
         ...(Number(serviceCallLine?.total_amount || 0) > 0 ? { service_charges: Number(serviceCallLine!.total_amount) } : {}),
         ...(Number(laborLine?.total_amount || 0) > 0 ? { labor_fees: Number(laborLine!.total_amount) } : {}),
         ...(Number(travelLine?.total_amount || 0) > 0 ? { travel_charges: Number(travelLine!.total_amount) } : {}),
@@ -1848,6 +1859,26 @@ const Billing = () => {
             Print
           </MenuItem>
         )}
+        {/* Service invoices go out only once approved for billing, and only while there is a balance. */}
+        {actionItem && canApproveBilling && serviceInvoiceId(actionItem) != null && actionItem.balance > 0 && String(actionItem.status) !== 'cancelled' && (
+          [
+            { channel: 'email' as const, label: 'Send Invoice via Email', icon: <EmailOutlinedIcon fontSize="small" sx={{ color: '#2563EB' }} /> },
+            { channel: 'link' as const, label: 'Copy Link', icon: <LinkIcon fontSize="small" sx={{ color: '#2563EB' }} /> },
+          ].map(option => (
+            <MenuItem
+              key={option.channel}
+              sx={ACTION_MENU_ITEM}
+              disabled={actionItem.billingApprovalStatus !== 'approved'}
+              onClick={() => {
+                setShareTarget({ invoiceId: actionItem.id, invoiceNumber: actionItem.number, channel: option.channel })
+                closeActions()
+              }}
+            >
+              <ListItemIcon>{option.icon}</ListItemIcon>
+              {actionItem.billingApprovalStatus === 'approved' ? option.label : `${option.label} (approve for billing first)`}
+            </MenuItem>
+          ))
+        )}
         {actionItem && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setExpandedKey(prev => (prev === actionItem.key ? null : actionItem.key)); closeActions() }}>
             <ListItemIcon>
@@ -1860,9 +1891,13 @@ const Billing = () => {
         )}
       </Menu>
 
+      <ServiceInvoiceShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
+
       <InvoicePrintDialog
         open={Boolean(viewItem)}
         onClose={() => setViewItem(null)}
+        documentHtml={viewDocument.html}
+        documentLoading={viewDocument.loading}
         invoice={printableItem(viewItem)}
         lineItems={printableLineItems(viewItem)}
         ledgerTransactions={printableLedgerTransactions(viewItem)}
@@ -1893,7 +1928,9 @@ const Billing = () => {
         primaryDocumentLabel={printItem?.source === 'service' && printItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
         accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
         quantityLabel={printItem?.source === 'service' && printItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
-        appendHtml={printDocumentType !== 'ledger' && printSrData ? buildServiceReportSheet(printSrData) : undefined}
+        appendHtml={printDocumentType !== 'ledger' && printSrData && !printDocument.html ? buildServiceReportSheet(printSrData) : undefined}
+        documentHtml={printDocument.html}
+        documentLoading={printDocument.loading}
         initialDocumentType={printDocumentType}
         documentTypeLocked={printDocumentType === 'ledger'}
         paymentEvidence={(printPaymentEvidenceQ.data?.items || []) as InvoicePaymentEvidenceItem[]}

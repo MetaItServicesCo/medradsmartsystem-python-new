@@ -246,8 +246,9 @@ export interface ServiceInvoiceCreatePayload {
   notes?: string
   travel_charges?: number
   labor_fee_override?: number
-  /** Left out, the tier's Service Call Fee is charged; 0 leaves it off this invoice. */
+  /** Left out, the tier's Service Fee is charged; 0 leaves it off this invoice. */
   service_call_fee?: number
+  work_entries?: { key: string; diagnosis: string; work_done: string }[]
 }
 
 export interface ServiceInvoiceUpdatePayload {
@@ -700,5 +701,116 @@ export const decideQuotationAuthorization = async (
   data: QuotationAuthorizationDecision,
 ): Promise<QuotationAuthorization> => {
   const res = await apiClient.post(`/service-requests/quotations/${quotationId}/authorization-decisions`, data)
+  return res.data
+}
+
+// --- Service invoice document, sending it, and paying through its link ---
+
+export interface ServiceInvoiceWorkEntry {
+  key: string
+  date: string | null
+  diagnosis: string
+  work_done: string
+  technician: string
+  check_in: string | null
+  check_out: string | null
+  hours: number | null
+}
+
+export interface ServiceInvoiceDocument {
+  invoice_number: string
+  request_number: string | null
+  status: string
+  issue_date: string
+  due_date: string
+  installment_plan: string
+  po: string | null
+  facility: { name: string | null; address: string | null; contact_name: string | null; phone: string | null; email: string | null }
+  equipment: { service_required: string | null; serial_number: string | null; asset_tag: string | null; make: string | null; model: string | null }
+  work_entries: ServiceInvoiceWorkEntry[]
+  total_hours: number
+  parts: { part_number: string | null; description: string | null; quantity: number | null; condition: string | null }[]
+  test_equipment: { description: string | null; make: string | null; model: string | null; serial_number: string | null }[]
+  technician: string | null
+  client: string | null
+  preferred_date: string | null
+  actual_date: string | null
+  charges: { label: string; amount: string }[]
+  subtotal: string
+  tax_amount: string
+  discount_amount: string
+  total_amount: string
+  amount_paid: string
+  balance_due: string
+  payment_link: string | null
+  paid_quotations?: { quotation_number: string; description: string | null; paid_amount: string; paid_at: string | null }[]
+}
+
+export interface ServiceInvoiceShareOptions {
+  approved: boolean
+  recipients: { user_id: number; name: string; email: string }[]
+  suggested_email: string | null
+  link_sent_at: string | null
+}
+
+export interface ServiceInvoiceShareResult {
+  share_url: string
+  channel: 'email' | 'link'
+  email: string | null
+  expires_at: string
+}
+
+export interface PublicServiceInvoice {
+  state: 'payable' | 'paid' | 'under_review'
+  invoice_id?: number
+  invoice_number: string
+  balance_due?: string
+  payer_name?: string | null
+  payer_email?: string | null
+  document: ServiceInvoiceDocument | null
+  can_pay: boolean
+  square_payment: {
+    enabled: boolean
+    environment: string
+    application_id: string | null
+    location_id: string | null
+    currency: string
+    sdk_url: string
+  } | null
+}
+
+export const fetchServiceInvoiceDocument = async (invoiceId: number): Promise<ServiceInvoiceDocument> => {
+  const res = await apiClient.get(`/service-invoices/${invoiceId}/document`)
+  return res.data
+}
+
+export const fetchInvoiceWorkEntries = async (requestId: number): Promise<ServiceInvoiceWorkEntry[]> => {
+  const res = await apiClient.get(`/service-requests/${requestId}/invoice-work-entries`)
+  return res.data.items
+}
+
+export const fetchServiceInvoiceShareOptions = async (invoiceId: number): Promise<ServiceInvoiceShareOptions> => {
+  const res = await apiClient.get(`/service-invoices/${invoiceId}/share-options`)
+  return res.data
+}
+
+export const shareServiceInvoice = async (
+  invoiceId: number,
+  data: { channel: 'email' | 'link'; recipient_user_id?: number; email?: string },
+): Promise<ServiceInvoiceShareResult> => {
+  const res = await apiClient.post(`/service-invoices/${invoiceId}/share`, data)
+  return res.data
+}
+
+export const fetchPublicServiceInvoice = async (token: string): Promise<PublicServiceInvoice> => {
+  const res = await apiClient.get(`/public/service-invoices/${token}`)
+  return res.data
+}
+
+export const payPublicServiceInvoice = async (
+  token: string,
+  data: { source_id: string; idempotency_key: string; payer_name: string },
+): Promise<PublicServiceInvoice> => {
+  const res = await apiClient.post(`/public/service-invoices/${token}/square-payment`, data)
   return res.data
 }

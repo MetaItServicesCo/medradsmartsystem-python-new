@@ -465,7 +465,7 @@ add(request_id, notes="Advice only, nothing to fix", status="completed")
 r = invoice_of(request_id)
 invoice = r.json()
 ok("0 hours, closed through an addition: only the service cost, 1500", r.status_code == 200
-   and lines(invoice) == [("Service Call Fee", D("1500.00"))], f"{r.status_code} {lines(invoice)}")
+   and lines(invoice) == [("Service Fee", D("1500.00"))], f"{r.status_code} {lines(invoice)}")
 ok("  the totals and balance agree", money_of(invoice, "subtotal") == D("1500.00") and money_of(invoice, "total_amount") == D("1500.00")
    and money_of(invoice, "balance_due") == D("1500.00"), f"{invoice.get('total_amount')}")
 ok("  the fee is in the request's history",
@@ -478,7 +478,7 @@ ok("generating again returns the same invoice, not a second fee", again["id"] ==
 request_id = priced_request("SR-FEE-2H", hours="2.00", status=ServiceRequestStatus.COMPLETED)
 invoice = invoice_of(request_id).json()
 ok("2 hours: service cost + labour = 1500 + 200 = 1700",
-   lines(invoice) == [("Service Call Fee", D("1500.00")), ("Service labor", D("200.00"))]
+   lines(invoice) == [("Service Fee", D("1500.00")), ("Service labor", D("200.00"))]
    and money_of(invoice, "total_amount") == D("1700.00"), str(lines(invoice)))
 ok("  the labour figure on the request stays labour", state(request_id)["cost"] == D("200.00"))
 ok("  PM Cost stays out of it", all("999" not in str(row["total_amount"]) for row in invoice["line_items"]))
@@ -502,7 +502,7 @@ ok("travel, tax and discount apply on top", money_of(invoice, "subtotal") == D("
 
 request_id = priced_request("SR-FEE-EDIT", hours="2.00", status=ServiceRequestStatus.COMPLETED)
 invoice = invoice_of(request_id, service_call_fee="1000").json()
-ok("the admin can change the fee for this invoice", lines(invoice)[0] == ("Service Call Fee", D("1000.00"))
+ok("the admin can change the fee for this invoice", lines(invoice)[0] == ("Service Fee", D("1000.00"))
    and money_of(invoice, "total_amount") == D("1200.00"), str(lines(invoice)))
 request_id = priced_request("SR-FEE-OFF", hours="2.00", status=ServiceRequestStatus.COMPLETED)
 invoice = invoice_of(request_id, service_call_fee="0").json()
@@ -537,10 +537,10 @@ db.commit()
 db.close()
 detail = as_user("superadmin").get("/api/v1/service-requests/invoices").json()
 kept = next(row for row in detail["items"] if row["id"] == invoice["id"])
-ok("changing the tier later does not touch an issued invoice", lines(kept)[0] == ("Service Call Fee", D("1500.00"))
+ok("changing the tier later does not touch an issued invoice", lines(kept)[0] == ("Service Fee", D("1500.00"))
    and money_of(kept, "total_amount") == D("1700.00"), str(lines(kept)))
 r = as_user("superadmin").put(f"/api/v1/service-requests/invoices/{invoice['id']}", json={"notes": "Thanks for your business"})
-ok("editing the invoice's note keeps the fee", r.status_code == 200 and lines(r.json())[0] == ("Service Call Fee", D("1500.00"))
+ok("editing the invoice's note keeps the fee", r.status_code == 200 and lines(r.json())[0] == ("Service Fee", D("1500.00"))
    and r.json()["notes"] == "Thanks for your business", f"{r.status_code} {r.text[:120]}")
 db = Session()
 db.get(Tier, PRICED_TIER).service_call_fee = D("1500.00")

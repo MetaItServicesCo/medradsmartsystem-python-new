@@ -14,7 +14,9 @@ import {
   TextField,
   Tooltip,
   Typography,
+  CircularProgress,
 } from '@mui/material'
+import ServiceInvoiceFrame from './ServiceInvoiceFrame'
 import PrintIcon from '@mui/icons-material/Print'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
@@ -220,6 +222,9 @@ interface InvoicePrintDialogProps {
   quantityLabel?: string
   /** Optional HTML appended after the invoice sheet (e.g. service report). */
   appendHtml?: string
+  /** A complete document for this invoice, shown and printed in place of the standard layout. Not used when editing. */
+  documentHtml?: string | null
+  documentLoading?: boolean
   mode?: 'print' | 'edit' | 'view'
   /** Open the print preview on a specific document without changing existing callers. */
   initialDocumentType?: PrintDocumentType
@@ -739,6 +744,8 @@ const InvoicePrintDialog = ({
   accent = '#7C3AED',
   quantityLabel = 'Qty',
   appendHtml,
+  documentHtml,
+  documentLoading = false,
   paidQuotations = [],
   acceptance,
   paymentEvidence = [],
@@ -860,8 +867,14 @@ const InvoicePrintDialog = ({
     }))
   }, [activeDocumentType, displayInvoice?.invoice_number, displayLabels.quantity, editRows, isEditMode, ledgerTransactions, lineItems, quantityLabel])
 
+  const usesDocument = !isEditMode && activeDocumentType === 'invoice' && Boolean(documentHtml || documentLoading)
+
   const handlePrint = () => {
     if (!displayInvoice) return
+    if (documentHtml && !isEditMode && activeDocumentType === 'invoice') {
+      printHtml(`${displayInvoice.invoice_number} ${documentLabel(activeDocumentType, primaryDocumentLabel)}`, documentHtml)
+      return
+    }
     const printableRows = isEditMode ? editRows : lineItems
     const html = buildPrintableHtml(displayInvoice, activeDocumentType, printableRows, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations, acceptance, paymentEvidence)
     printHtml(`${displayInvoice.invoice_number} ${documentLabel(activeDocumentType, primaryDocumentLabel)}`, html + (appendHtml || ''))
@@ -986,6 +999,10 @@ const InvoicePrintDialog = ({
             </Box>
 
             <Card sx={{ borderRadius: '18px', border: '1px solid #E5E7EB', bgcolor: '#fff', overflow: 'hidden', boxShadow: '0 18px 45px rgba(15,23,42,0.08)' }}>
+              {usesDocument && (documentHtml
+                ? <ServiceInvoiceFrame html={documentHtml} title={`Invoice ${displayInvoice.invoice_number}`} />
+                : <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>)}
+              <Box sx={{ display: usesDocument ? 'none' : 'block' }}>
               <Box sx={{ p: 3, pb: 1.5 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -1235,6 +1252,8 @@ const InvoicePrintDialog = ({
                 </Box>
               )}
 
+              </Box>
+
               {!isEditMode && activeDocumentType !== 'packing_slip' && (paymentEvidenceLoading || paymentEvidence.length > 0) && (
                 <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #DDE5F2', bgcolor: '#F8FAFC' }}>
                   <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Payment Evidence</Typography>
@@ -1348,7 +1367,7 @@ const InvoicePrintDialog = ({
             {saving ? 'Saving...' : 'Save Invoice'}
           </Button>
         ) : isViewMode ? null : (
-          <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" disabled={paymentEvidenceLoading} sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
+          <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" disabled={paymentEvidenceLoading || (usesDocument && !documentHtml)} sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
             Print {documentLabel(activeDocumentType, primaryDocumentLabel)}
           </Button>
         )}

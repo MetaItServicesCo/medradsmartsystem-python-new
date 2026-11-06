@@ -49,6 +49,7 @@ from app.utils.facility_access import (
     get_user_facility_ids, require_assignable_technician, require_facility_access,
     scope_query_to_user_facilities,
 )
+from app.utils.service_invoice_document import service_work_entries
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
@@ -126,6 +127,12 @@ VALID_TRANSITIONS = {
 }
 
 
+class ServiceInvoiceWorkEntryEdit(BaseModel):
+    key: str = Field(max_length=120)
+    diagnosis: Optional[str] = Field(default=None, max_length=5000)
+    work_done: Optional[str] = Field(default=None, max_length=5000)
+
+
 class ServiceInvoiceCreate(BaseModel):
     include_quotations: bool = False
     quotation_ids: Optional[list[int]] = None
@@ -138,6 +145,8 @@ class ServiceInvoiceCreate(BaseModel):
     labor_fee_override: Optional[Decimal] = None
     # Left out, the tier's Service Call Fee is charged; 0 leaves it off this invoice.
     service_call_fee: Optional[Decimal] = Field(default=None, ge=0)
+    # The diagnosis and work done as the administrator worded them for this invoice.
+    work_entries: Optional[list[ServiceInvoiceWorkEntryEdit]] = None
 
 
 class ServiceInvoiceUpdate(BaseModel):
@@ -674,7 +683,7 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
     if service_call_fee is not None and service_call_fee > Decimal("0"):
         rows.append({
             "item_number": sr.request_number,
-            "description": "Service Call Fee",
+            "description": "Service Fee",
             "quantity": Decimal("1"),
             "unit_price": service_call_fee,
             "shipping_fee": Decimal("0"),
@@ -1720,6 +1729,9 @@ def generate_service_invoice(
         payment_terms="Net 30",
         payment_method=payload.payment_method,
         notes=f"__FEES__:labor={service_amount},travel={travel_charges},service_call={service_call_fee}::{payload.notes or f'Service invoice for {db_sr.request_number}.'}",
+        service_work_entries=service_work_entries(
+            db_sr, {edit.key: edit.model_dump() for edit in payload.work_entries or []},
+        ),
     )
     assign_unique_number(
         db, invoice, "invoice_number", prefix=SERVICE_INVOICE_PREFIX)

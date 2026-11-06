@@ -40,7 +40,9 @@ import {
   createServiceRequestWorkSession,
   fetchServiceRequestImage,
   fetchServiceRequestParts,
+  fetchInvoiceWorkEntries,
   fetchServiceRequest,
+  type ServiceInvoiceWorkEntry,
   fetchServiceInvoices,
   generateServiceInvoice,
   updateServiceRequest,
@@ -204,6 +206,8 @@ const ServiceRequestDetail = () => {
   const [invoiceTravelCharges, setInvoiceTravelCharges] = useState('0')
   const [invoiceLaborFees, setInvoiceLaborFees] = useState('0')
   const [invoiceServiceCallFee, setInvoiceServiceCallFee] = useState('0')
+  // The diagnosis and work done as they will read on the invoice.
+  const [invoiceWorkEntries, setInvoiceWorkEntries] = useState<ServiceInvoiceWorkEntry[]>([])
   const [editingTime, setEditingTime] = useState(false)
   const [editTimeValue, setEditTimeValue] = useState('')
   const [editTimeReason, setEditTimeReason] = useState('')
@@ -477,6 +481,7 @@ const ServiceRequestDetail = () => {
       travel_charges: invoiceTravelAmount,
       labor_fee_override: invoiceLaborFees.trim() === '' ? undefined : Number(invoiceLaborFees || 0),
       service_call_fee: invoiceServiceCallAmount,
+      work_entries: invoiceWorkEntries.map(({ key, diagnosis, work_done }) => ({ key, diagnosis, work_done })),
     }),
     onSuccess: (invoice) => {
       toast.success(`Invoice ${invoice.invoice_number} was generated and is pending billing approval`)
@@ -952,6 +957,10 @@ const ServiceRequestDetail = () => {
     setInvoiceNotes(`Service invoice for ${sr.request_number}.`)
     setInvoiceLaborFees(calculatedServiceCost.toFixed(2))
     setInvoiceServiceCallFee(tierServiceCallFee.toFixed(2))
+    setInvoiceWorkEntries([])
+    void fetchInvoiceWorkEntries(sr.id)
+      .then(setInvoiceWorkEntries)
+      .catch(() => toast.warning('The work details could not be loaded; the invoice will use them as recorded'))
     setInvoiceTravelMode('fixed')
     setInvoiceTravelCharges('0')
     setInvoiceOpen(true)
@@ -1681,7 +1690,7 @@ const ServiceRequestDetail = () => {
                 {canLogWork && addingWithoutTime && serviceWorkflowStatus === 'completed' && timeSpentHours <= 0 && (
                   <Typography sx={{ color: '#B45309', fontWeight: 700, fontSize: '0.82rem' }}>
                     {tierServiceCallFee > 0
-                      ? `This closes the request with no hours logged, so only the $${tierServiceCallFee.toFixed(2)} Service Call Fee is billed. An administrator can correct the hours until it is invoiced.`
+                      ? `This closes the request with no hours logged, so only the $${tierServiceCallFee.toFixed(2)} Service Fee is billed. An administrator can correct the hours until it is invoiced.`
                       : 'This closes the request with no hours logged, so no labour is billed. An administrator can correct the hours until it is invoiced.'}
                   </Typography>
                 )}
@@ -2236,8 +2245,37 @@ const ServiceRequestDetail = () => {
               </Box>
               )}
 
+              {invoiceWorkEntries.length > 0 && (
+                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', display: 'grid', gap: 1.5 }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Work shown on the invoice</Typography>
+                    <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 12 }}>
+                      The customer reads this. Correct it here if needed; the work order itself stays as recorded.
+                    </Typography>
+                  </Box>
+                  {invoiceWorkEntries.map((entry, index) => (
+                    <Box key={entry.key} sx={{ display: 'grid', gap: 1 }}>
+                      <Typography sx={{ color: '#475569', fontWeight: 800, fontSize: 12 }}>{entry.date} · {entry.technician}</Typography>
+                      {(['diagnosis', 'work_done'] as const).map(field => (
+                        <TextField
+                          key={field}
+                          label={field === 'diagnosis' ? 'Diagnose' : 'Action Taken'}
+                          value={entry[field]}
+                          onChange={(e) => setInvoiceWorkEntries(rows => rows.map((row, at) => (at === index ? { ...row, [field]: e.target.value } : row)))}
+                          multiline
+                          minRows={field === 'diagnosis' ? 1 : 2}
+                          fullWidth
+                          size="small"
+                          inputProps={{ maxLength: 5000 }}
+                        />
+                      ))}
+                    </Box>
+                  ))}
+                </Box>
+              )}
+
               <TextField
-                label="Service Call Fee ($)"
+                label="Service Fee ($)"
                 type="number"
                 value={invoiceServiceCallFee}
                 onChange={(e) => setInvoiceServiceCallFee(e.target.value)}
@@ -2383,7 +2421,7 @@ const ServiceRequestDetail = () => {
                 inputProps={{ min: 0, step: 0.01 }}
               />
               {([
-                ['Service Call Fee', invoiceServiceCallAmount],
+                ['Service Fee', invoiceServiceCallAmount],
                 ['Labor Fees', Number(invoiceLaborFees || 0)],
                 [invoiceTravelMode === 'mileage' ? 'Travel Charges (Mileage)' : 'Travel Charges', invoiceTravelAmount],
                 ['Included quotations', selectedQuotationTotal],
@@ -2391,7 +2429,7 @@ const ServiceRequestDetail = () => {
                 ['Discount', -Number(invoiceDiscountAmount || 0)],
               ] as [string, number][]).filter(([label, value]) => (
                 // Only what is charged: no fee line without a fee, no labor line without labor.
-                (label !== 'Service Call Fee' && label !== 'Labor Fees') || value > 0
+                (label !== 'Service Fee' && label !== 'Labor Fees') || value > 0
               )).map(([label, value]) => (
                 <Box key={String(label)} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: '1px solid #F1F5F9' }}>
                   <Typography sx={{ color: '#64748B', fontWeight: 800 }}>{label}</Typography>
