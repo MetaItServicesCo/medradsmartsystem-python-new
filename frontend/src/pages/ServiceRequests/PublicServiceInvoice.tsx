@@ -151,6 +151,9 @@ const PublicServiceInvoice = () => {
             )}
           </Box>
         </Card>
+        {data.state === 'payable' && Boolean(data.pending_reports) && (
+          <Alert severity="warning">A payment for this invoice has been reported and is waiting to be checked. Please make sure it has not already been paid before paying again.</Alert>
+        )}
         {data.state === 'payable' && !data.can_pay && (
           <Alert severity="info">Card payment is not available right now. Please contact us to pay this invoice.</Alert>
         )}

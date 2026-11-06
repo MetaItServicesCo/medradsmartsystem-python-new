@@ -68,6 +68,7 @@ import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
 import { useServiceInvoiceHtml } from './useServiceInvoiceHtml'
 import ServiceInvoiceShareDialog, { type ServiceInvoiceShareTarget } from './ServiceInvoiceShareDialog'
+import ServiceInvoicePayDialog from './ServiceInvoicePayDialog'
 import {
   approveInvoiceForBilling,
   approveInvoicePaymentProof,
@@ -473,6 +474,9 @@ const Billing = () => {
   const [viewItem, setViewItem] = useState<BillingItem | null>(null)
   const [printItem, setPrintItem] = useState<BillingItem | null>(null)
   const [shareTarget, setShareTarget] = useState<ServiceInvoiceShareTarget | null>(null)
+  const [cardPayItem, setCardPayItem] = useState<BillingItem | null>(null)
+  // Set when a facility chooses ACH or cheque: its card payment goes through Square instead.
+  const [hideCardMethod, setHideCardMethod] = useState(false)
   const [printDocumentType, setPrintDocumentType] = useState<PrintDocumentType>('invoice')
   const [editItem, setEditItem] = useState<BillingItem | null>(null)
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
@@ -1093,6 +1097,7 @@ const Billing = () => {
 
   const closePayDialog = () => {
     setPayOpen(null)
+    setHideCardMethod(false)
     resetPayForm()
   }
 
@@ -1827,7 +1832,15 @@ const Billing = () => {
         {actionItem && canPay && actionItem.balance > 0
           && (!requiresBillingApproval(actionItem) || actionItem.billingApprovalStatus === 'approved')
           && (!(actionItem.source === 'service' && actionItem.billingKind === 'service_quotation') || ['authorized', 'partially_paid'].includes(actionItem.status)) && (
-          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openPayment(actionItem); closeActions() }}>
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            onClick={() => {
+              // A facility pays a service invoice's card through Square.
+              if (isFacilityBillingUser && serviceInvoiceId(actionItem) != null) setCardPayItem(actionItem)
+              else openPayment(actionItem)
+              closeActions()
+            }}
+          >
             <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
             Pay
           </MenuItem>
@@ -1892,6 +1905,23 @@ const Billing = () => {
       </Menu>
 
       <ServiceInvoiceShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
+      <ServiceInvoicePayDialog
+        invoice={cardPayItem ? { id: cardPayItem.id, number: cardPayItem.number } : null}
+        onClose={() => setCardPayItem(null)}
+        onPaid={() => {
+          setCardPayItem(null)
+          queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] })
+          queryClient.invalidateQueries({ queryKey: ['service-invoice-document'] })
+        }}
+        onOtherMethod={(cardAvailable) => {
+          const item = cardPayItem
+          setCardPayItem(null)
+          if (!item) return
+          setHideCardMethod(cardAvailable)
+          if (cardAvailable) setPayMethod('ach')
+          openPayment(item)
+        }}
+      />
 
       <InvoicePrintDialog
         open={Boolean(viewItem)}
@@ -2264,7 +2294,7 @@ const Billing = () => {
           <FormControl sx={{ mt: 1, mb: 2 }}>
             <FormLabel sx={{ fontWeight: 800, mb: 1 }}>Payment Method</FormLabel>
             <RadioGroup row value={payMethod} onChange={e => { setPayMethod(e.target.value as PayMethod); setAchChoice('ach') }}>
-              <FormControlLabel value="credit_card" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><CreditCardIcon fontSize="small" /> Credit Card</Box>} />
+              {!hideCardMethod && <FormControlLabel value="credit_card" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><CreditCardIcon fontSize="small" /> Credit Card</Box>} />}
               <FormControlLabel value="ach" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><AccountBalanceIcon fontSize="small" /> ACH</Box>} />
               <FormControlLabel value="cheque" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><ReceiptLongIcon fontSize="small" /> Cheque</Box>} />
             </RadioGroup>

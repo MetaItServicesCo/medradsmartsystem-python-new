@@ -19,12 +19,12 @@ import html
 import re
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Literal, Optional
+from typing import Any, Callable, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload, object_session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.v1.endpoints.service_requests import (
@@ -39,7 +39,7 @@ from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.equipment import Equipment
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType, PaymentProof
 from app.models.payment_operation import PaymentOperation
 from app.models.service_request import ServiceRequest, ServiceRequestQuotation
 from app.models.user import User
@@ -48,6 +48,7 @@ from app.utils.email import send_html_email
 from app.utils.facility_access import FACILITY_SCOPED_ROLES
 from app.utils.invoice_approval import (
     BILLING_APPROVAL_APPROVED,
+    is_facility_billing_user,
     scope_invoice_approval_visibility,
 )
 from app.utils.invoice_ledger import record_payment_delta, record_status_change
@@ -352,6 +353,16 @@ def _invoice_by_token(db: Session, token: str, for_update: bool = False) -> Invo
     return invoice
 
 
+def _pending_reports(db: Session, invoice: Invoice) -> int:
+    """Payments someone reported that staff have not checked yet: the payer
+    should know before paying the same balance again."""
+    return (
+        db.query(PaymentProof)
+        .filter(PaymentProof.invoice_id == invoice.id, PaymentProof.status == "pending_verification")
+        .count()
+    )
+
+
 def _public_response(invoice: Invoice, token: str) -> dict[str, Any]:
     square = square_public_config()
     if not _is_approved(invoice):
@@ -371,6 +382,7 @@ def _public_response(invoice: Invoice, token: str) -> dict[str, Any]:
         "payer_name": (invoice.facility.contact_person if invoice.facility else None) or invoice.customer_name,
         "payer_email": invoice.public_link_email or invoice.customer_email,
         "document": _document(invoice, _link_url(token)),
+        "pending_reports": _pending_reports(object_session(invoice), invoice),
         "can_pay": balance > 0 and bool(square.get("enabled")),
         "square_payment": square,
     }
@@ -401,10 +413,27 @@ def pay_public_service_invoice(
         window_seconds=600,
     )
     invoice = _invoice_by_token(db, token, for_update=True)
+    return _take_square_payment(db, invoice, payload, lambda paid: _public_response(paid, token))
+
+
+def _take_square_payment(
+    db: Session,
+    invoice: Invoice,
+    payload: PublicSquarePaymentIn,
+    respond: Callable[[Invoice], dict[str, Any]],
+    actor: Optional[User] = None,
+) -> Any:
+    """Charge the balance once and record it. The invoice is locked by the caller.
+
+    The one path by which a service invoice takes a card, through its link or
+    signed in, so both have the same safeguards: the exact balance, one charge
+    per attempt, nothing recorded unless Square completes that amount, and no
+    second charge after an uncertain result.
+    """
     if not _is_approved(invoice):
         raise HTTPException(status_code=409, detail="This invoice is being updated and cannot be paid right now")
     if invoice.status == InvoiceStatus.PAID:
-        return _public_response(invoice, token)
+        return respond(invoice)
     balance = max(_money(invoice.balance_due), _money(0))
     if balance <= 0:
         raise HTTPException(status_code=409, detail="This invoice has no payable balance")
@@ -425,12 +454,12 @@ def pay_public_service_invoice(
         amount=balance,
         currency=settings.SQUARE_CURRENCY,
         provider="square",
-        created_by_id=None,
+        created_by_id=actor.id if actor else None,
     )
     if replay:
         replay_or_raise(operation)
         db.refresh(invoice)
-        return _public_response(invoice, token)
+        return respond(invoice)
 
     # Persist the processing marker before contacting Square. This makes an
     # uncertain network response recoverable across worker/process restarts.
@@ -480,7 +509,7 @@ def pay_public_service_invoice(
             operation, provider_reference=payment_id, response_data={"invoice_id": invoice.id, "payment_id": payment_id},
         )
         db.commit()
-        return _public_response(invoice, token)
+        return respond(invoice)
 
     previous_paid = _money(invoice.amount_paid)
     previous_status = invoice.status
@@ -490,19 +519,19 @@ def pay_public_service_invoice(
     invoice.status = InvoiceStatus.PAID if invoice.balance_due <= 0 else InvoiceStatus.PARTIALLY_PAID
     invoice.updated_at = datetime.utcnow()
     transaction = record_payment_delta(
-        db, invoice, previous_paid, invoice.amount_paid, None, "square_card",
+        db, invoice, previous_paid, invoice.amount_paid, actor, "square_card",
         f"Square payment completed by {payer} ({payment_id})",
     )
     if transaction:
         transaction.reference_number = payment_id
-    record_status_change(db, invoice, previous_status, None, "Invoice status synchronized with completed Square payment")
+    record_status_change(db, invoice, previous_status, actor, "Invoice status synchronized with completed Square payment")
     sr = invoice.service_request
     if sr:
         history = list(sr.history or [])
         history.append({
             "timestamp": datetime.utcnow().isoformat(),
             "action": "service_invoice_payment_recorded",
-            "user_id": None,
+            "user_id": actor.id if actor else None,
             "user": payer,
             "changes": {
                 "invoice_id": invoice.id,
@@ -529,7 +558,7 @@ def pay_public_service_invoice(
         ),
         notification_type="billing",
         link_url=f"/billing?search={invoice.invoice_number}",
-        actor_id=None,
+        actor_id=actor.id if actor else None,
     )
     mark_operation_succeeded(
         operation, provider_reference=payment_id, response_data={"invoice_id": invoice.id, "payment_id": payment_id},
@@ -549,4 +578,89 @@ def pay_public_service_invoice(
     if receipt:
         deliver_payment_receipt(db, receipt.id)
     db.refresh(invoice)
-    return _public_response(invoice, token)
+    return respond(invoice)
+
+
+# ---------------------------------------------------------------- signed in, as the facility
+
+
+def _facility_invoice(db: Session, invoice_id: int, user: User, for_update: bool = False) -> Invoice:
+    """An approved invoice of the signed-in facility user's own facility."""
+    if not is_facility_billing_user(user) or not has_module_permission(user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="This account cannot pay invoices")
+    query = _scope_service_query(db.query(Invoice), Invoice.facility_id, db, user)
+    query = scope_invoice_approval_visibility(query, user).options(*_invoice_options()).filter(
+        Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.SERVICE,
+    )
+    if for_update:
+        query = query.with_for_update(of=Invoice)
+    invoice = query.first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Service invoice not found")
+    if invoice.status == InvoiceStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="This invoice has been cancelled")
+    return invoice
+
+
+def _facility_payment_response(db: Session, invoice: Invoice, user: User) -> dict[str, Any]:
+    square = square_public_config()
+    balance = _money(invoice.balance_due)
+    return {
+        "invoice_number": invoice.invoice_number,
+        "status": invoice.status.value,
+        "balance_due": f"{balance:.2f}",
+        "payer_name": user.full_name,
+        "payer_email": user.email,
+        "can_pay": balance > 0 and bool(square.get("enabled")),
+        "square_payment": square,
+        "pending_reports": _pending_reports(db, invoice),
+    }
+
+
+@router.get("/service-invoices/{invoice_id}/card-payment")
+def read_card_payment(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    return _facility_payment_response(db, _facility_invoice(db, invoice_id, current_user), current_user)
+
+
+class AccountSquarePaymentIn(BaseModel):
+    source_id: str = Field(min_length=8, max_length=500)
+    idempotency_key: str = Field(min_length=16, max_length=45)
+
+
+@router.post("/service-invoices/{invoice_id}/square-payment")
+def pay_service_invoice_signed_in(
+    invoice_id: int,
+    payload: AccountSquarePaymentIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    # Per invoice, like its link; and across invoices, generous enough for someone
+    # paying a stack of them in one sitting, but it still stops card testing.
+    enforce_rate_limit(
+        bucket="account-service-card-payment",
+        identity=f"user:{current_user.id}:invoice:{invoice_id}",
+        limit=8,
+        window_seconds=600,
+    )
+    enforce_rate_limit(
+        bucket="account-service-card-payment-all",
+        identity=f"user:{current_user.id}",
+        limit=30,
+        window_seconds=600,
+    )
+    invoice = _facility_invoice(db, invoice_id, current_user, for_update=True)
+    charge = PublicSquarePaymentIn(
+        source_id=payload.source_id,
+        idempotency_key=payload.idempotency_key,
+        payer_name=(current_user.full_name or current_user.username or "Facility user")[:200].ljust(2, "."),
+    )
+    user_id = current_user.id
+    return _take_square_payment(
+        db, invoice, charge,
+        lambda paid: _facility_payment_response(db, paid, db.get(User, user_id)),
+        actor=current_user,
+    )

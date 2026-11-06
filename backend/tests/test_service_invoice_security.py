@@ -27,6 +27,7 @@ import os
 import pathlib
 import socket
 import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -47,6 +48,9 @@ os.environ["SQUARE_APPLICATION_ID"] = "sandbox-app-id"
 os.environ["SQUARE_ACCESS_TOKEN"] = "token"
 os.environ["SQUARE_LOCATION_ID"] = "loc"
 os.environ["SQUARE_ENVIRONMENT"] = "sandbox"
+# As production: Square requires this key, and payment references are encrypted with it.
+os.environ["PAYMENT_DATA_ENCRYPTION_KEYS"] = "H3b0Q2iV8oYk3v7mC1tqk3m1sU0fQ2n7rZ5xW9yA4dE="
+os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="service-invoice-security-")
 os.environ["API_RATE_LIMIT"] = "100000"
 os.environ["AUTH_LOGIN_IP_LIMIT"] = "100000"
 os.environ["READ_CACHE_ENABLED"] = "false"
@@ -67,7 +71,8 @@ from app.db.base import Base  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.equipment import Equipment  # noqa: E402
 from app.models.facility import Facility  # noqa: E402
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction  # noqa: E402
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, PaymentProof  # noqa: E402
+from app.utils.payment_proofs import REVIEWABLE_EXTRACTION_STATUSES  # noqa: E402
 from app.models.modality import Modality, ModalityCategory  # noqa: E402
 from app.models.notification import Notification  # noqa: E402
 from app.models.payment_operation import PaymentOperation  # noqa: E402
@@ -167,6 +172,7 @@ PEOPLE = {
     "client_a": person("client_a", UserRole.CLIENT, UserType.CLIENT, facility=clinic_a),
     "fac_b": person("fac_b", UserRole.FACILITY_ADMIN, facility=clinic_b),
     "client_b": person("client_b", UserRole.CLIENT, UserType.CLIENT, facility=clinic_b),
+    "fac_b_payer": person("fac_b_payer", UserRole.FACILITY_MANAGER, facility=clinic_a),
     "gone": person("gone", UserRole.SUPERADMIN),
     "changed": person("changed", UserRole.SUPERADMIN),
 }
@@ -449,7 +455,7 @@ other_token = link_for(approved_invoice())
 ok("each invoice has its own link", other_token != token_a)
 body = get(f"/public/service-invoices/{token_a}").json()
 ok("the page returns only what the customer needs",
-   set(body) == {"state", "invoice_number", "balance_due", "payer_name", "payer_email", "document", "can_pay", "square_payment"}, sorted(body))
+   set(body) == {"state", "invoice_number", "balance_due", "payer_name", "payer_email", "document", "pending_reports", "can_pay", "square_payment"}, sorted(body))
 whole = json.dumps(body)
 for secret in ("SECRET-INTERNAL-NOTE", "__FEES__", stored_nonce, stored_hash, "hashed_password", "unit_price", "approved_for", "token", settings.SQUARE_ACCESS_TOKEN + '"'):
     ok(f"it does not reveal {secret[:24]!r}", secret not in whole.replace("idempotency", ""))
@@ -685,6 +691,10 @@ ok("nor to a staff or inactive account", r.status_code == 400 and emails == [], 
 xss_invoice = approved_invoice(facility=FAC_C, equipment=BED_C)
 set_row(Invoice, xss_invoice, customer_name='<img src=x onerror=alert(1)>"Clinic')
 r = post(f"/service-invoices/{xss_invoice}/share", "boss", json={"channel": "email", "email": "owner@clinic-c.test"})
+for _ in range(50):  # the email goes out just after the response
+    if emails:
+        break
+    time.sleep(0.05)
 ok("a hostile customer name is escaped in the email", r.status_code == 200 and "<img" not in emails[-1]["html"] and "&lt;img" in emails[-1]["html"], emails[-1]["html"][:90] if emails else "")
 
 # ── 9 ────────────────────────────────────────────────────────────────────────
@@ -724,6 +734,170 @@ quoted = generate(new_request())
 big = D("99999999.99")
 set_row(Invoice, quoted, total_amount=big, subtotal=big, balance_due=big)
 ok("the largest possible amount opens", get(f"/service-invoices/{quoted}/document", "boss").json()["total_amount"] == "99999999.99")
+
+# ── 9b ───────────────────────────────────────────────────────────────────────
+section("9b. Paying signed in, as the facility")
+
+
+def card_options(invoice_id, who=None):
+    return get(f"/service-invoices/{invoice_id}/card-payment", who)
+
+
+def card_pay(target_id, who, key, **extra):
+    return post(f"/service-invoices/{target_id}/square-payment", who,
+                json={"source_id": "cnon:card-ok", "idempotency_key": key, **extra})
+
+
+account = approved_invoice()
+ok("not signed in: refused", card_options(account).status_code == 401 and card_pay(account, None, key_of("anon")).status_code == 401)
+for who in ("boss", "admin", "hr", "tech", "employee"):
+    ok(f"{who}: this path is only for the facility", card_options(account, who).status_code == 403
+       and card_pay(account, who, key_of(f"staff{who}")).status_code == 403)
+for who in ("fac_b", "client_b"):
+    ok(f"{who}: cannot pay another facility's invoice", card_options(account, who).status_code == 404
+       and card_pay(account, who, key_of(f"other{who}")).status_code == 404)
+hidden = generate(new_request())
+ok("before billing approval: not visible, cannot be paid", card_options(hidden, "fac_a").status_code == 404
+   and card_pay(hidden, "fac_a", key_of("hidden")).status_code == 404)
+ok("a service request id or a made-up id: nothing", card_pay(999999, "fac_a", key_of("none")).status_code == 404)
+set_row(User, ids["mgr_a"], permissions={"billing": {"index": True, "view": True, "add": False, "edit": False, "delete": False, "scope": "all"}})
+AUTH["mgr_a"] = login("mgr_a")
+ok("a facility user whose Billing edit was removed cannot pay", card_pay(account, "mgr_a", key_of("noedit")).status_code == 403)
+set_row(User, ids["mgr_a"], permissions=None)
+AUTH["mgr_a"] = login("mgr_a")
+charges.clear()
+opts = card_options(account, "fac_a").json()
+ok("the facility admin sees the balance and Square", opts["balance_due"] == "1700.00" and opts["can_pay"] is True, opts["balance_due"])
+ok("  Square's public settings only", settings.SQUARE_ACCESS_TOKEN + '"' not in json.dumps(opts))
+r = card_pay(account, "fac_a", key_of("acct"), amount="0.01", balance_due="0.01", invoice_id=invoice_a, payer_name="Forged")
+row = invoice_row(account)
+ok("the facility admin pays: the whole balance, once, whatever is sent", r.status_code == 200 and len(charges) == 1
+   and charges[0]["amount"] == D("1700.00") and row.status == InvoiceStatus.PAID and row.amount_paid == D("1700.00"), r.text[:120])
+db = Session()
+sr_row = db.get(ServiceRequest, row.service_request_id)
+ledger = [t for t in db.query(InvoiceTransaction).filter(InvoiceTransaction.invoice_id == account).all() if t.transaction_type == "payment"]
+ok("  on record against them, not a forged name", sr_row.history[-1]["user"] == "Fac_A" and sr_row.history[-1]["user_id"] == ids["fac_a"]
+   and ledger[0].created_by_id == ids["fac_a"], sr_row.history[-1]["user"])
+db.close()
+charges.clear()
+ok("  paying again charges nothing", card_pay(account, "mgr_a", key_of("again")).status_code == 200 and charges == [] and invoice_row(account).amount_paid == D("1700.00"))
+ok("  the same attempt retried charges nothing", card_pay(account, "fac_a", key_of("acct")).status_code in (200, 409) and charges == [])
+
+both = approved_invoice()
+both_token = link_for(both)
+charges.clear()
+square["delay"] = 0.4
+
+
+def attempt(job):
+    kind, n = job
+    if kind == "link":
+        return httpx.post(f"{API}/public/service-invoices/{both_token}/square-payment",
+                          json={"source_id": "cnon:card-ok", "idempotency_key": key_of(f"mix{n}"), "payer_name": "Ann Lee"}, timeout=60).status_code
+    return httpx.post(f"{API}/service-invoices/{both}/square-payment", headers=AUTH[kind],
+                      json={"source_id": "cnon:card-ok", "idempotency_key": key_of(f"mix{n}")}, timeout=60).status_code
+
+
+with ThreadPoolExecutor(9) as pool:
+    results = list(pool.map(attempt, [(kind, f"{kind}{n}") for n in range(3) for kind in ("fac_a", "mgr_a", "link")]))
+square["delay"] = 0
+row = invoice_row(both)
+ok("admin, manager and the link all at once: one card charged", len(charges) == 1 and row.amount_paid == D("1700.00") and 500 not in results,
+   f"charges={len(charges)} results={sorted(results)}")
+
+used = approved_invoice()
+charges.clear()
+card_pay(used, "fac_a", key_of("shared"))
+other_used = approved_invoice()
+r = card_pay(other_used, "fac_a", key_of("shared"))
+ok("a key from one invoice cannot be replayed on another", r.status_code == 409 and len(charges) == 1, r.status_code)
+pulled_acct = approved_invoice()
+set_row(Invoice, pulled_acct, billing_approval_status="pending")
+charges.clear()
+ok("approval withdrawn: refused, no charge", card_pay(pulled_acct, "fac_a", key_of("pull")).status_code == 404 and charges == [])
+gone_inv = approved_invoice()
+set_row(Invoice, gone_inv, status=InvoiceStatus.CANCELLED)
+ok("cancelled: refused, no charge", card_pay(gone_inv, "fac_a", key_of("gone")).status_code == 409 and charges == [])
+declined_acct = approved_invoice()
+square["fail"] = "Card declined"
+r = card_pay(declined_acct, "fac_a", key_of("dcl"))
+square["fail"] = None
+ok("a declined card changes nothing", r.status_code == 402 and invoice_row(declined_acct).amount_paid == 0)
+limited_acct = approved_invoice()
+square["fail"] = "Card declined"
+codes = [card_pay(limited_acct, "client_a", key_of(f"rl{n}")).status_code for n in range(11)]
+square["fail"] = None
+ok("card-testing while signed in: blocked after 8 tries on an invoice", codes[:8].count(402) == 8 and all(c == 429 for c in codes[8:]), codes)
+ok("  paying a different invoice still works", card_pay(approved_invoice(), "client_a", key_of("rlok")).status_code == 200)
+square["fail"] = "Card declined"
+across = []
+for n in range(32):
+    across.append(card_pay(approved_invoice(), "fac_b_payer", key_of(f"ac{n}")).status_code)
+square["fail"] = None
+ok("  and trying card after card across invoices is capped at 30", across[:30].count(402) == 30 and across[30:] == [429, 429], across[-4:])
+
+section("9c. A reported payment and a real one on the same invoice")
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
+
+def report_proof(invoice_id, who="fac_a", amount="1700.00", method="ach"):
+    return post(f"/billing/invoices/{invoice_id}/payment-proofs", who, data={"amount": amount, "payment_method": method, "notes": "Paid by ACH"},
+                files={"proof_file": ("proof.png", PNG, "image/png")})
+
+
+claimed = approved_invoice()
+r = post(f"/billing/invoices/{claimed}/payments", "fac_a", json={"amount": "1700.00", "payment_method": "credit_card", "card_brand": "Visa", "card_last4": "4242"})
+ok("a card report sent straight to the API moves no money", r.status_code == 202 and invoice_row(claimed).amount_paid == 0, f"{r.status_code} {r.text[:90]}")
+ok("  the payer is warned it is waiting", card_options(claimed, "fac_a").json()["pending_reports"] == 1)
+charges.clear()
+ok("  someone then pays by card", card_pay(claimed, "mgr_a", key_of("claimed")).status_code == 200 and invoice_row(claimed).amount_paid == D("1700.00"))
+db = Session()
+claim = db.query(PaymentProof).filter(PaymentProof.invoice_id == claimed).first()
+claim_id = claim.id
+db.close()
+r = post(f"/billing/payment-proofs/{claim_id}/approve", "boss", json={"notes": "Looks right"})
+row = invoice_row(claimed)
+ok("  approving the old report is refused: it cannot pay twice", r.status_code == 400 and row.amount_paid == D("1700.00") and row.balance_due == 0, f"{r.status_code} paid={row.amount_paid}")
+recorded = approved_invoice()
+r = post(f"/billing/invoices/{recorded}/payments", "boss", json={"amount": "10.00", "payment_method": "credit_card", "idempotency_key": key_of("bossrec")})
+ok("the super admin can still record a payment, as before", r.status_code in (200, 201) and invoice_row(recorded).amount_paid == D("10.00"), f"{r.status_code} {r.text[:100]}")
+overlap = approved_invoice()
+overlap_token = link_for(overlap)
+r = report_proof(overlap)
+ok("ACH proof can still be uploaded", r.status_code in (200, 201, 202), f"{r.status_code} {r.text[:120]}")
+proof_id = r.json().get("id") or r.json().get("proof", {}).get("id")
+ok("the payer is warned before paying again, signed in", card_options(overlap, "fac_a").json()["pending_reports"] == 1)
+ok("  and through the link", get(f"/public/service-invoices/{overlap_token}").json()["pending_reports"] == 1)
+ok("  the proof changes nothing yet", invoice_row(overlap).amount_paid == 0)
+charges.clear()
+r = card_pay(overlap, "mgr_a", key_of("overlap"))
+ok("someone then pays by card", r.status_code == 200 and invoice_row(overlap).amount_paid == D("1700.00"), r.status_code)
+db = Session()
+proof = db.get(PaymentProof, proof_id)
+proof.extraction_status = next(iter(REVIEWABLE_EXTRACTION_STATUSES))
+db.commit()
+db.close()
+r = post(f"/billing/payment-proofs/{proof_id}/approve", "boss", json={"notes": "Looks right"})
+row = invoice_row(overlap)
+ok("approving the old proof is refused: it cannot pay twice", r.status_code == 400 and row.amount_paid == D("1700.00") and row.balance_due == 0, f"{r.status_code} {r.text[:90]} paid={row.amount_paid}")
+db = Session()
+ok("  the proof stays open for staff to reject", db.get(PaymentProof, proof_id).status == "pending_verification")
+db.close()
+r = post(f"/billing/payment-proofs/{proof_id}/reject", "boss", json={"notes": "Paid by card instead"})
+ok("  and rejecting it works", r.status_code == 200, f"{r.status_code} {r.text[:90]}")
+r = report_proof(overlap)
+ok("no more proof can be reported on a paid invoice", r.status_code == 400 and invoice_row(overlap).amount_paid == D("1700.00"), r.status_code)
+ach_first = approved_invoice()
+proof_first = report_proof(ach_first).json()
+pid = proof_first.get("id") or proof_first.get("proof", {}).get("id")
+db = Session()
+db.get(PaymentProof, pid).extraction_status = next(iter(REVIEWABLE_EXTRACTION_STATUSES))
+db.commit()
+db.close()
+r = post(f"/billing/payment-proofs/{pid}/approve", "boss", json={"notes": "Received"})
+ok("the proof approved first: the invoice is paid", r.status_code == 200 and invoice_row(ach_first).status == InvoiceStatus.PAID, r.status_code)
+charges.clear()
+ok("  and the card charges nothing afterwards", card_pay(ach_first, "fac_a", key_of("after")).status_code in (200, 409) and charges == [] and invoice_row(ach_first).amount_paid == D("1700.00"))
 
 # ── 10 ───────────────────────────────────────────────────────────────────────
 section("10. HTTP hardening")

@@ -767,6 +767,7 @@ export interface PublicServiceInvoice {
   payer_name?: string | null
   payer_email?: string | null
   document: ServiceInvoiceDocument | null
+  pending_reports?: number
   can_pay: boolean
   square_payment: {
     enabled: boolean
@@ -798,6 +799,30 @@ export const shareServiceInvoice = async (
   data: { channel: 'email' | 'link'; recipient_user_id?: number; email?: string },
 ): Promise<ServiceInvoiceShareResult> => {
   const res = await apiClient.post(`/service-invoices/${invoiceId}/share`, data)
+  return res.data
+}
+
+export interface ServiceInvoiceCardPayment {
+  invoice_number: string
+  status: string
+  balance_due: string
+  payer_name: string
+  payer_email: string | null
+  can_pay: boolean
+  pending_reports: number
+  square_payment: NonNullable<PublicServiceInvoice['square_payment']>
+}
+
+export const fetchServiceInvoiceCardPayment = async (invoiceId: number): Promise<ServiceInvoiceCardPayment> => {
+  const res = await apiClient.get(`/service-invoices/${invoiceId}/card-payment`)
+  return res.data
+}
+
+export const payServiceInvoiceSignedIn = async (
+  invoiceId: number,
+  data: { source_id: string; idempotency_key: string },
+): Promise<ServiceInvoiceCardPayment> => {
+  const res = await apiClient.post(`/service-invoices/${invoiceId}/square-payment`, data)
   return res.data
 }
 

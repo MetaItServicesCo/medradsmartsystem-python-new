@@ -297,13 +297,16 @@ ok("apps, most used first", [a["app"] for a in day["apps"]] == ["Excel", "Chrome
 ok("the timeline in order, with titles", [b["app"] for b in day["blocks"]] == ["Excel", "Chrome", "Excel"]
    and day["blocks"][0]["titles"] == ["Excel window"])
 ok("the shift is shown, still open", len(day["shifts"]) == 1 and day["shifts"][0]["open"] is True)
+# The check-in was two hours ago, which just after midnight in Karachi is yesterday.
+check_in_day = (NOW - timedelta(minutes=120)).replace(tzinfo=timezone.utc).astimezone(KARACHI).date()
+marks_day = as_user("hr").get(f"{API}/people/{IDS['tech']}/day", params={"date": check_in_day.isoformat(), "tz": "Asia/Karachi"}).json()
 ok("the day's marks, with where each was made; the rejected one left out",
-   [(m["event_type"], m["location_place"]) for m in day["marks"]] == [("check_in", "Shahrah-e-Faisal, Karachi")], day["marks"])
+   [(m["event_type"], m["location_place"]) for m in marks_day["marks"]] == [("check_in", "Shahrah-e-Faisal, Karachi")], marks_day["marks"])
 ok("the day's totals", day["totals"]["minutes"] == 60 and day["totals"]["keys"] == 540)
 field_day = as_user("boss").get(f"{API}/people/{IDS['field']}/day", params={"date": TODAY_LOCAL.isoformat()}).json()
 ok("field's route for the day, in order", [p["lat"] for p in field_day["points"]] == [24.80, 24.86], field_day["points"])
 db = Session()
-ok("each look is in the audit log", db.query(AuditLog).filter(AuditLog.action == "TRACKING_EVIDENCE_VIEWED").count() == 2)
+ok("each look is in the audit log", db.query(AuditLog).filter(AuditLog.action == "TRACKING_EVIDENCE_VIEWED").count() == 3)
 db.close()
 ok("an unknown time zone is refused",
    as_user("boss").get(f"{API}/people/{IDS['tech']}/day", params={"date": TODAY_LOCAL.isoformat(), "tz": "Mars/Base"}).status_code == 400)
