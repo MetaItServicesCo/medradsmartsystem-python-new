@@ -36,7 +36,7 @@ const printDocument = (title: string, html: string) => {
 }
 
 const Notice = ({ children }: { children: React.ReactNode }) => (
-  <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', bgcolor: '#F1F5F9', p: 2 }}>
+  <Box sx={{ height: '100dvh', overflowY: 'auto', display: 'grid', placeItems: 'center', bgcolor: '#F1F5F9', p: 2 }}>
     <Card sx={{ p: 4, maxWidth: 480, borderRadius: '18px', textAlign: 'center' }}>{children}</Card>
   </Box>
 )
@@ -120,7 +120,8 @@ const PublicServiceInvoice = () => {
 
   const square = data.square_payment
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F9', p: { xs: 1, sm: 3 } }}>
+    // The app's body does not scroll, so this page scrolls itself.
+    <Box sx={{ height: '100dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', bgcolor: '#F1F5F9', p: { xs: 1, sm: 3 } }}>
       <Box sx={{ maxWidth: 960, mx: 'auto', display: 'grid', gap: 2 }}>
         <Card sx={{ p: 2, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
           {data.state === 'paid' ? (
