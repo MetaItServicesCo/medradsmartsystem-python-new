@@ -27,20 +27,25 @@ logger = logging.getLogger("medrad.geocode")
 _TIMEOUT_SECONDS = 8.0
 _MIN_INTERVAL_SECONDS = 1.1
 _CACHE_SIZE = 512
+STREET_ZOOM = 18
+AREA_ZOOM = 14
+# A position rougher than this is named by its area: a laptop placed to within
+# a few kilometres must not read as being at one exact street address.
+ROUGH_ACCURACY_METRES = 500
 
 _lock = threading.Lock()
 _last_request = 0.0
 _cache: "OrderedDict[tuple[float, float], str]" = OrderedDict()
 
 
-def _cache_key(lat: float, lon: float) -> tuple[float, float]:
-    return round(lat, 4), round(lon, 4)
+def _cache_key(lat: float, lon: float, zoom: int) -> tuple[float, float, int]:
+    return round(lat, 4), round(lon, 4), zoom
 
 
-def reverse_geocode(lat: float, lon: float) -> Optional[str]:
+def reverse_geocode(lat: float, lon: float, zoom: int = STREET_ZOOM) -> Optional[str]:
     """The address at a position, or None if it cannot be had right now."""
     global _last_request
-    key = _cache_key(lat, lon)
+    key = _cache_key(lat, lon, zoom)
     with _lock:
         if key in _cache:
             _cache.move_to_end(key)
@@ -52,7 +57,7 @@ def reverse_geocode(lat: float, lon: float) -> Optional[str]:
     try:
         response = httpx.get(
             settings.GEOCODER_REVERSE_URL,
-            params={"format": "jsonv2", "lat": lat, "lon": lon, "zoom": 18},
+            params={"format": "jsonv2", "lat": lat, "lon": lon, "zoom": zoom},
             headers={"User-Agent": settings.GEOCODER_USER_AGENT, "Accept-Language": "en"},
             timeout=_TIMEOUT_SECONDS,
         )
@@ -100,11 +105,12 @@ def fill_attendance_place(event_id: int) -> None:
         event = db.query(AttendanceEvent).filter(AttendanceEvent.id == event_id).first()
         if event is None or event.latitude is None or event.longitude is None or event.location_place:
             return
-        lat, lon = event.latitude, event.longitude
+        lat, lon, accuracy = event.latitude, event.longitude, event.location_accuracy_m
     finally:
         db.close()
 
-    place = reverse_geocode(lat, lon)
+    rough = accuracy is not None and accuracy > ROUGH_ACCURACY_METRES
+    place = reverse_geocode(lat, lon, AREA_ZOOM if rough else STREET_ZOOM)
     if not place:
         return
 

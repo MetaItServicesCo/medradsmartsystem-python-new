@@ -65,6 +65,7 @@ import { AttendancePhoto, AttendancePhotoButton } from './AttendancePhoto'
 // the Attendance page for everyone else.
 const TrackingPanel = lazy(() => import('./TrackingPanel'))
 import { asUtc } from '@/utils/attendanceTime'
+import { accuracyLabel, isRoughLocation, markDevice } from '@/utils/markLocation'
 import { useAuthStore } from '@/stores/authStore'
 
 const EVENT_LABELS: Record<string, string> = {
@@ -1191,12 +1192,25 @@ const EventTable = ({ rows, onReview }: { rows: AttendanceEvent[]; onReview?: (e
                     {event.location_place}
                   </Typography>
                 )}
+                {event.latitude != null && event.longitude != null && (
+                  <Typography sx={{
+                    fontSize: 11, fontWeight: isRoughLocation(event.location_accuracy_m) ? 800 : 500,
+                    color: isRoughLocation(event.location_accuracy_m) ? '#B45309' : '#64748B',
+                  }}>
+                    {accuracyLabel(event.location_accuracy_m)}{markDevice(event.device_label) ? ` · ${markDevice(event.device_label)}` : ''}
+                  </Typography>
+                )}
+                {event.latitude == null && event.source !== 'admin' && (
+                  <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>
+                    No location recorded{markDevice(event.device_label) ? ` · ${markDevice(event.device_label)}` : ''}
+                  </Typography>
+                )}
                 {typeof event.confidence === 'number' && (
                   <Typography component="span" sx={{ fontSize: 12, color: '#64748B', ml: 0.5 }} title="How closely the photo matched the enrolled face">
                     match {Math.round(event.confidence * 100)}%
                   </Typography>
                 )}
-                {!event.image_url && event.latitude == null && typeof event.confidence !== 'number' && '-'}
+                {!event.image_url && event.latitude == null && typeof event.confidence !== 'number' && event.source === 'admin' && '-'}
               </TableCell>
               {onReview && (
                 <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>

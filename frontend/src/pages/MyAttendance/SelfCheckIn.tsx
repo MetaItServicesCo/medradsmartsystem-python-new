@@ -55,21 +55,31 @@ const cameraProblem = (error: unknown) => {
   return 'The camera could not be started.'
 }
 
-const currentLocation = () => new Promise<Location | null>((resolve) => {
-  if (!navigator.geolocation) {
-    resolve(null)
-    return
-  }
+type LocationResult = { location: Location | null; blocked: boolean }
+
+const readPosition = (enableHighAccuracy: boolean) => new Promise<LocationResult>((resolve) => {
   navigator.geolocation.getCurrentPosition(
     position => resolve({
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      location_accuracy_m: position.coords.accuracy,
+      location: {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        location_accuracy_m: position.coords.accuracy,
+      },
+      blocked: false,
     }),
-    () => resolve(null),
-    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+    error => resolve({ location: null, blocked: error.code === error.PERMISSION_DENIED }),
+    { enableHighAccuracy, timeout: 10_000, maximumAge: 60_000 },
   )
 })
+
+// The best position first; a laptop with no GPS can time out on that and still
+// have a usable network position, so ask once more before giving up.
+const currentLocation = async (): Promise<LocationResult> => {
+  if (!navigator.geolocation) return { location: null, blocked: false }
+  const precise = await readPosition(true)
+  if (precise.location || precise.blocked) return precise
+  return readPosition(false)
+}
 
 const SelfCheckIn = () => {
   const theme = useTheme()
@@ -83,7 +93,10 @@ const SelfCheckIn = () => {
   const [photo, setPhoto] = useState<Blob | null>(null)
   const [photoUrl, setPhotoUrl] = useState('')
   const [note, setNote] = useState('')
+  // undefined while it is being read, so nothing is marked before it is known.
   const [location, setLocation] = useState<Location | null | undefined>(undefined)
+  const [locationBlocked, setLocationBlocked] = useState(false)
+  const locationRequest = useRef(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
@@ -116,19 +129,30 @@ const SelfCheckIn = () => {
     }
   }
 
+  const readLocation = () => {
+    const request = ++locationRequest.current
+    setLocation(undefined)
+    setLocationBlocked(false)
+    void currentLocation().then((result) => {
+      if (request !== locationRequest.current) return
+      setLocation(result.location)
+      setLocationBlocked(result.blocked)
+    })
+  }
+
   const open = (next: AttendanceEventType) => {
     setAction(next)
     setProblem('')
     setNote('')
     setPhoto(null)
     setPhotoUrl('')
-    setLocation(undefined)
     setPhase('camera')
-    void currentLocation().then(setLocation)
+    readLocation()
   }
 
   const close = () => {
     stopCamera()
+    locationRequest.current += 1
     setAction(null)
   }
 
@@ -287,18 +311,28 @@ const SelfCheckIn = () => {
               helperText={photo ? 'Your photo is sent with this for HR.' : 'Marked without a photo.'}
             />
           )}
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-            {location === undefined
-              ? 'Getting your location…'
-              : location
-                ? 'Your location is attached to this mark.'
-                : 'Location was not shared; it will be marked without it.'}
-          </Typography>
+          {location === null ? (
+            <Alert
+              severity="warning"
+              sx={{ mt: 1.5 }}
+              action={<Button color="inherit" size="small" onClick={readLocation} sx={{ textTransform: 'none', fontWeight: 800 }}>Try again</Button>}
+            >
+              {locationBlocked
+                ? 'Location is blocked. Allow it for this site in your browser, and on an iPhone also in Settings > Privacy & Security > Location Services > Safari Websites.'
+                : 'Your location could not be found. Check that location is switched on for this device.'}
+              {' '}HR will see this mark has no location.
+            </Alert>
+          ) : (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+              {location === undefined ? 'Getting your location…' : 'Your location is attached to this mark.'}
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={close} disabled={mark.isPending}>Cancel</Button>
           {phase === 'camera' && (
             <Button variant="contained" startIcon={<CameraAltIcon />} onClick={takePhotoAndMark}
+              disabled={location === undefined}
               sx={{ fontWeight: 900, textTransform: 'none' }}>
               Take photo and mark
             </Button>
@@ -313,7 +347,7 @@ const SelfCheckIn = () => {
             </>
           )}
           {phase === 'manual' && (
-            <Button variant="contained" onClick={markByHand} disabled={mark.isPending}
+            <Button variant="contained" onClick={markByHand} disabled={mark.isPending || location === undefined}
               startIcon={mark.isPending ? <CircularProgress size={16} color="inherit" /> : <EditNoteIcon />}
               sx={{ fontWeight: 900, textTransform: 'none' }}>
               Mark by hand

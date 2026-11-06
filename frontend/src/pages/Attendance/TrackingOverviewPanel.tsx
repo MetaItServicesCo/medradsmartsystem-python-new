@@ -18,6 +18,7 @@ import ScreenShareIcon from '@mui/icons-material/ScreenShare'
 import TimelineIcon from '@mui/icons-material/Timeline'
 import { fetchTrackingOverview, type TrackingOverviewPerson, type TrackingWarning } from '@/api/tracking'
 import { asUtc, DEFAULT_EVENT_TIMEZONE } from '@/utils/attendanceTime'
+import { isRoughLocation } from '@/utils/markLocation'
 import TrackingMap, { type MapPin } from './TrackingMap'
 import TrackingDayDialog, { formatMinutes, MarkPlace, percent } from './TrackingDayDialog'
 import ScreenViewDialog from './ScreenViewDialog'
@@ -74,6 +75,7 @@ const TrackingOverviewPanel = ({ canWatchScreens }: Props) => {
       label: person.full_name,
       detail: `${person.position!.source === 'live' ? 'Live' : 'Last saved'} · ${ago(person.position!.recorded_at)}`,
       faded: person.position!.source !== 'live',
+      radiusM: isRoughLocation(person.position!.accuracy_m) ? (person.position!.accuracy_m as number) : undefined,
     })), [people])
 
   return (

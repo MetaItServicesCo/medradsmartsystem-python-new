@@ -20,6 +20,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close'
 import { fetchTrackingPersonDay, type TrackingMark } from '@/api/tracking'
 import { asUtc, DEFAULT_EVENT_TIMEZONE } from '@/utils/attendanceTime'
+import { accuracyLabel, isRoughLocation, markDevice } from '@/utils/markLocation'
 import TrackingMap, { type MapPin } from './TrackingMap'
 
 interface Props {
@@ -68,21 +69,32 @@ const hasPosition = (mark: TrackingMark) => mark.latitude != null && mark.longit
  */
 export const MarkPlace = ({ mark, prefix = '' }: { mark: TrackingMark | null; prefix?: string }) => {
   if (!mark) return null
+  const device = markDevice(mark.device_label)
   if (!hasPosition(mark)) {
-    return <Typography sx={{ color: '#9CA3AF', fontSize: '0.75rem', mt: 0.5 }}>No location recorded</Typography>
+    return (
+      <Typography sx={{ color: '#9CA3AF', fontSize: '0.75rem', mt: 0.5 }}>
+        No location recorded{device ? ` · ${device}` : ''}
+      </Typography>
+    )
   }
-  const accuracy = mark.location_accuracy_m != null ? `Accurate to about ${Math.round(mark.location_accuracy_m)} m` : undefined
+  const trust = accuracyLabel(mark.location_accuracy_m)
   return (
     <Box sx={{ mt: 0.5, maxWidth: 340 }}>
       <Link
         href={`https://www.google.com/maps?q=${mark.latitude},${mark.longitude}`}
         target="_blank"
         rel="noreferrer"
-        title={[mark.location_place, accuracy].filter(Boolean).join('\n') || undefined}
+        title={mark.location_place || undefined}
         sx={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#5B21B6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
       >
         {prefix}{mark.location_place || 'this location (open map)'}
       </Link>
+      <Typography sx={{
+        fontSize: '0.7rem', fontWeight: isRoughLocation(mark.location_accuracy_m) ? 800 : 500,
+        color: isRoughLocation(mark.location_accuracy_m) ? '#B45309' : '#6B7280',
+      }}>
+        {trust}{device ? ` · ${device}` : ''}
+      </Typography>
     </Box>
   )
 }
@@ -109,6 +121,7 @@ const TrackingDayDialog = ({ person, date, onClose }: Props) => {
     label: `${MARK_LABELS[mark.event_type]} · ${timeIn(mark.event_time, tz)}`,
     detail: mark.location_place || undefined,
     colour: MARK_COLOURS[mark.event_type],
+    radiusM: isRoughLocation(mark.location_accuracy_m) ? (mark.location_accuracy_m as number) : undefined,
   })), [day, tz])
   const lastPoint = day?.points[day.points.length - 1]
   const pins: MapPin[] = useMemo(() => (lastPoint ? [{

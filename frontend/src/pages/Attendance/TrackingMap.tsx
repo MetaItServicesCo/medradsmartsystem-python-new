@@ -12,6 +12,8 @@ export interface MapPin {
   /** A pin whose position is not live, drawn faded. */
   faded?: boolean
   colour?: string
+  /** How far off the position may be. Set for a rough one: drawn as an area, not a point. */
+  radiusM?: number
 }
 
 interface Props {
@@ -64,16 +66,20 @@ const TrackingMap = ({ pins = [], route = [], height = 340 }: Props) => {
       bounds.push(...line)
     }
     pins.forEach((pin) => {
-      L.circleMarker([pin.lat, pin.lon], {
-        radius: 9,
-        color: '#fff',
-        weight: 2,
-        fillColor: pin.colour || PIN_COLOUR,
-        fillOpacity: pin.faded ? 0.45 : 1,
-      })
+      const colour = pin.colour || PIN_COLOUR
+      const shape = pin.radiusM
+        // A rough position is an area they were somewhere inside, in metres on the ground.
+        ? L.circle([pin.lat, pin.lon], { radius: pin.radiusM, color: colour, weight: 2, dashArray: '6 6', fillColor: colour, fillOpacity: 0.12 })
+        : L.circleMarker([pin.lat, pin.lon], { radius: 9, color: '#fff', weight: 2, fillColor: colour, fillOpacity: pin.faded ? 0.45 : 1 })
+      shape
         .bindTooltip(pin.detail ? `<strong>${escapeHtml(pin.label)}</strong><br/>${escapeHtml(pin.detail)}` : escapeHtml(pin.label))
         .addTo(group)
-      bounds.push([pin.lat, pin.lon])
+      if (pin.radiusM) {
+        const area = L.latLng(pin.lat, pin.lon).toBounds(pin.radiusM * 2)
+        bounds.push(area.getNorthWest(), area.getSouthEast())
+      } else {
+        bounds.push([pin.lat, pin.lon])
+      }
     })
     const signature = JSON.stringify([pins.map((pin) => pin.id), route.length])
     if (bounds.length && signature !== fittedFor.current) {

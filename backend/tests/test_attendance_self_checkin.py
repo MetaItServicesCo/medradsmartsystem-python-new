@@ -194,6 +194,7 @@ from app.utils import geocode  # noqa: E402
 geocode.SessionLocal = Session
 geocode._MIN_INTERVAL_SECONDS = 0
 lookups: list[tuple[float, float]] = []
+zooms: list[int] = []
 geocoder = {"fail": False}
 
 
@@ -211,6 +212,7 @@ class _FakeResponse:
 
 def _fake_get(url, params=None, headers=None, timeout=None):
     lookups.append((params["lat"], params["lon"]))
+    zooms.append(params["zoom"])
     assert headers and headers.get("User-Agent", "").startswith("MedRad/"), "the lookup must name the application"
     return _FakeResponse(params["lat"], params["lon"])
 
@@ -380,10 +382,22 @@ listed = as_user("hr").get("/api/v1/attendance/events", params={"user_id": IDS["
 items = listed.get("items", listed) if isinstance(listed, dict) else listed
 ok("HR's list carries the address", any(item.get("location_place") == "Place at 24.8607,67.0011" for item in items))
 clear("tech")
+lookups.clear()
+zooms.clear()
+check("tech", photo=b"face:tech", latitude=25.1, longitude=67.2, location_accuracy_m=3000)
+drain()
+ok("a rough position is named by its area, not a street", zooms == [14], str(zooms))
+clear("tech")
+zooms.clear()
+check("tech", photo=b"face:tech", latitude=25.2, longitude=67.3, location_accuracy_m=40)
+drain()
+ok("a close position is named by its street", zooms == [18], str(zooms))
+clear("tech")
+lookups.clear()
 r = check("tech", photo=b"face:tech")
 ok("no location: nothing is even queued", queued == [])
 drain()
-ok("no location: nothing is looked up, nothing named", events_of("tech")[-1].location_place is None and len(lookups) == 1)
+ok("no location: nothing is looked up, nothing named", events_of("tech")[-1].location_place is None and lookups == [])
 clear("tech")
 geocoder["fail"] = True
 r = check("tech", photo=b"face:tech", latitude=31.5204, longitude=74.3587)

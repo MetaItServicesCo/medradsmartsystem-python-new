@@ -44,6 +44,12 @@ for (const [directive, source, what] of SQUARE) {
   ok(`${directive} allows ${source} (${what})`, allows(directive, source), (directives[directive] ?? []).join(' '))
 }
 
+// Self check-in needs the camera and the location, from our own pages only. With
+// geolocation=() every mark silently had no location in production.
+const permissions = conf.match(/add_header Permissions-Policy "([^"]+)"/)?.[1] ?? ''
+ok('the site itself may use the location', permissions.includes('geolocation=(self)'), permissions)
+ok('the site itself may use the camera', permissions.includes('camera=(self)'), permissions)
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)
