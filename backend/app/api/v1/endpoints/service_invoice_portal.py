@@ -116,18 +116,6 @@ def _is_approved(invoice: Invoice) -> bool:
     return invoice.billing_approval_status == BILLING_APPROVAL_APPROVED
 
 
-def _current_link(invoice: Invoice) -> Optional[str]:
-    """The link already issued, if it is still good and may be shown."""
-    if (
-        not invoice.public_link_nonce
-        or not invoice.public_link_expires_at
-        or invoice.public_link_expires_at <= datetime.utcnow()
-        or not _is_approved(invoice)
-    ):
-        return None
-    return _link_url(_link_token(invoice.id, invoice.public_link_nonce))
-
-
 def _issue_link(invoice: Invoice) -> str:
     now = datetime.utcnow()
     if not invoice.public_link_nonce or not invoice.public_link_expires_at or invoice.public_link_expires_at <= now:
@@ -138,8 +126,8 @@ def _issue_link(invoice: Invoice) -> str:
     return _link_url(_link_token(invoice.id, invoice.public_link_nonce))
 
 
-def _document(invoice: Invoice, payment_link: Optional[str]) -> dict[str, Any]:
-    document = build_service_invoice_document(invoice, _service_invoice_line_items(invoice), payment_link)
+def _document(invoice: Invoice) -> dict[str, Any]:
+    document = build_service_invoice_document(invoice, _service_invoice_line_items(invoice))
     # Shown for the record, as on the standard invoice; never part of its total.
     document["paid_quotations"] = [
         {
@@ -203,7 +191,7 @@ def read_service_invoice_document(
     ).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Service invoice not found")
-    return _document(invoice, _current_link(invoice))
+    return _document(invoice)
 
 
 @router.get("/service-requests/{request_id}/invoice-work-entries")
@@ -364,7 +352,7 @@ def _pending_reports(db: Session, invoice: Invoice) -> int:
     )
 
 
-def _public_response(invoice: Invoice, token: str) -> dict[str, Any]:
+def _public_response(invoice: Invoice) -> dict[str, Any]:
     square = square_public_config()
     if not _is_approved(invoice):
         # Being changed by staff: nothing shown or payable until it is approved again.
@@ -383,7 +371,7 @@ def _public_response(invoice: Invoice, token: str) -> dict[str, Any]:
         "balance_due": f"{balance:.2f}",
         "payer_name": (invoice.facility.contact_person if invoice.facility else None) or invoice.customer_name,
         "payer_email": invoice.public_link_email or invoice.customer_email,
-        "document": _document(invoice, _link_url(token)),
+        "document": _document(invoice),
         "pending_reports": pending,
         "can_pay": balance > 0 and bool(square.get("enabled")) and not pending,
         "square_payment": square,
@@ -392,7 +380,7 @@ def _public_response(invoice: Invoice, token: str) -> dict[str, Any]:
 
 @router.get("/public/service-invoices/{token}")
 def read_public_service_invoice(token: str, db: Session = Depends(get_db)) -> Any:
-    return _public_response(_invoice_by_token(db, token), token)
+    return _public_response(_invoice_by_token(db, token))
 
 
 class PublicSquarePaymentIn(BaseModel):
@@ -415,7 +403,7 @@ def pay_public_service_invoice(
         window_seconds=600,
     )
     invoice = _invoice_by_token(db, token, for_update=True)
-    return _take_square_payment(db, invoice, payload, lambda paid: _public_response(paid, token))
+    return _take_square_payment(db, invoice, payload, _public_response)
 
 
 def _take_square_payment(

@@ -153,7 +153,6 @@ def _money_text(value: Any) -> str:
 def build_service_invoice_document(
     invoice: Invoice,
     line_items: list[dict[str, Any]],
-    payment_link: Optional[str] = None,
 ) -> dict[str, Any]:
     sr: Optional[ServiceRequest] = invoice.service_request
     facility = invoice.facility
@@ -208,5 +207,4 @@ def build_service_invoice_document(
         "total_amount": _money_text(invoice.total_amount),
         "amount_paid": _money_text(invoice.amount_paid),
         "balance_due": _money_text(invoice.balance_due),
-        "payment_link": payment_link,
     }

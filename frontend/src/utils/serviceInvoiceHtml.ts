@@ -1,7 +1,6 @@
 /**
  * The service invoice document, in the same design as sales and rental invoices:
- * the service report and the charges together, with a QR code and link to pay
- * once a link has been issued.
+ * the service report and the charges together.
  *
  * Every value is escaped; the same HTML is shown in Billing, printed, and shown
  * on the customer's payment page. Parts carry no amounts: they are billed only
@@ -59,10 +58,6 @@ const EXTRA_STYLES = `
   .doc-a tr.si-total td { font-weight: 900; color: #1E1B4B; background: #F8FAFC; }
   .doc-a .si-bottom { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-top: 24px; page-break-inside: avoid; }
   .doc-a .si-bottom .totals { margin-top: 0; margin-left: auto; }
-  .doc-a .si-pay { display: flex; gap: 14px; align-items: center; max-width: 360px; }
-  .doc-a .si-pay img { width: 104px; height: 104px; flex: none; }
-  .doc-a .si-pay strong { color: #1E1B4B; display: block; margin-bottom: 4px; }
-  .doc-a .si-pay a { color: var(--accent); font-size: 11px; word-break: break-all; }
   @media (max-width: 720px) {
     .sheet { width: 100%; margin: 0; box-shadow: none; min-height: 0; }
     .doc-a .head { padding: 18px 16px 10px; flex-wrap: wrap; }
@@ -74,8 +69,6 @@ const EXTRA_STYLES = `
     .doc-a .si-scroll { overflow-x: auto; }
     .doc-a .si-scroll table { min-width: 560px; }
     .doc-a .si-bottom { flex-direction: column; }
-    .doc-a .si-pay { max-width: 100%; }
-    .doc-a .si-pay div { min-width: 0; }
     .doc-a .si-bottom .totals { width: 100%; }
   }
 </style>`
@@ -86,17 +79,7 @@ const table = (head: string[], rows: string[], columns: number) => `
     <tbody>${rows.length ? rows.join('') : `<tr><td class="si-empty" colspan="${columns}">No items to display</td></tr>`}</tbody>
   </table></div>`
 
-const qrCode = async (link: string) => {
-  try {
-    const QRCode = (await import('qrcode')).default
-    return await QRCode.toDataURL(link, { margin: 1, width: 240 })
-  } catch {
-    return null // The link below still works without the picture.
-  }
-}
-
 export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Promise<string> => {
-  const qr = doc.payment_link ? await qrCode(doc.payment_link) : null
   const { equipment, facility } = doc
 
   const workRows = doc.work_entries.map(entry => `
@@ -202,14 +185,6 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
       </section>` : ''}
 
       <div class="si-bottom">
-        ${doc.payment_link ? `
-        <div class="si-pay">
-          ${qr ? `<img src="${qr}" alt="QR code to pay this invoice" />` : ''}
-          <div>
-            <strong>${qr ? 'Scan QR code to pay invoice' : 'Pay this invoice'}</strong>
-            <a href="${esc(doc.payment_link)}">${esc(doc.payment_link)}</a>
-          </div>
-        </div>` : ''}
         <section class="totals">
           ${doc.charges.map(row => charge(row.label, row.amount)).join('')}
           ${charge('Total', doc.subtotal)}

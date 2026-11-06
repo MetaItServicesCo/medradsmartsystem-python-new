@@ -659,7 +659,7 @@ r = put(f"/service-requests/invoices/{gated}", "boss", json={"total_amount": "1"
 ok("changing the amount withdraws approval", invoice_row(gated).billing_approval_status != "approved", r.status_code)
 ok("  the link then shows nothing of it", get(f"/public/service-invoices/{gated_token}").json()["document"] is None)
 ok("  and cannot be paid", pay(gated_token, key_of("gate")).status_code == 409)
-ok("  and is not printed", get(f"/service-invoices/{gated}/document", "boss").json()["payment_link"] is None)
+ok("  and is not in the invoice", gated_token not in get(f"/service-invoices/{gated}/document", "boss").text)
 r = put(f"/service-requests/invoices/{invoice_a}", "fac_a", json={"amount_paid": "1700", "status": "paid"})
 ok("a facility user cannot mark it paid", r.status_code in (403, 409) and invoice_row(invoice_a).amount_paid == 0, r.status_code)
 r = put(f"/service-requests/invoices/{invoice_a}", "fac_a", json={"total_amount": "1"})

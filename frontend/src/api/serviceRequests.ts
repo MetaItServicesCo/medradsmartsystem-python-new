@@ -744,7 +744,6 @@ export interface ServiceInvoiceDocument {
   total_amount: string
   amount_paid: string
   balance_due: string
-  payment_link: string | null
   paid_quotations?: { quotation_number: string; description: string | null; paid_amount: string; paid_at: string | null }[]
 }
 

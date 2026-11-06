@@ -20,7 +20,6 @@ execFileSync(process.execPath, [
   '--bundle',
   '--format=esm',
   '--platform=node',
-  '--external:qrcode',
   `--alias:@=${join(here, '..', 'src')}`,
   '--log-level=warning',
   `--outfile=${join(outDir, 'serviceInvoiceHtml.mjs')}`,
@@ -44,7 +43,6 @@ const doc = (value, over = {}) => ({
   technician: value, client: value, preferred_date: value, actual_date: value,
   charges: [{ label: value, amount: '1500.00' }],
   subtotal: '1500.00', tax_amount: '0.00', discount_amount: '0.00', total_amount: '1500.00', amount_paid: '0.00', balance_due: '1500.00',
-  payment_link: null,
   paid_quotations: [{ quotation_number: value, description: value, paid_amount: '1.00', paid_at: value }],
   ...over,
 })
@@ -74,8 +72,6 @@ for (const payload of [
 }
 const quoted = await buildServiceInvoiceHtml(doc(`x" onerror="alert(1)`))
 ok('a value cannot break out of an attribute', !quoted.includes('" onerror="'))
-const linked = await buildServiceInvoiceHtml(doc('v', { payment_link: `https://app.test/x"><script>alert(1)</script>` }))
-ok('a hostile link is escaped too', !linked.includes('<script>alert'))
 
 console.log('\nThe rules')
 const sample = await buildServiceInvoiceHtml(doc('v'))
@@ -85,10 +81,8 @@ ok('test equipment shows if used', sample.includes('Test Equipment'))
 ok('and not if it was not', !noEquipment.includes('Test Equipment'))
 const partsTable = sample.slice(sample.indexOf('Parts Used'), sample.indexOf('Test Equipment'))
 ok('parts carry no amounts', partsTable.length > 0 && !/Amount|Unit Price|\$\d/.test(partsTable))
-const noLink = await buildServiceInvoiceHtml(doc('v'))
-ok('no link yet: no QR code', !noLink.includes('si-pay"') && !noLink.includes('data:image/png'))
-const withLink = await buildServiceInvoiceHtml(doc('v', { payment_link: 'https://app.test/invoice/service/abc' }))
-ok('a link: QR code and address', withLink.includes('data:image/png') && withLink.includes('https://app.test/invoice/service/abc'))
+const stale = await buildServiceInvoiceHtml(doc('v', { payment_link: 'https://app.test/invoice/service/abc' }))
+ok('the invoice never shows a link or QR code', !stale.includes('data:image/png') && !stale.includes('invoice/service/abc') && !/Scan QR/.test(stale))
 const noHours = await buildServiceInvoiceHtml(doc('v', { total_hours: 0, work_entries: [] }))
 ok('Total Hours shows, as 0', /Total Hours:<\/td><td class="right">0</.test(noHours))
 const money = await buildServiceInvoiceHtml(doc('v', { tax_amount: '0.00', discount_amount: '0.00', amount_paid: '0.00' }))
