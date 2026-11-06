@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Box,
@@ -8,6 +9,7 @@ import {
   DialogTitle,
   IconButton,
   LinearProgress,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -16,9 +18,9 @@ import {
   Typography,
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
-import { fetchTrackingPersonDay } from '@/api/tracking'
+import { fetchTrackingPersonDay, type TrackingMark } from '@/api/tracking'
 import { asUtc, DEFAULT_EVENT_TIMEZONE } from '@/utils/attendanceTime'
-import TrackingMap from './TrackingMap'
+import TrackingMap, { type MapPin } from './TrackingMap'
 
 interface Props {
   person: { user_id: number; full_name: string } | null
@@ -44,9 +46,51 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
   </Box>
 )
 
+const MARK_LABELS: Record<TrackingMark['event_type'], string> = {
+  check_in: 'Check in',
+  check_out: 'Check out',
+  break_start: 'Break start',
+  break_end: 'Break end',
+}
+
+const MARK_COLOURS: Record<TrackingMark['event_type'], string> = {
+  check_in: '#059669',
+  check_out: '#DC2626',
+  break_start: '#D97706',
+  break_end: '#D97706',
+}
+
+const hasPosition = (mark: TrackingMark) => mark.latitude != null && mark.longitude != null
+
 /**
- * One person's evidence for one day: shifts, apps, a timeline of what was in
- * use, and where they went. Opening it is written to the audit log.
+ * Where an attendance mark was made: the address when there is one, a link to
+ * the map either way, and a plain statement when no location was recorded.
+ */
+export const MarkPlace = ({ mark, prefix = '' }: { mark: TrackingMark | null; prefix?: string }) => {
+  if (!mark) return null
+  if (!hasPosition(mark)) {
+    return <Typography sx={{ color: '#9CA3AF', fontSize: '0.75rem', mt: 0.5 }}>No location recorded</Typography>
+  }
+  const accuracy = mark.location_accuracy_m != null ? `Accurate to about ${Math.round(mark.location_accuracy_m)} m` : undefined
+  return (
+    <Box sx={{ mt: 0.5, maxWidth: 340 }}>
+      <Link
+        href={`https://www.google.com/maps?q=${mark.latitude},${mark.longitude}`}
+        target="_blank"
+        rel="noreferrer"
+        title={[mark.location_place, accuracy].filter(Boolean).join('\n') || undefined}
+        sx={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#5B21B6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      >
+        {prefix}{mark.location_place || 'this location (open map)'}
+      </Link>
+    </Box>
+  )
+}
+
+/**
+ * One person's evidence for one day: shifts, where each check-in and check-out
+ * was made, apps, a timeline of what was in use, and where they went. Opening
+ * it is written to the audit log.
  */
 const TrackingDayDialog = ({ person, date, onClose }: Props) => {
   const tz = DEFAULT_EVENT_TIMEZONE
@@ -58,6 +102,18 @@ const TrackingDayDialog = ({ person, date, onClose }: Props) => {
   })
   const day = query.data
   const most = day?.apps[0]?.minutes || 1
+  const markPins: MapPin[] = useMemo(() => (day?.marks ?? []).filter(hasPosition).map((mark) => ({
+    id: `mark-${mark.id}`,
+    lat: mark.latitude as number,
+    lon: mark.longitude as number,
+    label: `${MARK_LABELS[mark.event_type]} · ${timeIn(mark.event_time, tz)}`,
+    detail: mark.location_place || undefined,
+    colour: MARK_COLOURS[mark.event_type],
+  })), [day, tz])
+  const lastPoint = day?.points[day.points.length - 1]
+  const pins: MapPin[] = useMemo(() => (lastPoint ? [{
+    id: 'last', lat: lastPoint.lat, lon: lastPoint.lon, label: 'Last point', detail: timeIn(lastPoint.recorded_at, tz),
+  }, ...markPins] : markPins), [lastPoint, markPins, tz])
 
   return (
     <Dialog open={Boolean(person)} onClose={onClose} maxWidth="lg" fullWidth>
@@ -82,17 +138,25 @@ const TrackingDayDialog = ({ person, date, onClose }: Props) => {
               <Stat label="Location points" value={String(day.totals.points)} />
             </Box>
 
-            {day.points.length > 0 && (
+            {day.marks.length > 0 && (
               <Box>
-                <Typography sx={{ fontWeight: 900, mb: 1 }}>Route</Typography>
-                <TrackingMap
-                  height={300}
-                  route={day.points}
-                  pins={[{
-                    id: 'last', lat: day.points[day.points.length - 1].lat, lon: day.points[day.points.length - 1].lon,
-                    label: 'Last point', detail: timeIn(day.points[day.points.length - 1].recorded_at, tz),
-                  }]}
-                />
+                <Typography sx={{ fontWeight: 900, mb: 1 }}>Check-ins and check-outs</Typography>
+                <Box sx={{ display: 'grid', gap: 0.75 }}>
+                  {day.marks.map((mark) => (
+                    <Box key={mark.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '110px 90px 1fr' }, gap: 1.5, alignItems: 'baseline' }}>
+                      <Typography sx={{ fontWeight: 800, fontSize: '0.875rem', color: MARK_COLOURS[mark.event_type] }}>{MARK_LABELS[mark.event_type]}</Typography>
+                      <Typography sx={{ fontSize: '0.875rem' }}>{timeIn(mark.event_time, tz)}</Typography>
+                      <MarkPlace mark={mark} />
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            )}
+
+            {pins.length > 0 && (
+              <Box>
+                <Typography sx={{ fontWeight: 900, mb: 1 }}>{day.points.length > 0 ? 'Route' : 'Map'}</Typography>
+                <TrackingMap height={300} route={day.points} pins={pins} />
               </Box>
             )}
 

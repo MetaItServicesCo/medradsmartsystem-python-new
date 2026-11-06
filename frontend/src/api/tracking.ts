@@ -56,6 +56,20 @@ export interface TrackingLocation {
   source: 'live' | 'saved'
 }
 
+/** One attendance mark as evidence: when, how, and where it was made. */
+export interface TrackingMark {
+  id: number
+  event_type: 'check_in' | 'check_out' | 'break_start' | 'break_end'
+  event_time: string
+  source: string
+  verification_status: string
+  latitude: number | null
+  longitude: number | null
+  location_accuracy_m: number | null
+  location_place: string | null
+  device_label: string | null
+}
+
 export interface TrackingOverviewPerson extends TrackingSwitches {
   user_id: number
   full_name: string
@@ -64,6 +78,8 @@ export interface TrackingOverviewPerson extends TrackingSwitches {
   consent_required: boolean
   on_shift: boolean
   shift_started_at: string | null
+  /** Their check-in for the shift they are on, with where it was made. */
+  check_in: TrackingMark | null
   desktop_devices: number
   desktop_last_seen_at: string | null
   phone_devices: number
@@ -112,6 +128,7 @@ export interface TrackingPersonDay {
   date: string
   tz: string
   shifts: { start: string; end: string; open: boolean }[]
+  marks: TrackingMark[]
   totals: { minutes: number; keys: number; clicks: number; scrolls: number; active_ratio: number | null; points: number }
   apps: { app: string; minutes: number; keys: number; clicks: number }[]
   blocks: TrackingDayBlock[]

@@ -352,6 +352,23 @@ def _current_shift_start(db: Session, user_id: int, now: datetime) -> Optional[d
     return None
 
 
+def _mark_payload(mark: AttendanceEvent) -> dict[str, Any]:
+    """One attendance mark as evidence: when, how, and where it was made."""
+    enum_value = lambda value: value.value if hasattr(value, "value") else value  # noqa: E731
+    return {
+        "id": mark.id,
+        "event_type": enum_value(mark.event_type),
+        "event_time": mark.event_time,
+        "source": enum_value(mark.source),
+        "verification_status": enum_value(mark.verification_status),
+        "latitude": mark.latitude,
+        "longitude": mark.longitude,
+        "location_accuracy_m": mark.location_accuracy_m,
+        "location_place": mark.location_place,
+        "device_label": mark.device_label,
+    }
+
+
 @router.get("/overview")
 def tracking_overview(
     day: Optional[date] = Query(None, alias="date"),
@@ -437,12 +454,32 @@ def tracking_overview(
                     "recorded_at": sample.recorded_at.isoformat() + "Z",
                 }
 
+    shift_starts = {user_id: _current_shift_start(db, user_id, now) for user_id in ids}
+    # Where each person on shift checked in: their latest check-in that counts.
+    checked_in: dict[int, AttendanceEvent] = {}
+    on_shift_ids = [user_id for user_id, start in shift_starts.items() if start is not None]
+    if on_shift_ids:
+        for mark in (
+            db.query(AttendanceEvent)
+            .filter(
+                AttendanceEvent.user_id.in_(on_shift_ids),
+                AttendanceEvent.event_type == AttendanceEventType.CHECK_IN,
+                AttendanceEvent.verification_status != AttendanceVerificationStatus.REJECTED,
+                AttendanceEvent.event_time >= now - MAX_OPEN_SHIFT,
+                AttendanceEvent.event_time <= now,
+            )
+            .order_by(AttendanceEvent.event_time, AttendanceEvent.id)
+            .all()
+        ):
+            checked_in[mark.user_id] = mark
+
     people = []
     for setting in sorted(tracked, key=lambda s: (users[s.user_id].full_name or "").lower()):
         user = users[setting.user_id]
         desktop = devices.get((user.id, "desktop"), {"count": 0, "last_seen": None})
         phone = devices.get((user.id, "phone"), {"count": 0, "last_seen": None})
-        shift_start = _current_shift_start(db, user.id, now)
+        shift_start = shift_starts[user.id]
+        check_in = checked_in.get(user.id)
         consent_required = _consent_required(setting)
         wants_desktop = setting.desktop_activity or setting.screen_view
         warnings = []
@@ -468,6 +505,7 @@ def tracking_overview(
             "consent_required": consent_required,
             "on_shift": shift_start is not None,
             "shift_started_at": shift_start,
+            "check_in": _mark_payload(check_in) if check_in else None,
             "desktop_devices": desktop["count"],
             "desktop_last_seen_at": desktop["last_seen"],
             "phone_devices": phone["count"],
@@ -532,6 +570,18 @@ def person_day(
         {"start": max(a, start), "end": min(b, end), "open": b > datetime.utcnow()}
         for a, b in _shift_intervals(db, user.id, start, end)
     ]
+    # Every check-in, break and check-out that counts, with where it was made.
+    marks = (
+        db.query(AttendanceEvent)
+        .filter(
+            AttendanceEvent.user_id == user.id,
+            AttendanceEvent.verification_status != AttendanceVerificationStatus.REJECTED,
+            AttendanceEvent.event_time >= start,
+            AttendanceEvent.event_time < end,
+        )
+        .order_by(AttendanceEvent.event_time, AttendanceEvent.id)
+        .all()
+    )
 
     apps: dict[str, dict[str, int]] = {}
     for block in blocks:
@@ -549,6 +599,7 @@ def person_day(
         "date": day,
         "tz": tz,
         "shifts": shifts,
+        "marks": [_mark_payload(mark) for mark in marks],
         "totals": {
             "minutes": sum(block.minutes or 0 for block in blocks),
             "keys": sum(block.keys or 0 for block in blocks),

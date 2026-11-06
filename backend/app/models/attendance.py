@@ -94,6 +94,9 @@ class AttendanceEvent(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     location_accuracy_m = Column(Float, nullable=True)
+    # The address the location resolves to, filled in just after the mark is
+    # saved (app.utils.geocode). Empty when there is no location or the lookup failed.
+    location_place = Column(String(255), nullable=True)
     employee_note = Column(Text, nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

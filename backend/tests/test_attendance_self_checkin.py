@@ -188,6 +188,44 @@ def clear(who):
     db.close()
 
 
+# ── the address lookup: never the real OpenStreetMap from a test ────────────────
+from app.utils import geocode  # noqa: E402
+
+geocode.SessionLocal = Session
+geocode._MIN_INTERVAL_SECONDS = 0
+lookups: list[tuple[float, float]] = []
+geocoder = {"fail": False}
+
+
+class _FakeResponse:
+    def __init__(self, lat, lon):
+        self.lat, self.lon = lat, lon
+
+    def raise_for_status(self):
+        if geocoder["fail"]:
+            raise RuntimeError("geocoder down")
+
+    def json(self):
+        return {"display_name": f"Place at {self.lat:.4f},{self.lon:.4f}"}
+
+
+def _fake_get(url, params=None, headers=None, timeout=None):
+    lookups.append((params["lat"], params["lon"]))
+    assert headers and headers.get("User-Agent", "").startswith("MedRad/"), "the lookup must name the application"
+    return _FakeResponse(params["lat"], params["lon"])
+
+
+geocode.httpx.get = _fake_get
+# The geocoding worker, run by hand once each request has returned.
+queued: list = []
+geocode._submit = lambda fn, *args: queued.append((fn, args))
+
+
+def drain():
+    while queued:
+        fn, args = queued.pop(0)
+        fn(*args)
+
 print("Self check-in")
 print("=" * 72)
 
@@ -321,6 +359,45 @@ ok("HR rejects the check-out with a note", r.status_code == 200 and r.json()["re
 hours_after = worked()
 ok("  and the rejected check-out no longer earns hours", hours_after is not None and hours_after < hours_before,
    f"{hours_before} -> {hours_after}")
+
+# ── F. where a mark was made, as an address ──────────────────────────────────
+section("F. Where it was marked, as an address")
+clear("tech")
+queued.clear()
+lookups.clear()
+geocode._cache.clear()
+r = check("tech", photo=b"face:tech", latitude=24.8607, longitude=67.0011, location_accuracy_m=9)
+ok("the mark is answered before any lookup is made", r.json().get("recorded") is True and lookups == [] and len(queued) == 1)
+drain()
+saved = events_of("tech")[-1]
+ok("a located check-in is named once it is saved", saved.location_place == "Place at 24.8607,67.0011", saved.location_place)
+ok("  with one lookup", lookups == [(24.8607, 67.0011)], str(lookups))
+r = check("tech", event_type="check_out", photo=b"face:tech", latitude=24.86071, longitude=67.00112)
+drain()
+ok("a check-out a few metres away reuses the answer, no second lookup",
+   events_of("tech")[-1].location_place == "Place at 24.8607,67.0011" and len(lookups) == 1, str(lookups))
+listed = as_user("hr").get("/api/v1/attendance/events", params={"user_id": IDS["tech"]}).json()
+items = listed.get("items", listed) if isinstance(listed, dict) else listed
+ok("HR's list carries the address", any(item.get("location_place") == "Place at 24.8607,67.0011" for item in items))
+clear("tech")
+r = check("tech", photo=b"face:tech")
+ok("no location: nothing is even queued", queued == [])
+drain()
+ok("no location: nothing is looked up, nothing named", events_of("tech")[-1].location_place is None and len(lookups) == 1)
+clear("tech")
+geocoder["fail"] = True
+r = check("tech", photo=b"face:tech", latitude=31.5204, longitude=74.3587)
+drain()
+ok("the lookup failing never stops the mark", r.json().get("recorded") is True and events_of("tech")[-1].latitude == 31.5204)
+ok("  it is simply not named", events_of("tech")[-1].location_place is None)
+geocoder["fail"] = False
+clear("tech")
+settings.ATTENDANCE_GEOCODING_ENABLED = False
+lookups.clear()
+check("tech", photo=b"face:tech", latitude=33.0, longitude=73.0)
+drain()
+ok("switched off: the position is kept, no lookup made", events_of("tech")[-1].latitude == 33.0 and lookups == [])
+settings.ATTENDANCE_GEOCODING_ENABLED = True
 
 print()
 if failures:

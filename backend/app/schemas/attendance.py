@@ -90,6 +90,7 @@ class AttendanceEventResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     location_accuracy_m: Optional[float] = None
+    location_place: Optional[str] = None
     employee_note: Optional[str] = None
     created_by_id: Optional[int] = None
     created_at: datetime

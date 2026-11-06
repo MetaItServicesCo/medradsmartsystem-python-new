@@ -11,6 +11,7 @@ export interface MapPin {
   detail?: string
   /** A pin whose position is not live, drawn faded. */
   faded?: boolean
+  colour?: string
 }
 
 interface Props {
@@ -67,7 +68,7 @@ const TrackingMap = ({ pins = [], route = [], height = 340 }: Props) => {
         radius: 9,
         color: '#fff',
         weight: 2,
-        fillColor: PIN_COLOUR,
+        fillColor: pin.colour || PIN_COLOUR,
         fillOpacity: pin.faded ? 0.45 : 1,
       })
         .bindTooltip(pin.detail ? `<strong>${escapeHtml(pin.label)}</strong><br/>${escapeHtml(pin.detail)}` : escapeHtml(pin.label))

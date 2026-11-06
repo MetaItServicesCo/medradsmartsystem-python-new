@@ -190,6 +190,11 @@ class Settings(BaseSettings):
     TRACKING_LIVE_LOCATION_TTL_SECONDS: int = 600
     TRACKING_ACTIVITY_RETENTION_DAYS: int = 90
     TRACKING_LOCATION_RETENTION_DAYS: int = 30
+    # Turning a check-in's position into an address (OpenStreetMap Nominatim,
+    # as Tracker did). Off: the position is still kept, just not named.
+    ATTENDANCE_GEOCODING_ENABLED: bool = True
+    GEOCODER_REVERSE_URL: str = "https://nominatim.openstreetmap.org/reverse"
+    GEOCODER_USER_AGENT: str = "MedRad/1.0 (+https://medcodesolution.com)"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

@@ -49,6 +49,8 @@ export interface AttendanceEvent {
   latitude?: number | null
   longitude?: number | null
   location_accuracy_m?: number | null
+  /** The address the location resolves to; filled in a moment after the mark. */
+  location_place?: string | null
   employee_note?: string | null
   created_by_id?: number | null
   created_at: string

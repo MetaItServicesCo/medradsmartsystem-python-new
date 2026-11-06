@@ -41,6 +41,7 @@ from app.utils.logging import log_activity
 from app.utils.permissions import has_module_permission
 from app.utils.upload_security import protected_upload_path
 from app.utils import face_engine
+from app.utils.geocode import schedule_attendance_place
 from app.core.config import settings
 
 
@@ -115,6 +116,7 @@ def _event_payload(event: AttendanceEvent) -> dict[str, Any]:
         "latitude": event.latitude,
         "longitude": event.longitude,
         "location_accuracy_m": event.location_accuracy_m,
+        "location_place": event.location_place,
         "employee_note": event.employee_note,
         "created_by_id": event.created_by_id,
         "created_at": event.created_at,
@@ -1361,6 +1363,9 @@ def mark_my_attendance(
         **audit,
     })
     db.commit()
+    if latitude is not None:
+        # Named on the geocoding worker, so marking never waits on it.
+        schedule_attendance_place(event.id)
     return {
         "recorded": True,
         "duplicate": False,

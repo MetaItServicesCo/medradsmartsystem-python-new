@@ -1185,6 +1185,12 @@ const EventTable = ({ rows, onReview }: { rows: AttendanceEvent[]; onReview?: (e
                     Location
                   </Button>
                 )}
+                {event.location_place && (
+                  <Typography title={event.location_place}
+                    sx={{ fontSize: 12, color: '#475569', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {event.location_place}
+                  </Typography>
+                )}
                 {typeof event.confidence === 'number' && (
                   <Typography component="span" sx={{ fontSize: 12, color: '#64748B', ml: 0.5 }} title="How closely the photo matched the enrolled face">
                     match {Math.round(event.confidence * 100)}%

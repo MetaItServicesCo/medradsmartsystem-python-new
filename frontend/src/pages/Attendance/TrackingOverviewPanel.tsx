@@ -19,7 +19,7 @@ import TimelineIcon from '@mui/icons-material/Timeline'
 import { fetchTrackingOverview, type TrackingOverviewPerson, type TrackingWarning } from '@/api/tracking'
 import { asUtc, DEFAULT_EVENT_TIMEZONE } from '@/utils/attendanceTime'
 import TrackingMap, { type MapPin } from './TrackingMap'
-import TrackingDayDialog, { formatMinutes, percent } from './TrackingDayDialog'
+import TrackingDayDialog, { formatMinutes, MarkPlace, percent } from './TrackingDayDialog'
 import ScreenViewDialog from './ScreenViewDialog'
 
 export const WARNING_LABELS: Record<TrackingWarning, string> = {
@@ -89,7 +89,9 @@ const TrackingOverviewPanel = ({ canWatchScreens }: Props) => {
           sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }}
         />
         <Typography sx={{ color: '#6B7280', fontSize: '0.875rem' }}>
-          {people.length} tracked{needsAttention ? ` · ${needsAttention} need attention` : ''}{isToday ? ' · refreshes every 30 seconds' : ''}
+          {query.isSuccess
+            ? `${people.length} tracked${needsAttention ? ` · ${needsAttention} need attention` : ''}${isToday ? ' · refreshes every 30 seconds' : ''}`
+            : ''}
         </Typography>
       </Box>
 
@@ -134,7 +136,10 @@ const TrackingOverviewPanel = ({ canWatchScreens }: Props) => {
                 </TableCell>
                 <TableCell>
                   {person.on_shift && person.shift_started_at ? (
-                    <Chip size="small" label={`On shift since ${timeIn(person.shift_started_at)}`} sx={{ bgcolor: '#DCFCE7', color: '#166534', fontWeight: 800 }} />
+                    <>
+                      <Chip size="small" label={`On shift since ${timeIn(person.shift_started_at)}`} sx={{ bgcolor: '#DCFCE7', color: '#166534', fontWeight: 800 }} />
+                      <MarkPlace mark={person.check_in} prefix="Checked in at " />
+                    </>
                   ) : (
                     <Typography sx={{ color: '#9CA3AF', fontSize: '0.8rem' }}>Not checked in</Typography>
                   )}

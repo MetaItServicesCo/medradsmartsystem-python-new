@@ -175,12 +175,16 @@ device("field", "phone", seen_ago_minutes=120)
 device("off", "desktop")
 
 
-def mark(who, event_type, minutes_ago):
+def mark(who, event_type, minutes_ago, status=AttendanceVerificationStatus.VERIFIED, **where):
     seed.add(AttendanceEvent(user_id=IDS[who], event_type=event_type, event_time=NOW - timedelta(minutes=minutes_ago),
-                             source=AttendanceSource.FACE, verification_status=AttendanceVerificationStatus.VERIFIED))
+                             source=AttendanceSource.FACE, verification_status=status, **where))
 
 
-mark("tech", AttendanceEventType.CHECK_IN, 120)
+# A check-in HR rejected, then the real one, made at the office.
+mark("tech", AttendanceEventType.CHECK_IN, 125, AttendanceVerificationStatus.REJECTED,
+     latitude=1.0, longitude=1.0, location_place="Somewhere wrong")
+mark("tech", AttendanceEventType.CHECK_IN, 120, latitude=24.8607, longitude=67.0011, location_accuracy_m=9,
+     location_place="Shahrah-e-Faisal, Karachi")
 mark("field", AttendanceEventType.CHECK_IN, 180)
 mark("idle", AttendanceEventType.CHECK_IN, 60)
 
@@ -264,6 +268,11 @@ ok("tech: on shift, nothing to flag", tech["on_shift"] is True and tech["warning
 ok("tech: today's active time and input totals", tech["activity"]["minutes"] == 60 and tech["activity"]["keys"] == 540,
    tech["activity"])
 ok("tech: the app used most", tech["activity"]["top_app"] == "Excel")
+ok("tech: where they checked in, as an address and a position",
+   tech["check_in"] and tech["check_in"]["location_place"] == "Shahrah-e-Faisal, Karachi"
+   and tech["check_in"]["latitude"] == 24.8607, tech["check_in"])
+ok("field: checked in without a location, so none is shown", row_of(body, "field")["check_in"]["location_place"] is None)
+ok("off: not checked in, no check-in place", row_of(body, "off")["check_in"] is None)
 ok("tech: half the samples active", tech["activity"]["active_ratio"] == 0.5)
 ok("staff: waiting for consent", row_of(body, "staff")["warnings"] == ["no_consent"], row_of(body, "staff")["warnings"])
 ok("idle: tracked with no desktop app signed in", "no_desktop_device" in row_of(body, "idle")["warnings"])
@@ -288,6 +297,8 @@ ok("apps, most used first", [a["app"] for a in day["apps"]] == ["Excel", "Chrome
 ok("the timeline in order, with titles", [b["app"] for b in day["blocks"]] == ["Excel", "Chrome", "Excel"]
    and day["blocks"][0]["titles"] == ["Excel window"])
 ok("the shift is shown, still open", len(day["shifts"]) == 1 and day["shifts"][0]["open"] is True)
+ok("the day's marks, with where each was made; the rejected one left out",
+   [(m["event_type"], m["location_place"]) for m in day["marks"]] == [("check_in", "Shahrah-e-Faisal, Karachi")], day["marks"])
 ok("the day's totals", day["totals"]["minutes"] == 60 and day["totals"]["keys"] == 540)
 field_day = as_user("boss").get(f"{API}/people/{IDS['field']}/day", params={"date": TODAY_LOCAL.isoformat()}).json()
 ok("field's route for the day, in order", [p["lat"] for p in field_day["points"]] == [24.80, 24.86], field_day["points"])
