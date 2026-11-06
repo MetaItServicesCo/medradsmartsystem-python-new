@@ -762,7 +762,6 @@ export interface ServiceInvoiceShareResult {
 
 export interface PublicServiceInvoice {
   state: 'payable' | 'paid' | 'under_review'
-  invoice_id?: number
   invoice_number: string
   balance_due?: string
   payer_name?: string | null

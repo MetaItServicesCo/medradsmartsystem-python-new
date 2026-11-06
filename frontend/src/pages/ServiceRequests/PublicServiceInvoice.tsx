@@ -49,6 +49,15 @@ const PublicServiceInvoice = () => {
   const [payOpen, setPayOpen] = useState(false)
   const [payerName, setPayerName] = useState('')
 
+  // A private page: nothing should list it, even if a link gets shared somewhere public.
+  useEffect(() => {
+    const robots = document.createElement('meta')
+    robots.name = 'robots'
+    robots.content = 'noindex, nofollow'
+    document.head.appendChild(robots)
+    return () => { robots.remove() }
+  }, [])
+
   const invoiceQ = useQuery({ queryKey, queryFn: () => fetchPublicServiceInvoice(token), retry: false })
   const data = invoiceQ.data
 
@@ -67,7 +76,7 @@ const PublicServiceInvoice = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.payer_name])
 
-  const scope = data ? `service-invoice-${data.invoice_id}-${Number(data.balance_due).toFixed(2)}` : ''
+  const scope = data ? `service-invoice-${data.invoice_number}-${Number(data.balance_due).toFixed(2)}` : ''
 
   const pay = useMutation({
     mutationFn: ({ sourceId, idempotencyKey }: { sourceId: string; idempotencyKey: string }) => payPublicServiceInvoice(token, {

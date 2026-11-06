@@ -10,6 +10,7 @@ record and carry no amounts: they are billed only through a quotation.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from app.api.v1.endpoints.reports import _service_session_entries
@@ -20,7 +21,35 @@ MAX_WORK_TEXT = 5000
 
 
 def _text(value: Any) -> str:
-    return str(value or "").strip()
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _history(sr: ServiceRequest) -> list[dict[str, Any]]:
+    """The request's history with anything malformed set aside. Old
+    records came across from the previous system; one bad entry must not stop an
+    invoice from being generated or opened."""
+    entries = sr.history if isinstance(sr.history, list) else []
+    clean = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            changes = entry.get("changes")
+            clean.append({**entry, "changes": changes if isinstance(changes, dict) else {}})
+    return clean
+
+
+def _sessions(sr: ServiceRequest) -> list[dict[str, Any]]:
+    return _service_session_entries(SimpleNamespace(history=_history(sr), assigned_technician=sr.assigned_technician))
+
+
+def _dicts(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _number(value: Any) -> Optional[float]:
+    try:
+        return float(value) if value is not None and not isinstance(value, bool) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _day(*values: Any) -> Optional[str]:
@@ -34,7 +63,7 @@ def service_work_entries(sr: ServiceRequest, edits: Optional[dict[str, dict[str,
     """One row per visit or addition, in the order they happened. `edits` holds
     the administrator's wording by row key; hours and times are never edited."""
     rows: list[dict[str, Any]] = []
-    for index, session in enumerate(_service_session_entries(sr)):
+    for index, session in enumerate(_sessions(sr)):
         rows.append({
             "key": session.get("session_id") or f"session-{index}",
             "date": _day(session.get("work_date"), session.get("start_time"), session.get("timestamp")),
@@ -43,12 +72,12 @@ def service_work_entries(sr: ServiceRequest, edits: Optional[dict[str, dict[str,
             "technician": _text(session.get("user")),
             "check_in": session.get("start_time"),
             "check_out": session.get("end_time"),
-            "hours": session.get("duration_hours"),
+            "hours": _number(session.get("duration_hours")),
         })
-    for index, entry in enumerate(sr.history or []):
+    for index, entry in enumerate(_history(sr)):
         if entry.get("action") != "work_order_addition":
             continue
-        changes = entry.get("changes") or {}
+        changes = entry["changes"]
         # An addition with only a part or a note has nothing to say here.
         if not _text(changes.get("diagnosis")) and not _text(changes.get("work_done")):
             continue
@@ -87,23 +116,19 @@ def service_work_entries(sr: ServiceRequest, edits: Optional[dict[str, dict[str,
 
 def _work_order_items(sr: ServiceRequest) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Parts and test equipment recorded across the sessions and additions."""
-    sources = [*_service_session_entries(sr)]
-    sources += [
-        entry.get("changes") or {}
-        for entry in sr.history or []
-        if entry.get("action") == "work_order_addition"
-    ]
+    sources = [*_sessions(sr)]
+    sources += [entry["changes"] for entry in _history(sr) if entry.get("action") == "work_order_addition"]
     parts: list[dict[str, Any]] = []
     equipment: dict[str, dict[str, Any]] = {}
     for source in sources:
-        for part in source.get("parts") or []:
+        for part in _dicts(source.get("parts")):
             parts.append({
                 "part_number": part.get("part_number"),
                 "description": part.get("description"),
                 "quantity": part.get("quantity_used") or part.get("quantity"),
                 "condition": part.get("condition"),
             })
-        for item in source.get("test_equipment") or []:
+        for item in _dicts(source.get("test_equipment")):
             key = str(item.get("id") or item.get("serial_number") or item.get("description"))
             equipment[key] = {
                 "description": item.get("description"),
@@ -133,7 +158,7 @@ def build_service_invoice_document(
     sr: Optional[ServiceRequest] = invoice.service_request
     facility = invoice.facility
     equipment = sr.equipment if sr else None
-    entries = invoice.service_work_entries if invoice.service_work_entries is not None else (
+    entries = invoice.service_work_entries if isinstance(invoice.service_work_entries, list) else (
         service_work_entries(sr) if sr else []
     )
     parts, test_equipment = _work_order_items(sr) if sr else ([], [])

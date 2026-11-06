@@ -74,7 +74,9 @@ from app.utils.square_payments import (
 router = APIRouter()
 
 LINK_LIFETIME = timedelta(days=90)
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# One address only: separators and brackets could add recipients to the message.
+_ADDRESS_PART = r'[^@\s,;:<>()\[\]"\\]+'
+EMAIL_PATTERN = re.compile(rf"^{_ADDRESS_PART}@{_ADDRESS_PART}\.{_ADDRESS_PART}$")
 
 
 def _invoice_options():
@@ -303,7 +305,8 @@ def share_service_invoice(
             title="Service invoice received",
             message=f"Invoice {invoice.invoice_number} is ready to view and pay.",
             notification_type="billing",
-            link_url=link.split(settings.PUBLIC_APP_URL.rstrip("/"), 1)[-1],
+            # Signed in, they open it in Billing; the secret link is not stored here.
+            link_url=f"/billing?search={invoice.invoice_number}",
             actor_id=current_user.id,
         )
     expires = invoice.public_link_expires_at.strftime("%B %d, %Y")
@@ -363,7 +366,6 @@ def _public_response(invoice: Invoice, token: str) -> dict[str, Any]:
     balance = _money(invoice.balance_due)
     return {
         "state": "paid" if balance <= 0 else "payable",
-        "invoice_id": invoice.id,
         "invoice_number": invoice.invoice_number,
         "balance_due": f"{balance:.2f}",
         "payer_name": (invoice.facility.contact_person if invoice.facility else None) or invoice.customer_name,
@@ -513,10 +515,18 @@ def pay_public_service_invoice(
         sr.history = history
         sr.billing_status = "approved"
         flag_modified(sr, "history")
+    # Staff changed the invoice in the moments the card was being charged. The
+    # money is taken and stays on record; someone needs to look at it.
+    overpaid = _money(invoice.amount_paid) > _money(invoice.total_amount)
+    needs_attention = previous_status == InvoiceStatus.CANCELLED or overpaid
     notify_admins(
         db,
-        title="Service payment completed",
-        message=f"{payer} paid ${square_amount:.2f} through Square for {invoice.invoice_number}.",
+        title="Service payment needs attention" if needs_attention else "Service payment completed",
+        message=(
+            f"{payer} paid ${square_amount:.2f} through Square for {invoice.invoice_number}"
+            + (", but the invoice was cancelled or reduced while the card was being charged. Please review it."
+               if needs_attention else ".")
+        ),
         notification_type="billing",
         link_url=f"/billing?search={invoice.invoice_number}",
         actor_id=None,

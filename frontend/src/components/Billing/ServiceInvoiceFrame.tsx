@@ -16,7 +16,7 @@ const ServiceInvoiceFrame = ({ html, title }: { html: string; title: string }) =
       title={title}
       data-testid="service-invoice-frame"
       sandbox="allow-same-origin"
-      srcDoc={`<!doctype html><html><head><meta charset="utf-8"/></head><body style="margin:0;background:#fff">${html}</body></html>`}
+      srcDoc={`<!doctype html><html><head><meta charset="utf-8"/></head><body style="margin:0;background:#fff">${html}<style>.sheet{width:100%;max-width:8.5in;min-height:0;margin:0 auto;box-shadow:none}body{background:#fff!important}</style></body></html>`}
       onLoad={() => {
         const body = frame.current?.contentDocument?.documentElement
         if (body) setHeight(body.scrollHeight + 8)

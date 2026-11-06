@@ -146,7 +146,7 @@ class ServiceInvoiceCreate(BaseModel):
     # Left out, the tier's Service Call Fee is charged; 0 leaves it off this invoice.
     service_call_fee: Optional[Decimal] = Field(default=None, ge=0)
     # The diagnosis and work done as the administrator worded them for this invoice.
-    work_entries: Optional[list[ServiceInvoiceWorkEntryEdit]] = None
+    work_entries: Optional[list[ServiceInvoiceWorkEntryEdit]] = Field(default=None, max_length=500)
 
 
 class ServiceInvoiceUpdate(BaseModel):
