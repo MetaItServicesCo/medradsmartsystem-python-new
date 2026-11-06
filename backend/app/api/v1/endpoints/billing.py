@@ -4,6 +4,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -59,6 +60,7 @@ from app.utils.payment_proofs import (
     payment_proof_sha256,
     read_and_validate_payment_proof,
     new_card_claim,
+    require_no_other_service_payment,
     store_encrypted_payment_proof,
 )
 from app.utils.rate_limit import enforce_rate_limit
@@ -344,6 +346,16 @@ def approve_invoice(
     }
 
 
+def _lock_service_invoice_for_proof(db: Session, invoice_id: int, amount: Decimal) -> Invoice:
+    """Lock the invoice and re-check it, now the proof's file has been read."""
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).populate_existing().with_for_update().first()
+    require_no_other_service_payment(db, invoice)
+    balance = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
+    if amount > balance:
+        raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice balance")
+    return invoice
+
+
 def _submit_invoice_card_claim(db: Session, invoice: Invoice, payload: InvoicePaymentCreate, user: User) -> Any:
     method = (payload.payment_method or "").strip().lower().replace(" ", "_")
     if method in NON_CARD_METHODS:
@@ -378,6 +390,7 @@ def _submit_invoice_card_claim(db: Session, invoice: Invoice, payload: InvoicePa
     )
     if duplicate:
         return payment_proof_response(duplicate)
+    require_no_other_service_payment(db, invoice)
     claim = new_card_claim(submitted_by_id=user.id, amount=amount, notes=payload.notes,
                            card_brand=card_brand, card_last4=card_last4, invoice_id=invoice.id)
     db.add(claim)
@@ -437,6 +450,7 @@ def record_invoice_payment(
         # to confirm the charge, and the invoice changes only on approval.
         response.status_code = 202
         return _submit_invoice_card_claim(db, invoice, payload, current_user)
+    require_no_other_service_payment(db, invoice)
     operation_key = payload.idempotency_key or f"legacy-manual-invoice-{invoice.id}-{uuid4()}"
     fingerprint = payment_fingerprint(
         "manual_invoice_payment",
@@ -559,6 +573,10 @@ async def submit_invoice_payment_proof(
     )
     if duplicate:
         return payment_proof_response(duplicate, include_ocr_text=is_invoice_approver(current_user))
+    if invoice.invoice_type == InvoiceType.SERVICE:
+        # In a worker thread: this endpoint runs on the event loop, and waiting
+        # there for a lock would stop the request that holds it from finishing.
+        invoice = await run_in_threadpool(_lock_service_invoice_for_proof, db, invoice_id, amount)
 
     stored_name, storage_backend = store_encrypted_payment_proof(data)
     proof = PaymentProof(

@@ -56,6 +56,11 @@ os.environ["AUTH_LOGIN_IP_LIMIT"] = "100000"
 os.environ["READ_CACHE_ENABLED"] = "false"
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+# The Windows build of libmagic can crash or hang when loaded in this process.
+# The code then uses its own file signatures, as it does when libmagic is missing.
+if os.name == "nt":
+    sys.modules["magic"] = None
+
 import httpx  # noqa: E402
 import redis as redis_lib  # noqa: E402
 import uvicorn  # noqa: E402
@@ -836,68 +841,176 @@ for n in range(32):
 square["fail"] = None
 ok("  and trying card after card across invoices is capped at 30", across[:30].count(402) == 30 and across[30:] == [429, 429], across[-4:])
 
-section("9c. A reported payment and a real one on the same invoice")
+section("9c. One payment at a time")
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+reports = {"n": 0}
 
 
-def report_proof(invoice_id, who="fac_a", amount="1700.00", method="ach"):
-    return post(f"/billing/invoices/{invoice_id}/payment-proofs", who, data={"amount": amount, "payment_method": method, "notes": "Paid by ACH"},
-                files={"proof_file": ("proof.png", PNG, "image/png")})
+def report_proof(target_id, who="fac_a", amount="1700.00", method="ach"):
+    reports["n"] += 1  # a different file each time: the same file twice counts as a retry
+    body = PNG + b"\0" * reports["n"]
+    return post(f"/billing/invoices/{target_id}/payment-proofs", who, data={"amount": amount, "payment_method": method, "notes": "Paid"},
+                files={"proof_file": ("proof.png", body, "image/png")})
 
+
+def report_card(target_id, who="fac_a", amount="1700.00"):
+    return post(f"/billing/invoices/{target_id}/payments", who, json={"amount": amount, "payment_method": "credit_card", "card_brand": "Visa", "card_last4": "4242"})
+
+
+def ready(proof_id):
+    db = Session()
+    db.get(PaymentProof, proof_id).extraction_status = next(iter(REVIEWABLE_EXTRACTION_STATUSES))
+    db.commit()
+    db.close()
+
+
+def proof_id_of(response):
+    body = response.json()
+    return body.get("id") or body.get("proof", {}).get("id")
+
+
+def every_other_way(target_id, token, label):
+    """Every way to pay, tried while a payment waits. Returns what each answered."""
+    charges.clear()
+    before = invoice_row(target_id).amount_paid
+    answers = {
+        "card signed in": card_pay(target_id, "mgr_a", key_of(f"{label}a")).status_code,
+        "card on the link": pay(token, key_of(f"{label}b")).status_code,
+        "a second proof": report_proof(target_id, "mgr_a").status_code,
+        "reporting a card": report_card(target_id, "mgr_a", amount="1699.00").status_code,
+        "staff Record Payment": post(f"/billing/invoices/{target_id}/payments", "boss", json={"amount": "1700.00", "payment_method": "credit_card", "idempotency_key": key_of(f"{label}c")}).status_code,
+        "staff editing amount paid": put(f"/service-requests/invoices/{target_id}", "boss", json={"amount_paid": "1700"}).status_code,
+    }
+    return answers, charges == [] and invoice_row(target_id).amount_paid == before
+
+
+waiting = approved_invoice()
+waiting_token = link_for(waiting)
+first = report_proof(waiting)
+ok("a cheque or ACH proof goes in", first.status_code in (200, 201, 202), f"{first.status_code} {first.text[:100]}")
+proof_id = proof_id_of(first)
+answers, untouched = every_other_way(waiting, waiting_token, "w")
+ok("while it waits, every other way to pay is refused", all(code == 409 for code in answers.values()), answers)
+ok("  no card charged, nothing recorded", untouched)
+opts = card_options(waiting, "fac_a").json()
+ok("  signed in: shown as not payable", opts["can_pay"] is False and opts["pending_reports"] == 1)
+public_view = get(f"/public/service-invoices/{waiting_token}").json()
+ok("  on the link: shown as not payable", public_view["can_pay"] is False and public_view["pending_reports"] == 1)
+billed = get("/service-requests/invoices", "boss", params={"search": invoice_row(waiting).invoice_number}).json()["items"][0]
+ok("  Billing knows, to grey out Pay", billed["payment_pending_review"] is True)
+same_file_again = post(f"/billing/invoices/{waiting}/payment-proofs", "fac_a", data={"amount": "1700.00", "payment_method": "ach"},
+                       files={"proof_file": ("proof.png", PNG + b"\0" * 1, "image/png")})
+ok("  sending the same proof again is a retry, not an error", same_file_again.status_code in (200, 201) and proof_id_of(same_file_again) == proof_id, same_file_again.status_code)
+ready(proof_id)
+r = post(f"/billing/payment-proofs/{proof_id}/reject", "boss", json={"notes": "Cheque bounced"})
+ok("staff reject it", r.status_code == 200, r.status_code)
+opts = card_options(waiting, "fac_a").json()
+ok("  payment opens again", opts["can_pay"] is True and opts["pending_reports"] == 0)
+ok("  Billing knows", get("/service-requests/invoices", "boss", params={"search": invoice_row(waiting).invoice_number}).json()["items"][0]["payment_pending_review"] is False)
+charges.clear()
+r = pay(waiting_token, key_of("wafter"))
+ok("  and the card pays it, once", r.status_code == 200 and len(charges) == 1 and invoice_row(waiting).amount_paid == D("1700.00"), r.status_code)
+
+approved_first = approved_invoice()
+token_af = link_for(approved_first)
+pid = proof_id_of(report_proof(approved_first))
+ready(pid)
+r = post(f"/billing/payment-proofs/{pid}/approve", "boss", json={"notes": "Received"})
+ok("staff approve the waiting payment: the invoice is paid, once", r.status_code == 200 and invoice_row(approved_first).status == InvoiceStatus.PAID
+   and invoice_row(approved_first).amount_paid == D("1700.00"), r.status_code)
+charges.clear()
+card_pay(approved_first, "fac_a", key_of("afa"))
+pay(token_af, key_of("afb"))
+ok("  a card afterwards charges nothing", charges == [] and invoice_row(approved_first).amount_paid == D("1700.00"))
+
+partial = approved_invoice()
+token_pt = link_for(partial)
+pid = proof_id_of(report_proof(partial, amount="500.00"))
+charges.clear()
+ok("a part payment waiting also blocks paying the rest", pay(token_pt, key_of("pta")).status_code == 409 and charges == [])
+ready(pid)
+post(f"/billing/payment-proofs/{pid}/approve", "boss", json={})
+charges.clear()
+r = pay(token_pt, key_of("ptb"))
+ok("  approved: the rest can be paid, the right amount", r.status_code == 200 and charges[0]["amount"] == D("1200.00") and invoice_row(partial).status == InvoiceStatus.PAID, charges)
 
 claimed = approved_invoice()
-r = post(f"/billing/invoices/{claimed}/payments", "fac_a", json={"amount": "1700.00", "payment_method": "credit_card", "card_brand": "Visa", "card_last4": "4242"})
-ok("a card report sent straight to the API moves no money", r.status_code == 202 and invoice_row(claimed).amount_paid == 0, f"{r.status_code} {r.text[:90]}")
-ok("  the payer is warned it is waiting", card_options(claimed, "fac_a").json()["pending_reports"] == 1)
-charges.clear()
-ok("  someone then pays by card", card_pay(claimed, "mgr_a", key_of("claimed")).status_code == 200 and invoice_row(claimed).amount_paid == D("1700.00"))
+token_cl = link_for(claimed)
+r = report_card(claimed)
+ok("a reported card moves no money", r.status_code == 202 and invoice_row(claimed).amount_paid == 0, r.status_code)
+answers, untouched = every_other_way(claimed, token_cl, "c")
+ok("  and blocks every other way too", all(code == 409 for code in answers.values()) and untouched, answers)
+ok("  reporting the same one again is a retry", report_card(claimed).status_code == 202)
+
+in_flight = approved_invoice()
+token_if = link_for(in_flight)
+seen = {}
+
+
+def report_during_charge():
+    seen["proof"] = report_proof(in_flight, "mgr_a").status_code
+    seen["claim"] = report_card(in_flight, "mgr_a").status_code
+
+
+square["hook"] = report_during_charge
+r = pay(token_if, key_of("inflight"))
+square["hook"] = None
 db = Session()
-claim = db.query(PaymentProof).filter(PaymentProof.invoice_id == claimed).first()
-claim_id = claim.id
+left = db.query(PaymentProof).filter(PaymentProof.invoice_id == in_flight, PaymentProof.status == "pending_verification").count()
 db.close()
-r = post(f"/billing/payment-proofs/{claim_id}/approve", "boss", json={"notes": "Looks right"})
-row = invoice_row(claimed)
-ok("  approving the old report is refused: it cannot pay twice", r.status_code == 400 and row.amount_paid == D("1700.00") and row.balance_due == 0, f"{r.status_code} paid={row.amount_paid}")
+ok("a card being charged: reports made meanwhile are refused", seen == {"proof": 409, "claim": 409} and left == 0 and invoice_row(in_flight).amount_paid == D("1700.00"), f"{seen} {r.status_code}")
+
+redis_lib.Redis.from_url(REDIS_URL).flushdb()  # rate limits only: these checks need real attempts
+race_inv = approved_invoice()
+token_race = link_for(race_inv)
+charges.clear()
+reports["n"] += 100
+
+
+def race(job):
+    kind, n = job
+    if kind == "card":
+        return ("card", httpx.post(f"{API}/public/service-invoices/{token_race}/square-payment",
+                                   json={"source_id": "cnon:card-ok", "idempotency_key": key_of(f"rc{n}"), "payer_name": "Ann Lee"}, timeout=60).status_code)
+    body = PNG + b"\0" * (reports["n"] + n)
+    return ("proof", httpx.post(f"{API}/billing/invoices/{race_inv}/payment-proofs", headers=AUTH["fac_a"], data={"amount": "1700.00", "payment_method": "ach"},
+                                files={"proof_file": ("p.png", body, "image/png")}, timeout=60).status_code)
+
+
+square["delay"] = 0.3
+with ThreadPoolExecutor(8) as pool:
+    outcomes = list(pool.map(race, [("card", n) if n % 2 else ("proof", n) for n in range(8)]))
+square["delay"] = 0
+reports["n"] += 20
+row = invoice_row(race_inv)
+db = Session()
+open_proofs = db.query(PaymentProof).filter(PaymentProof.invoice_id == race_inv, PaymentProof.status == "pending_verification").count()
+db.close()
+ok("cards and proofs all at once: only one kind gets through, never both",
+   (len(charges) == 1 and open_proofs == 0) or (charges == [] and open_proofs == 1), f"charges={len(charges)} open_proofs={open_proofs} {sorted(outcomes)}")
+ok("  nothing crashed, and none was merely rate limited", all(code not in (429, 500) for _, code in outcomes), sorted(outcomes))
+
+redis_lib.Redis.from_url(REDIS_URL).flushdb()
+held = approved_invoice()
+blocker = Session()
+blocker.query(Invoice).filter(Invoice.id == held).with_for_update().first()
+box = {}
+waiter = threading.Thread(target=lambda: box.update(proof=report_proof(held)))
+waiter.start()
+time.sleep(1.0)
+started = time.monotonic()
+other = http.get(f"{BASE}/health", timeout=10)
+quick = time.monotonic() - started
+still_waiting = waiter.is_alive()
+blocker.rollback()
+blocker.close()
+waiter.join(30)
+ok("a proof waiting for a locked invoice does not freeze the server", other.status_code == 200 and quick < 2 and still_waiting, f"{other.status_code} {quick:.2f}s waiting={still_waiting}")
+ok("  and goes in once the lock is released", box["proof"].status_code in (200, 201, 202), box["proof"].status_code)
+
 recorded = approved_invoice()
 r = post(f"/billing/invoices/{recorded}/payments", "boss", json={"amount": "10.00", "payment_method": "credit_card", "idempotency_key": key_of("bossrec")})
-ok("the super admin can still record a payment, as before", r.status_code in (200, 201) and invoice_row(recorded).amount_paid == D("10.00"), f"{r.status_code} {r.text[:100]}")
-overlap = approved_invoice()
-overlap_token = link_for(overlap)
-r = report_proof(overlap)
-ok("ACH proof can still be uploaded", r.status_code in (200, 201, 202), f"{r.status_code} {r.text[:120]}")
-proof_id = r.json().get("id") or r.json().get("proof", {}).get("id")
-ok("the payer is warned before paying again, signed in", card_options(overlap, "fac_a").json()["pending_reports"] == 1)
-ok("  and through the link", get(f"/public/service-invoices/{overlap_token}").json()["pending_reports"] == 1)
-ok("  the proof changes nothing yet", invoice_row(overlap).amount_paid == 0)
-charges.clear()
-r = card_pay(overlap, "mgr_a", key_of("overlap"))
-ok("someone then pays by card", r.status_code == 200 and invoice_row(overlap).amount_paid == D("1700.00"), r.status_code)
-db = Session()
-proof = db.get(PaymentProof, proof_id)
-proof.extraction_status = next(iter(REVIEWABLE_EXTRACTION_STATUSES))
-db.commit()
-db.close()
-r = post(f"/billing/payment-proofs/{proof_id}/approve", "boss", json={"notes": "Looks right"})
-row = invoice_row(overlap)
-ok("approving the old proof is refused: it cannot pay twice", r.status_code == 400 and row.amount_paid == D("1700.00") and row.balance_due == 0, f"{r.status_code} {r.text[:90]} paid={row.amount_paid}")
-db = Session()
-ok("  the proof stays open for staff to reject", db.get(PaymentProof, proof_id).status == "pending_verification")
-db.close()
-r = post(f"/billing/payment-proofs/{proof_id}/reject", "boss", json={"notes": "Paid by card instead"})
-ok("  and rejecting it works", r.status_code == 200, f"{r.status_code} {r.text[:90]}")
-r = report_proof(overlap)
-ok("no more proof can be reported on a paid invoice", r.status_code == 400 and invoice_row(overlap).amount_paid == D("1700.00"), r.status_code)
-ach_first = approved_invoice()
-proof_first = report_proof(ach_first).json()
-pid = proof_first.get("id") or proof_first.get("proof", {}).get("id")
-db = Session()
-db.get(PaymentProof, pid).extraction_status = next(iter(REVIEWABLE_EXTRACTION_STATUSES))
-db.commit()
-db.close()
-r = post(f"/billing/payment-proofs/{pid}/approve", "boss", json={"notes": "Received"})
-ok("the proof approved first: the invoice is paid", r.status_code == 200 and invoice_row(ach_first).status == InvoiceStatus.PAID, r.status_code)
-charges.clear()
-ok("  and the card charges nothing afterwards", card_pay(ach_first, "fac_a", key_of("after")).status_code in (200, 409) and charges == [] and invoice_row(ach_first).amount_paid == D("1700.00"))
+ok("with nothing waiting, the super admin records a payment as before", r.status_code in (200, 201) and invoice_row(recorded).amount_paid == D("10.00"), f"{r.status_code} {r.text[:100]}")
 
 # ── 10 ───────────────────────────────────────────────────────────────────────
 section("10. HTTP hardening")

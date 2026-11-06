@@ -15,9 +15,11 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 from PIL import Image, ImageEnhance, ImageOps
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.invoice import PaymentProof
+from app.models.invoice import Invoice, InvoiceType, PaymentProof
+from app.models.payment_operation import PaymentOperation
 from app.utils.payment_data_security import (
     PaymentDataSecurityError,
     decrypt_payment_blob,
@@ -726,3 +728,47 @@ def payment_proof_response(proof: PaymentProof, *, include_ocr_text: bool = Fals
         "created_at": proof.created_at,
         "updated_at": proof.updated_at,
     }
+
+
+# One payment at a time on a service invoice. A customer who has reported a
+# cheque, ACH or card payment must not be able to pay the same balance another
+# way before staff have checked it, and a card being charged must finish first.
+# The caller holds the invoice's row lock, so two payers cannot slip past together.
+SERVICE_PAYMENT_IN_REVIEW = (
+    "A payment for this invoice is waiting for approval. "
+    "No other payment can be made until it has been checked."
+)
+SERVICE_CARD_IN_PROGRESS = (
+    "A card payment for this invoice is being processed. "
+    "No other payment can be made until it has finished."
+)
+
+
+def service_payment_in_review(db: Session, invoice: Invoice) -> bool:
+    if invoice.invoice_type != InvoiceType.SERVICE:
+        return False
+    return (
+        db.query(PaymentProof.id)
+        .filter(PaymentProof.invoice_id == invoice.id, PaymentProof.status == "pending_verification")
+        .first()
+        is not None
+    )
+
+
+def require_no_other_service_payment(db: Session, invoice: Invoice) -> None:
+    """Refuse a new payment while another on this service invoice is unsettled."""
+    if invoice.invoice_type != InvoiceType.SERVICE:
+        return
+    if service_payment_in_review(db, invoice):
+        raise HTTPException(status_code=409, detail=SERVICE_PAYMENT_IN_REVIEW)
+    in_progress = (
+        db.query(PaymentOperation.id)
+        .filter(
+            PaymentOperation.invoice_id == invoice.id,
+            PaymentOperation.operation_type == "square_invoice_payment",
+            PaymentOperation.status.in_(["processing", "unknown"]),
+        )
+        .first()
+    )
+    if in_progress is not None:
+        raise HTTPException(status_code=409, detail=SERVICE_CARD_IN_PROGRESS)

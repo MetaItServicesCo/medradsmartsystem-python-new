@@ -619,6 +619,10 @@ const Billing = () => {
   const serviceInvoiceId = (item: BillingItem | null) => (
     item?.source === 'service' && item.billingKind === 'service_invoice' ? item.id : null
   )
+  // A reported payment waiting for staff: no other payment until it is checked.
+  const paymentInReview = (item: BillingItem | null) => (
+    serviceInvoiceId(item) != null && Boolean((item!.raw as ServiceInvoice).payment_pending_review)
+  )
   const viewDocument = useServiceInvoiceHtml(serviceInvoiceId(viewItem))
   const printDocument = useServiceInvoiceHtml(printDocumentType === 'ledger' ? null : serviceInvoiceId(printItem))
 
@@ -1834,6 +1838,7 @@ const Billing = () => {
           && (!(actionItem.source === 'service' && actionItem.billingKind === 'service_quotation') || ['authorized', 'partially_paid'].includes(actionItem.status)) && (
           <MenuItem
             sx={ACTION_MENU_ITEM}
+            disabled={paymentInReview(actionItem)}
             onClick={() => {
               // A facility pays a service invoice's card through Square.
               if (isFacilityBillingUser && serviceInvoiceId(actionItem) != null) setCardPayItem(actionItem)
@@ -1842,7 +1847,7 @@ const Billing = () => {
             }}
           >
             <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
-            Pay
+            {paymentInReview(actionItem) ? 'Pay (a payment is waiting for approval)' : 'Pay'}
           </MenuItem>
         )}
         {actionItem && canEditInvoices && !(actionItem.source === 'service' && actionItem.billingKind !== 'service_invoice') && (

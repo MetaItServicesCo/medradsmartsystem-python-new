@@ -199,6 +199,8 @@ export interface ServiceInvoicePaidQuotation {
 }
 
 export interface ServiceInvoice {
+  /** A reported payment is waiting for staff; no other payment until it is checked. */
+  payment_pending_review?: boolean
   id: number
   invoice_number: string
   invoice_type: 'service'

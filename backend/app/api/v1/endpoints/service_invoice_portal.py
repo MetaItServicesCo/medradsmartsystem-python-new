@@ -60,6 +60,7 @@ from app.utils.payment_idempotency import (
     payment_fingerprint,
     replay_or_raise,
 )
+from app.utils.payment_proofs import SERVICE_PAYMENT_IN_REVIEW, service_payment_in_review
 from app.utils.payment_receipts import deliver_payment_receipt, queue_payment_receipt
 from app.utils.permissions import has_module_permission
 from app.utils.rate_limit import enforce_rate_limit, public_payment_identity
@@ -375,6 +376,7 @@ def _public_response(invoice: Invoice, token: str) -> dict[str, Any]:
             "square_payment": None,
         }
     balance = _money(invoice.balance_due)
+    pending = _pending_reports(object_session(invoice), invoice)
     return {
         "state": "paid" if balance <= 0 else "payable",
         "invoice_number": invoice.invoice_number,
@@ -382,8 +384,8 @@ def _public_response(invoice: Invoice, token: str) -> dict[str, Any]:
         "payer_name": (invoice.facility.contact_person if invoice.facility else None) or invoice.customer_name,
         "payer_email": invoice.public_link_email or invoice.customer_email,
         "document": _document(invoice, _link_url(token)),
-        "pending_reports": _pending_reports(object_session(invoice), invoice),
-        "can_pay": balance > 0 and bool(square.get("enabled")),
+        "pending_reports": pending,
+        "can_pay": balance > 0 and bool(square.get("enabled")) and not pending,
         "square_payment": square,
     }
 
@@ -434,6 +436,8 @@ def _take_square_payment(
         raise HTTPException(status_code=409, detail="This invoice is being updated and cannot be paid right now")
     if invoice.status == InvoiceStatus.PAID:
         return respond(invoice)
+    if service_payment_in_review(db, invoice):
+        raise HTTPException(status_code=409, detail=SERVICE_PAYMENT_IN_REVIEW)
     balance = max(_money(invoice.balance_due), _money(0))
     if balance <= 0:
         raise HTTPException(status_code=409, detail="This invoice has no payable balance")
@@ -605,15 +609,16 @@ def _facility_invoice(db: Session, invoice_id: int, user: User, for_update: bool
 def _facility_payment_response(db: Session, invoice: Invoice, user: User) -> dict[str, Any]:
     square = square_public_config()
     balance = _money(invoice.balance_due)
+    pending = _pending_reports(db, invoice)
     return {
         "invoice_number": invoice.invoice_number,
         "status": invoice.status.value,
         "balance_due": f"{balance:.2f}",
         "payer_name": user.full_name,
         "payer_email": user.email,
-        "can_pay": balance > 0 and bool(square.get("enabled")),
+        "can_pay": balance > 0 and bool(square.get("enabled")) and not pending,
         "square_payment": square,
-        "pending_reports": _pending_reports(db, invoice),
+        "pending_reports": pending,
     }
 
 

@@ -58,12 +58,11 @@ const ServiceInvoicePayDialog = ({ invoice, onClose, onPaid, onOtherMethod }: Pr
         {data && (
           <Box sx={{ display: 'grid', gap: 2 }}>
             <Typography sx={{ fontWeight: 800, color: '#475569' }}>Balance {money(data.balance_due)}</Typography>
-            {data.pending_reports > 0 && (
+            {data.pending_reports > 0 ? (
               <Alert severity="warning">
-                A payment for this invoice has been reported and is waiting to be checked. Please make sure it has not already been paid before paying again.
+                A payment for this invoice is waiting for approval. It cannot be paid another way until that payment has been checked.
               </Alert>
-            )}
-            {data.can_pay && square?.application_id && square.location_id ? (
+            ) : data.can_pay && square?.application_id && square.location_id ? (
               <SquareCardCheckout
                 applicationId={square.application_id}
                 locationId={square.location_id}
@@ -86,7 +85,7 @@ const ServiceInvoicePayDialog = ({ invoice, onClose, onPaid, onOtherMethod }: Pr
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>
         <Button onClick={onClose} disabled={pay.isPending}>Cancel</Button>
-        {data && Number(data.balance_due) > 0 && (
+        {data && Number(data.balance_due) > 0 && !data.pending_reports && (
           <Button onClick={() => onOtherMethod(Boolean(data.can_pay))} disabled={pay.isPending} sx={{ fontWeight: 800 }}>
             {data.can_pay ? 'Pay by ACH or Cheque' : 'Record Payment'}
           </Button>

@@ -75,6 +75,7 @@ from app.utils.list_search import (
 from app.utils.upload_security import protected_upload_path
 from app.utils.payment_proofs import (
     REVIEWABLE_EXTRACTION_STATUSES,
+    require_no_other_service_payment,
     card_claim_details,
     delete_payment_proof_file,
     new_card_claim,
@@ -848,6 +849,9 @@ def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
         "summary_rows": editable_summary_rows(invoice.notes),
         "paid_quotations": _service_invoice_paid_quotations(invoice),
         **approval_response(invoice),
+        "payment_pending_review": any(
+            proof.status == "pending_verification" for proof in invoice.payment_proofs or []
+        ),
     }
 
 
@@ -1050,6 +1054,7 @@ def list_service_invoices(
         .options(
             joinedload(Invoice.facility),
             joinedload(Invoice.approved_for_billing_by),
+            selectinload(Invoice.payment_proofs),
             selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(Invoice.service_request)
@@ -1151,6 +1156,7 @@ def update_service_invoice(
     if requested_paid != _money(invoice.amount_paid):
         require_invoice_approved(invoice)
         require_invoice_payer(current_user)
+        require_no_other_service_payment(db, invoice)
 
     if is_facility_billing_user(current_user):
         require_invoice_approved(invoice)
