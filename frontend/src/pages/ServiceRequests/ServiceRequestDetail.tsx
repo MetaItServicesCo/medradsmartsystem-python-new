@@ -621,12 +621,6 @@ const ServiceRequestDetail = () => {
       toast.info('Add parts, notes, diagnosis, work done or test equipment')
       return
     }
-    // An addition adds no hours, so completing needs a session's hours already.
-    if (canLogWorkForRequest && sr && serviceWorkflowStatus === 'completed' && sr.status !== 'completed'
-      && Number(sr.time_spent_hours || 0) <= 0) {
-      toast.warning('Save at least one work session with hours before completing')
-      return
-    }
     additionMutation.mutate()
   }
 
@@ -1676,6 +1670,12 @@ const ServiceRequestDetail = () => {
                     ))}
                   </Select>
                 </FormControl>
+                )}
+                {/* Closing with no hours is allowed here; say what it means for the bill. */}
+                {canLogWork && addingWithoutTime && serviceWorkflowStatus === 'completed' && timeSpentHours <= 0 && (
+                  <Typography sx={{ color: '#B45309', fontWeight: 700, fontSize: '0.82rem' }}>
+                    This closes the request with no hours logged, so no labour is billed. An administrator can correct the hours until it is invoiced.
+                  </Typography>
                 )}
                 {addingWithoutTime ? (
                   <Button

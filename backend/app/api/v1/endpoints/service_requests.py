@@ -2132,8 +2132,10 @@ def add_to_work_order(
 
     A part used, a note, diagnosis or test equipment forgotten in a work
     session. No hours are added, so the labour billed is unchanged; the status
-    changes only if one is chosen, by a work session's rules (and completing
-    needs hours already logged). Parts come out of stock as in a work session and
+    changes only if one is chosen, by a work session's rules. That includes
+    closing the request, with or without hours logged: labour bills what was
+    logged, which may be nothing, and an administrator can still correct the
+    hours until it is invoiced. Parts come out of stock as in a work session and
     are billed only through a quotation, as before. Open to the assigned
     technician and administrators while the request is being worked on and,
     once completed, until it is invoiced; never after.
@@ -2175,8 +2177,7 @@ def add_to_work_order(
     if not diagnosis and not work_done and not notes and not test_equipment_used and not part_usages:
         raise HTTPException(status_code=400, detail="Add parts, notes, diagnosis, work done or test equipment")
 
-    # A status change made with the addition follows a work session's rules;
-    # completing also needs hours logged, as an addition adds none.
+    # A status change made with the addition follows a work session's rules.
     requested_status: Optional[ServiceRequestStatus] = None
     if addition.status:
         try:
@@ -2199,8 +2200,6 @@ def add_to_work_order(
         if requested_status == ServiceRequestStatus.COMPLETED:
             if _active_clock_session(db_sr):
                 raise HTTPException(status_code=400, detail="End the active work session before marking this service request complete")
-            if Decimal(str(db_sr.time_spent_hours or 0)) <= 0:
-                raise HTTPException(status_code=400, detail="Save at least one work session with hours before completing")
             db_sr.completed_at = now
         elif requested_status in SERVICE_WORKFLOW_STATUSES and not db_sr.started_at:
             db_sr.started_at = now

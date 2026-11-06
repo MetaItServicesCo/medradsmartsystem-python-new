@@ -266,11 +266,52 @@ ok("choosing the current status changes nothing", r.status_code == 200
    and additions(WITH_STATUS)[-1]["changes"]["status"] == "waiting_on_parts")
 r = add(WITH_STATUS, notes="x", status="not-a-status")
 ok("an unknown status is refused", r.status_code == 400 and state(WITH_STATUS)["status"] == ServiceRequestStatus.WAITING_ON_PARTS)
+# Closing with no hours logged: allowed through an addition.
+ok("closing still needs something recorded", add(NO_HOURS, notes="  ", status="completed").status_code == 400
+   and state(NO_HOURS)["status"] == ServiceRequestStatus.IN_PROGRESS)
+for who in ("employee", "facadmin", "client"):
+    r = add(NO_HOURS, who=who, notes="Close it", status="completed")
+    ok(f"{who} cannot close it this way", r.status_code in (403, 404)
+       and state(NO_HOURS)["status"] == ServiceRequestStatus.IN_PROGRESS, str(r.status_code))
+db = Session()
+clocked = db.get(ServiceRequest, NO_HOURS)
+clocked.history = [{"action": "technician_clock_in", "user": "Tech", "changes": {}}]
+db.commit()
+db.close()
+r = add(NO_HOURS, notes="Close it", status="completed")
+ok("a running work session must still be ended first", r.status_code == 400 and "active work session" in r.text
+   and state(NO_HOURS)["status"] == ServiceRequestStatus.IN_PROGRESS, f"{r.status_code} {r.text[:80]}")
+db = Session()
+clocked = db.get(ServiceRequest, NO_HOURS)
+clocked.history = []
+db.commit()
+db.close()
 taken = stock()
 r = add(NO_HOURS, notes="Fitted the board", status="completed", part_usages=[{"part_id": PART, "quantity": 1}])
-ok("completing with no hours logged is refused", r.status_code == 400 and "hours" in r.text, f"{r.status_code} {r.text[:80]}")
-ok("  and nothing changed: status, entries, stock", state(NO_HOURS)["status"] == ServiceRequestStatus.IN_PROGRESS
-   and not additions(NO_HOURS) and stock() == taken)
+after = state(NO_HOURS)
+ok("an addition closes a request with no hours logged", r.status_code == 200
+   and after["status"] == ServiceRequestStatus.COMPLETED, f"{r.status_code} {r.text[:80]}")
+ok("  hours and labour stay at zero", after["hours"] == D("0") and after["cost"] == D("0"), f"{after['hours']} / {after['cost']}")
+ok("  the part came out of stock", stock() == taken - 1, str(stock()))
+ok("  the history records it", additions(NO_HOURS)[-1]["changes"]["status"] == {"from": "in_progress", "to": "completed"})
+db = Session()
+completed_at = db.get(ServiceRequest, NO_HOURS).completed_at
+db.close()
+ok("  completion is time-stamped", completed_at is not None)
+r = add(NO_HOURS, notes="Reopen?", status="in_progress")
+ok("  it cannot be moved back", r.status_code == 400 and state(NO_HOURS)["status"] == ServiceRequestStatus.COMPLETED)
+r = correct(NO_HOURS, total_hours="1.50", reason="Forgot to log the visit")
+ok("  an administrator can still correct the hours", r.status_code == 200 and state(NO_HOURS)["cost"] == D("150.00"),
+   f"{r.status_code} {state(NO_HOURS)['cost']}")
+r = correct(NO_HOURS, total_hours="0", reason="No labour on this one after all")
+ok("  and back to none, for the test below", r.status_code == 200 and state(NO_HOURS)["hours"] == D("0"), f"{r.status_code} {r.text[:80]}")
+r = as_user("superadmin").post(f"/api/v1/service-requests/{NO_HOURS}/generate-invoice", json={})
+labour = next((row for row in (r.json().get("line_items", []) if r.status_code == 200 else [])
+               if str(row.get("description", "")).startswith("Service labor")), {})
+ok("  it can be invoiced, with no labour billed", r.status_code == 200 and D(str(labour.get("total_amount", -1))) == D("0"),
+   f"{r.status_code} {r.text[:120]}")
+r = add(NO_HOURS, notes="After the invoice")
+ok("  and once invoiced nothing more is added", r.status_code == 409, str(r.status_code))
 r = add(WITH_STATUS, notes="Board fitted, all tests pass", status="completed")
 after = state(WITH_STATUS)
 ok("with hours logged, an addition can complete the request", r.status_code == 200
