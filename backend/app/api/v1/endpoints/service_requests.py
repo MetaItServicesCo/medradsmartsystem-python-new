@@ -8,7 +8,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 from sqlalchemy.orm.attributes import flag_modified
@@ -136,6 +136,8 @@ class ServiceInvoiceCreate(BaseModel):
     notes: Optional[str] = None
     travel_charges: Decimal = Decimal("0")
     labor_fee_override: Optional[Decimal] = None
+    # Left out, the tier's Service Call Fee is charged; 0 leaves it off this invoice.
+    service_call_fee: Optional[Decimal] = Field(default=None, ge=0)
 
 
 class ServiceInvoiceUpdate(BaseModel):
@@ -172,6 +174,13 @@ def _service_labor_rate(sr: ServiceRequest) -> Decimal:
 def _calculate_service_cost(sr: ServiceRequest) -> Decimal:
     hours = Decimal(str(sr.time_spent_hours or 0))
     return (hours * _service_labor_rate(sr)).quantize(Decimal("0.01"))
+
+
+def _tier_service_call_fee(sr: ServiceRequest) -> Decimal:
+    """Charged once per request on its invoice, on top of labour for the hours
+    logged: with no hours, it is all the service bills."""
+    tier = sr.equipment.tier if sr.equipment and sr.equipment.tier else None
+    return Decimal(str(tier.service_call_fee or 0)).quantize(Decimal("0.01")) if tier else Decimal("0.00")
 
 
 def _role_name(user: User) -> str:
@@ -436,6 +445,7 @@ def _enrich(
     data["tier_name"] = tier.name if tier else None
     data["tier_labor_rate_per_hour"] = tier.labor_rate_per_hour if tier else None
     data["tier_mileage_rate"] = tier.mileage_rate if tier else None
+    data["tier_service_call_fee"] = tier.service_call_fee if tier else None
     data["calculated_service_cost"] = _calculate_service_cost(sr)
     data["requester_name"] = sr.requester.full_name if sr.requester else None
     data["technician_name"] = sr.assigned_technician.full_name if sr.assigned_technician else None
@@ -616,13 +626,16 @@ def _facility_billing_address(facility: Optional[Facility]) -> Optional[str]:
     return billing_address or facility.address
 
 
-def _parse_fee_notes(notes: Optional[str]) -> tuple[Optional[Decimal], Optional[Decimal]]:
-    """Parse __FEES__:labor=X,travel=Y:: prefix. Returns (labor_override, travel_charges)."""
+def _parse_fee_notes(notes: Optional[str]) -> tuple[Optional[Decimal], Optional[Decimal], Optional[Decimal]]:
+    """Parse __FEES__:labor=X,travel=Y,service_call=Z:: prefix. Returns
+    (labor_override, travel_charges, service_call_fee). An invoice generated
+    before the Service Call Fee was billed has none, and so bills none."""
     if not notes or not notes.startswith("__FEES__:"):
-        return None, None
+        return None, None, None
     fee_part, _, _ = notes[len("__FEES__:"):].partition("::")
     labor: Optional[Decimal] = None
     travel: Optional[Decimal] = None
+    service_call: Optional[Decimal] = None
     for kv in fee_part.split(","):
         k, _, v = kv.partition("=")
         try:
@@ -630,9 +643,11 @@ def _parse_fee_notes(notes: Optional[str]) -> tuple[Optional[Decimal], Optional[
                 labor = _money(v.strip())
             elif k.strip() == "travel":
                 travel = _money(v.strip())
+            elif k.strip() == "service_call":
+                service_call = _money(v.strip())
         except Exception:
             pass
-    return labor, travel
+    return labor, travel, service_call
 
 
 def _strip_fee_prefix(notes: Optional[str]) -> Optional[str]:
@@ -654,9 +669,20 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     hours = _money(sr.time_spent_hours).quantize(Decimal("0.01"))
     labor_rate = _service_labor_rate(sr)
-    labor_override, travel_override = _parse_fee_notes(invoice.notes)
+    labor_override, travel_override, service_call_fee = _parse_fee_notes(invoice.notes)
     labor_total = labor_override if labor_override is not None else _calculate_service_cost(sr)
-    rows.append({
+    if service_call_fee is not None and service_call_fee > Decimal("0"):
+        rows.append({
+            "item_number": sr.request_number,
+            "description": "Service Call Fee",
+            "quantity": Decimal("1"),
+            "unit_price": service_call_fee,
+            "shipping_fee": Decimal("0"),
+            "setup_fee": Decimal("0"),
+            "condition": None,
+            "total_amount": service_call_fee,
+        })
+    labor_row = {
         "item_number": sr.request_number,
         "description": f"Service labor - {sr.equipment.make} {sr.equipment.model}" if sr.equipment else "Service labor",
         "quantity": hours,
@@ -665,7 +691,8 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
         "setup_fee": Decimal("0"),
         "condition": None,
         "total_amount": labor_total,
-    })
+    }
+    rows.append(labor_row)
     if travel_override is not None and travel_override > Decimal("0"):
         rows.append({
             "item_number": sr.request_number,
@@ -704,6 +731,10 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
                 "condition": None,
                 "total_amount": quotation.amount,
             })
+    # No hours and no labour charged: no hours line, unless it is all there is.
+    # Invoices from before the Service Call Fee stay as they were issued.
+    if service_call_fee is not None and hours <= Decimal("0") and labor_total <= Decimal("0") and len(rows) > 1:
+        rows = [row for row in rows if row is not labor_row]
     return rows
 
 
@@ -1655,9 +1686,14 @@ def generate_service_invoice(
         if payload.labor_fee_override is not None
         else _calculate_service_cost(db_sr)
     )
+    service_call_fee = (
+        _money(payload.service_call_fee).quantize(Decimal("0.01"))
+        if payload.service_call_fee is not None
+        else _tier_service_call_fee(db_sr)
+    )
     travel_charges = _money(payload.travel_charges).quantize(Decimal("0.01"))
     quotation_amount = sum((_money(quotation.amount) for quotation in selected_quotations), Decimal("0"))
-    subtotal = (service_amount + travel_charges + quotation_amount).quantize(Decimal("0.01"))
+    subtotal = (service_call_fee + service_amount + travel_charges + quotation_amount).quantize(Decimal("0.01"))
     tax_amount = _money(payload.tax_amount).quantize(Decimal("0.01"))
     discount_amount = _money(payload.discount_amount).quantize(Decimal("0.01"))
     total_amount = max((subtotal + tax_amount - discount_amount).quantize(Decimal("0.01")), Decimal("0"))
@@ -1683,7 +1719,7 @@ def generate_service_invoice(
         due_date=payload.due_date or date.today() + timedelta(days=30),
         payment_terms="Net 30",
         payment_method=payload.payment_method,
-        notes=f"__FEES__:labor={service_amount},travel={travel_charges}::{payload.notes or f'Service invoice for {db_sr.request_number}.'}",
+        notes=f"__FEES__:labor={service_amount},travel={travel_charges},service_call={service_call_fee}::{payload.notes or f'Service invoice for {db_sr.request_number}.'}",
     )
     assign_unique_number(
         db, invoice, "invoice_number", prefix=SERVICE_INVOICE_PREFIX)
@@ -1712,6 +1748,7 @@ def generate_service_invoice(
         "invoice_id": invoice.id,
         "invoice_number": invoice.invoice_number,
         "service_amount": str(service_amount),
+        "service_call_fee": str(service_call_fee),
         "included_quotation_ids": [quotation.id for quotation in selected_quotations],
         "included_quotation_total": str(quotation_amount),
         "total_amount": str(total_amount),

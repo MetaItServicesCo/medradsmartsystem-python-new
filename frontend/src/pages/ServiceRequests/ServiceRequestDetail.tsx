@@ -203,6 +203,7 @@ const ServiceRequestDetail = () => {
   const [invoiceTravelMode, setInvoiceTravelMode] = useState<'fixed' | 'mileage'>('fixed')
   const [invoiceTravelCharges, setInvoiceTravelCharges] = useState('0')
   const [invoiceLaborFees, setInvoiceLaborFees] = useState('0')
+  const [invoiceServiceCallFee, setInvoiceServiceCallFee] = useState('0')
   const [editingTime, setEditingTime] = useState(false)
   const [editTimeValue, setEditTimeValue] = useState('')
   const [editTimeReason, setEditTimeReason] = useState('')
@@ -475,6 +476,7 @@ const ServiceRequestDetail = () => {
       notes: invoiceNotes || undefined,
       travel_charges: invoiceTravelAmount,
       labor_fee_override: invoiceLaborFees.trim() === '' ? undefined : Number(invoiceLaborFees || 0),
+      service_call_fee: invoiceServiceCallAmount,
     }),
     onSuccess: (invoice) => {
       toast.success(`Invoice ${invoice.invoice_number} was generated and is pending billing approval`)
@@ -919,6 +921,7 @@ const ServiceRequestDetail = () => {
   const timeSpentHours = Number(sr.time_spent_hours || 0)
   const tierLaborRate = Number(sr.tier_labor_rate_per_hour || 0)
   const tierMileageRate = Number(sr.tier_mileage_rate || 0)
+  const tierServiceCallFee = Number(sr.tier_service_call_fee || 0)
   const calculatedServiceCost = Number(sr.calculated_service_cost ?? (timeSpentHours * tierLaborRate))
   const totalSessionMileage = (sr.history || [])
     .filter(entry => entry.action === 'technician_clock_out' || entry.action === 'technician_work_session')
@@ -930,11 +933,13 @@ const ServiceRequestDetail = () => {
       .reduce((sum, q) => sum + Number(q.amount || 0), 0)
     : 0
   const invoiceLaborAmount = invoiceLaborFees.trim() === '' ? calculatedServiceCost : Number(invoiceLaborFees || 0)
+  // What is seen here is what is charged: empty or below zero bills no fee.
+  const invoiceServiceCallAmount = Math.max(Number(invoiceServiceCallFee || 0), 0)
   const invoiceTravelAmount = invoiceTravelMode === 'mileage'
     ? calculatedMileageTravelCharge
     : Number(invoiceTravelCharges || 0)
   const invoicePreviewTotal = Math.max(
-    invoiceLaborAmount + invoiceTravelAmount + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
+    invoiceServiceCallAmount + invoiceLaborAmount + invoiceTravelAmount + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
     0
   )
 
@@ -946,6 +951,7 @@ const ServiceRequestDetail = () => {
     setInvoiceDiscountAmount('0')
     setInvoiceNotes(`Service invoice for ${sr.request_number}.`)
     setInvoiceLaborFees(calculatedServiceCost.toFixed(2))
+    setInvoiceServiceCallFee(tierServiceCallFee.toFixed(2))
     setInvoiceTravelMode('fixed')
     setInvoiceTravelCharges('0')
     setInvoiceOpen(true)
@@ -1674,7 +1680,9 @@ const ServiceRequestDetail = () => {
                 {/* Closing with no hours is allowed here; say what it means for the bill. */}
                 {canLogWork && addingWithoutTime && serviceWorkflowStatus === 'completed' && timeSpentHours <= 0 && (
                   <Typography sx={{ color: '#B45309', fontWeight: 700, fontSize: '0.82rem' }}>
-                    This closes the request with no hours logged, so no labour is billed. An administrator can correct the hours until it is invoiced.
+                    {tierServiceCallFee > 0
+                      ? `This closes the request with no hours logged, so only the $${tierServiceCallFee.toFixed(2)} Service Call Fee is billed. An administrator can correct the hours until it is invoiced.`
+                      : 'This closes the request with no hours logged, so no labour is billed. An administrator can correct the hours until it is invoiced.'}
                   </Typography>
                 )}
                 {addingWithoutTime ? (
@@ -2214,6 +2222,7 @@ const ServiceRequestDetail = () => {
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.2fr 0.8fr' }, gap: 2.5 }}>
             <Box sx={{ display: 'grid', gap: 1.5 }}>
+              {timeSpentHours > 0 && (
               <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                 <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 0.75 }}>Service Labor</Typography>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
@@ -2225,6 +2234,17 @@ const ServiceRequestDetail = () => {
                   </Typography>
                 </Box>
               </Box>
+              )}
+
+              <TextField
+                label="Service Call Fee ($)"
+                type="number"
+                value={invoiceServiceCallFee}
+                onChange={(e) => setInvoiceServiceCallFee(e.target.value)}
+                fullWidth
+                inputProps={{ min: 0, step: 0.01 }}
+                helperText="Pre-filled from the tier, charged once on top of labor. Set to 0 to leave it off."
+              />
 
               <TextField
                 label="Labor Fees ($)"
@@ -2362,13 +2382,17 @@ const ServiceRequestDetail = () => {
                 sx={{ mb: 2 }}
                 inputProps={{ min: 0, step: 0.01 }}
               />
-              {[
+              {([
+                ['Service Call Fee', invoiceServiceCallAmount],
                 ['Labor Fees', Number(invoiceLaborFees || 0)],
                 [invoiceTravelMode === 'mileage' ? 'Travel Charges (Mileage)' : 'Travel Charges', invoiceTravelAmount],
                 ['Included quotations', selectedQuotationTotal],
                 ['Tax', Number(invoiceTaxAmount || 0)],
                 ['Discount', -Number(invoiceDiscountAmount || 0)],
-              ].map(([label, value]) => (
+              ] as [string, number][]).filter(([label, value]) => (
+                // Only what is charged: no fee line without a fee, no labor line without labor.
+                (label !== 'Service Call Fee' && label !== 'Labor Fees') || value > 0
+              )).map(([label, value]) => (
                 <Box key={String(label)} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: '1px solid #F1F5F9' }}>
                   <Typography sx={{ color: '#64748B', fontWeight: 800 }}>{label}</Typography>
                   <Typography sx={{ color: Number(value) < 0 ? '#DC2626' : '#1E1B4B', fontWeight: 900 }}>

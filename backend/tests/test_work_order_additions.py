@@ -116,6 +116,7 @@ monitor = Equipment(asset_tag="A-1", make="Acme", model="M1", serial_number="SN-
                     facility_id=clinic.id, tier_id=tier.id)
 seed.add(monitor)
 seed.flush()
+monitor_modality, clinic_id, client_id, tech_id = modality.id, clinic.id, PEOPLE["client"].id, PEOPLE["tech"].id
 part = InventoryPart(part_number="P-100", part_type="part", description="Power board", unit_price=D("50.00"),
                      quantity_on_hand=10, reorder_level=1, status="active")
 seed.add(part)
@@ -415,6 +416,149 @@ ok("the service report lists the additions apart from the sessions",
    r.status_code == 200 and len(row.get("additions", [])) == 3 and len(row.get("sessions", [])) == 0,
    f"{r.status_code} additions {len(row.get('additions', []))}, sessions {len(row.get('sessions', []))}")
 ok("  with the forgotten part", any(p.get("part_number") == "P-100" for a in row.get("additions", []) for p in a.get("parts", [])))
+
+# ── F. The tier's Service Call Fee on the invoice ────────────────────────────
+section("F. Service Call Fee + hours x labour rate")
+db = Session()
+priced_tier = Tier(tier_code="T-PLAT", name="Platinum", labor_rate_per_hour=D("100.00"), service_call_fee=D("1500.00"),
+                   preventive_maintenance_fee=D("999.00"), mileage_rate=D("1.00"))
+db.add(priced_tier)
+db.flush()
+PRICED_TIER = priced_tier.id
+priced = Equipment(asset_tag="A-2", make="Acme", model="M2", serial_number="SN-2", modality_id=monitor_modality,
+                   facility_id=clinic_id, tier_id=PRICED_TIER)
+tierless = Equipment(asset_tag="A-3", make="Acme", model="M3", serial_number="SN-3", modality_id=monitor_modality,
+                     facility_id=clinic_id)
+db.add_all([priced, tierless])
+db.flush()
+PRICED, TIERLESS = priced.id, tierless.id
+db.commit()
+db.close()
+
+
+def priced_request(number, hours="0", status=ServiceRequestStatus.IN_PROGRESS, equipment=None):
+    db = Session()
+    row = ServiceRequest(request_number=number, facility_id=clinic_id, equipment_id=equipment or PRICED,
+                         requester_id=client_id, problem_description="x", priority=Priority.MEDIUM, status=status,
+                         assigned_technician_id=tech_id, time_spent_hours=D(hours), total_cost=D(hours) * D("100"), history=[])
+    db.add(row)
+    db.commit()
+    request_id = row.id
+    db.close()
+    return request_id
+
+
+def invoice_of(request_id, **body):
+    return as_user("superadmin").post(f"/api/v1/service-requests/{request_id}/generate-invoice", json=body)
+
+
+def lines(invoice):
+    return [(str(row["description"]).split(" - ")[0], D(str(row["total_amount"]))) for row in invoice.get("line_items", [])]
+
+
+money_of = lambda invoice, field: D(str(invoice.get(field, -1)))  # noqa: E731
+
+request_id = priced_request("SR-FEE-0H")
+detail = as_user("tech").get(f"/api/v1/service-requests/{request_id}").json()
+ok("the request shows the tier's Service Call Fee", D(str(detail.get("tier_service_call_fee"))) == D("1500.00"))
+add(request_id, notes="Advice only, nothing to fix", status="completed")
+r = invoice_of(request_id)
+invoice = r.json()
+ok("0 hours, closed through an addition: only the service cost, 1500", r.status_code == 200
+   and lines(invoice) == [("Service Call Fee", D("1500.00"))], f"{r.status_code} {lines(invoice)}")
+ok("  the totals and balance agree", money_of(invoice, "subtotal") == D("1500.00") and money_of(invoice, "total_amount") == D("1500.00")
+   and money_of(invoice, "balance_due") == D("1500.00"), f"{invoice.get('total_amount')}")
+ok("  the fee is in the request's history",
+   [e for e in state(request_id)["history"] if e.get("action") == "service_invoice_generated"][-1]["changes"]["service_call_fee"] == "1500.00")
+ok("  and the fee note does not reach the customer", "__FEES__" not in str(invoice.get("notes")), str(invoice.get("notes")))
+again = invoice_of(request_id).json()
+ok("generating again returns the same invoice, not a second fee", again["id"] == invoice["id"]
+   and money_of(again, "total_amount") == D("1500.00"))
+
+request_id = priced_request("SR-FEE-2H", hours="2.00", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id).json()
+ok("2 hours: service cost + labour = 1500 + 200 = 1700",
+   lines(invoice) == [("Service Call Fee", D("1500.00")), ("Service labor", D("200.00"))]
+   and money_of(invoice, "total_amount") == D("1700.00"), str(lines(invoice)))
+ok("  the labour figure on the request stays labour", state(request_id)["cost"] == D("200.00"))
+ok("  PM Cost stays out of it", all("999" not in str(row["total_amount"]) for row in invoice["line_items"]))
+
+request_id = priced_request("SR-FEE-MIX", hours="2.00")
+add(request_id, notes="Closed with a note after the visit", status="completed")
+invoice = invoice_of(request_id).json()
+ok("hours logged earlier, closed through an addition: the hours stay billed, 1700",
+   money_of(invoice, "total_amount") == D("1700.00"), str(lines(invoice)))
+
+request_id = priced_request("SR-FEE-FIX")
+add(request_id, notes="Closed", status="completed")
+correct(request_id, total_hours="2.00", reason="Visit was not logged")
+invoice = invoice_of(request_id).json()
+ok("closed with 0 hours, corrected to 2 before invoicing: 1700", money_of(invoice, "total_amount") == D("1700.00"), str(lines(invoice)))
+
+request_id = priced_request("SR-FEE-ALL", hours="2.00", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id, travel_charges="50", tax_amount="10", discount_amount="20").json()
+ok("travel, tax and discount apply on top", money_of(invoice, "subtotal") == D("1750.00")
+   and money_of(invoice, "total_amount") == D("1740.00"), f"{invoice.get('subtotal')} {invoice.get('total_amount')}")
+
+request_id = priced_request("SR-FEE-EDIT", hours="2.00", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id, service_call_fee="1000").json()
+ok("the admin can change the fee for this invoice", lines(invoice)[0] == ("Service Call Fee", D("1000.00"))
+   and money_of(invoice, "total_amount") == D("1200.00"), str(lines(invoice)))
+request_id = priced_request("SR-FEE-OFF", hours="2.00", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id, service_call_fee="0").json()
+ok("or leave it off with 0: labour only", lines(invoice) == [("Service labor", D("200.00"))]
+   and money_of(invoice, "total_amount") == D("200.00"), str(lines(invoice)))
+request_id = priced_request("SR-FEE-NIL", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id, service_call_fee="0").json()
+ok("no fee and no hours: the labour line still shows, at 0", lines(invoice) == [("Service labor", D("0.00"))], str(lines(invoice)))
+request_id = priced_request("SR-FEE-TRV", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id, service_call_fee="0", travel_charges="50").json()
+ok("no hours, no fee, but travel: no hours line, travel only", lines(invoice) == [("Travel Charges", D("50.00"))], str(lines(invoice)))
+request_id = priced_request("SR-FEE-ZERO", hours="2.00", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id, labor_fee_override="0").json()
+ok("hours logged but labour waived: the hours still show, at 0", lines(invoice)[1] == ("Service labor", D("0.00"))
+   and D(str(invoice["line_items"][1]["quantity"])) == D("2.00"), str(lines(invoice)))
+request_id = priced_request("SR-FEE-NEG", hours="2.00", status=ServiceRequestStatus.COMPLETED)
+ok("a negative fee is refused", invoice_of(request_id, service_call_fee="-5").status_code == 422)
+request_id = priced_request("SR-FEE-LAB", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id, labor_fee_override="300").json()
+ok("a typed labour amount still adds to the fee", money_of(invoice, "total_amount") == D("1800.00"), str(lines(invoice)))
+
+request_id = priced_request("SR-FEE-NOTIER", hours="2.00", status=ServiceRequestStatus.COMPLETED, equipment=TIERLESS)
+r = invoice_of(request_id)
+ok("equipment with no tier: no fee, nothing breaks", r.status_code == 200
+   and money_of(r.json(), "total_amount") == D("0.00") and lines(r.json()) == [("Service labor", D("0.00"))], f"{r.status_code} {r.text[:100]}")
+
+request_id = priced_request("SR-FEE-KEEP", hours="2.00", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id).json()
+db = Session()
+db.get(Tier, PRICED_TIER).service_call_fee = D("9000.00")
+db.commit()
+db.close()
+detail = as_user("superadmin").get("/api/v1/service-requests/invoices").json()
+kept = next(row for row in detail["items"] if row["id"] == invoice["id"])
+ok("changing the tier later does not touch an issued invoice", lines(kept)[0] == ("Service Call Fee", D("1500.00"))
+   and money_of(kept, "total_amount") == D("1700.00"), str(lines(kept)))
+r = as_user("superadmin").put(f"/api/v1/service-requests/invoices/{invoice['id']}", json={"notes": "Thanks for your business"})
+ok("editing the invoice's note keeps the fee", r.status_code == 200 and lines(r.json())[0] == ("Service Call Fee", D("1500.00"))
+   and r.json()["notes"] == "Thanks for your business", f"{r.status_code} {r.text[:120]}")
+db = Session()
+db.get(Tier, PRICED_TIER).service_call_fee = D("1500.00")
+db.commit()
+db.close()
+
+request_id = priced_request("SR-FEE-OLD", hours="2.00", status=ServiceRequestStatus.COMPLETED)
+invoice = invoice_of(request_id).json()
+db = Session()
+old = db.get(Invoice, invoice["id"])
+old.notes = "__FEES__:labor=200.00,travel=0.00::An invoice from before this change"
+old.subtotal = old.total_amount = old.balance_due = D("200.00")
+db.commit()
+db.close()
+detail = as_user("superadmin").get("/api/v1/service-requests/invoices").json()
+kept = next(row for row in detail["items"] if row["id"] == invoice["id"])
+ok("an invoice from before this change stays exactly as it was", lines(kept) == [("Service labor", D("200.00"))]
+   and money_of(kept, "total_amount") == D("200.00"), str(lines(kept)))
 
 print()
 if failures:

@@ -1238,8 +1238,11 @@ const Billing = () => {
       const invoice = item.raw as ServiceInvoice
       const laborLine = invoice.line_items?.find(l => l.description?.startsWith('Service labor'))
       const travelLine = invoice.line_items?.find(l => l.description === 'Travel Charges')
+      const serviceCallLine = invoice.line_items?.find(l => l.description === 'Service Call Fee')
       return {
         ...base,
+        labels: { serviceCharges: 'Service Call Fee', ...(base.labels || {}) },
+        ...(Number(serviceCallLine?.total_amount || 0) > 0 ? { service_charges: Number(serviceCallLine!.total_amount) } : {}),
         ...(Number(laborLine?.total_amount || 0) > 0 ? { labor_fees: Number(laborLine!.total_amount) } : {}),
         ...(Number(travelLine?.total_amount || 0) > 0 ? { travel_charges: Number(travelLine!.total_amount) } : {}),
       }
@@ -2387,7 +2390,8 @@ const BillingDetailsV2 = memo(({
     ? serviceInvoice.line_items.map(line => ({
       label: line.description,
       meta: line.condition || 'service invoice',
-      quantity: Number(line.quantity || 0),
+      // Hours only where there are hours: the labor line, when it is on the invoice.
+      quantity: /^service labor/i.test(line.description || '') ? `${Number(line.quantity || 0)} Hours` : Number(line.quantity || 0),
       price: Number(line.unit_price || 0),
       total: Number(line.total_amount || 0),
     }))
@@ -2484,7 +2488,7 @@ const BillingDetailsV2 = memo(({
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 950 }}>Item</TableCell>
-                  <TableCell sx={{ fontWeight: 950 }} align="right">{serviceInvoice ? 'Hours' : 'Quantity'}</TableCell>
+                  <TableCell sx={{ fontWeight: 950 }} align="right">{serviceInvoice ? 'Qty' : 'Quantity'}</TableCell>
                   <TableCell sx={{ fontWeight: 950 }} align="right">Price</TableCell>
                   <TableCell sx={{ fontWeight: 950 }} align="right">Total</TableCell>
                 </TableRow>

@@ -246,6 +246,8 @@ export interface ServiceInvoiceCreatePayload {
   notes?: string
   travel_charges?: number
   labor_fee_override?: number
+  /** Left out, the tier's Service Call Fee is charged; 0 leaves it off this invoice. */
+  service_call_fee?: number
 }
 
 export interface ServiceInvoiceUpdatePayload {
@@ -328,6 +330,7 @@ export interface ServiceRequest {
   tier_name: string | null
   tier_labor_rate_per_hour: number | null
   tier_mileage_rate: number | null
+  tier_service_call_fee: number | null
   calculated_service_cost: number | null
   assigned_at: string | null
   started_at: string | null
