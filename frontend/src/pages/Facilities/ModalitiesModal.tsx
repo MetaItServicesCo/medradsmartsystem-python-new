@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Dialog, DialogContent, DialogActions, Box, Typography, IconButton,
   Button, Collapse, Chip, Skeleton, Tooltip, TextField, MenuItem,
-  CircularProgress, Divider, Menu, ListItemIcon, ListItemText, InputAdornment
+  CircularProgress, Divider, Menu, ListItemIcon, ListItemText, InputAdornment, Tab, Tabs
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import SearchIcon from '@mui/icons-material/Search'
@@ -22,6 +22,7 @@ import {
   fetchModalities, createModality, updateModality, duplicateModality, deleteModality,
   type Modality, type ModalityCreate, type ModalityUpdate
 } from '@/api/modalities'
+import NewModalitiesTab from './NewModalitiesTab'
 
 const CATEGORIES = [
   { value: 'imaging', label: 'Imaging' },
@@ -44,6 +45,7 @@ interface Props {
 
 const ModalitiesModal = ({ open, onClose }: Props) => {
   const queryClient = useQueryClient()
+  const [tab, setTab] = useState<'current' | 'new'>('current')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -186,16 +188,24 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>Modalities</Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>Manage modalities and sub-modalities</Typography>
         </Box>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => { resetForm(); setShowForm(true) }}
-          sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', border: '1px solid', borderRadius: '10px', fontSize: '0.75rem' }}>
-          Add Modality
-        </Button>
+        {tab === 'current' && (
+          <Button size="small" startIcon={<AddIcon />} onClick={() => { resetForm(); setShowForm(true) }}
+            sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', border: '1px solid', borderRadius: '10px', fontSize: '0.75rem' }}>
+            Add Modality
+          </Button>
+        )}
         <IconButton onClick={onClose} sx={{ color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.12)' } }}>
           <CloseIcon />
         </IconButton>
       </Box>
 
+      <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: { xs: 2, sm: 3.5 }, borderBottom: '1px solid #EDE9FE', flexShrink: 0 }}>
+        <Tab value="current" label="Modalities" sx={{ textTransform: 'none', fontWeight: 700 }} />
+        <Tab value="new" label="New Modalities" sx={{ textTransform: 'none', fontWeight: 700 }} />
+      </Tabs>
+
       <DialogContent sx={{ p: { xs: 2, sm: 3.5 } }}>
+        {tab === 'new' ? <NewModalitiesTab /> : <>
         {/* Form */}
         {showForm && (
           <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid rgba(124,58,237,0.12)' }}>
@@ -275,6 +285,7 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
         ) : (
           modalities.map(m => renderModality(m))
         )}
+        </>}
       </DialogContent>
 
       {/* Actions Menu */}
