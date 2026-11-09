@@ -3,7 +3,7 @@ import type { CanvasFormSchema } from '@/pages/Inspections/CanvasFormBuilder'
 export const isFailText = (text: unknown) => String(text ?? '').trim().toLowerCase() === 'fail'
 
 // The heading over a canvas table cell: the nearest text cell above it in its column.
-const columnHeading = (rows: any[][], row: number, col: number): string => {
+export const columnHeading = (rows: any[][], row: number, col: number): string => {
   for (let r = row - 1; r >= 0; r--) {
     const cell = rows[r]?.[col]
     if (!cell || cell.hidden) continue

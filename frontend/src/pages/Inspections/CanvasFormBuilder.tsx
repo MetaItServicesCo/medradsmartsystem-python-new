@@ -37,6 +37,7 @@ import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked'
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined'
 import TextFieldsIcon from '@mui/icons-material/TextFields'
 import TitleIcon from '@mui/icons-material/Title'
+import { itemChoicePeers } from '@/utils/canvasChoiceGroups'
 
 // ─────────────────────────────────────────────
 // Types
@@ -2530,16 +2531,16 @@ function renderViewerTable(
   readOnly: boolean,
 ) {
   const cells = el.cells ?? []
-  // Bare radio cells along a row are one choice, like the Pass / Fail / N/A
-  // columns of a paper sheet: choosing one clears the others in that row, and
-  // clicking the chosen one clears it. In a row saved with several on, clicking
-  // one of them makes it the only choice. Tick boxes stay independent, so
-  // several can be ticked.
-  const setCell = (row: TableCell[], cell: TableCell, val: string | boolean | string[]) => {
+  // Each item's bare radio cells are one choice, like the Pass / Fail / N/A
+  // columns of a paper sheet: choosing one clears the others of that item, and
+  // clicking the chosen one clears it. In an item saved with several on, clicking
+  // one of them makes it the only choice. A row can hold several items, each with
+  // its own answer. Tick boxes stay independent, so several can be ticked.
+  const setCell = (r: number, c: number, cell: TableCell, val: string | boolean | string[]) => {
     const patch: CanvasFormValues = { [cell.id]: val }
     if (cell.type === 'radio' && isBareControl(cell)) {
-      const othersOn = row.filter(other => other.id !== cell.id && !other.hidden && other.type === 'radio'
-        && isBareControl(other) && (values[other.id] === true || values[other.id] === 'true'))
+      const othersOn = itemChoicePeers(cells, r, c)
+        .filter(other => values[other.id] === true || values[other.id] === 'true')
       if (othersOn.length) {
         patch[cell.id] = true
         othersOn.forEach(other => { patch[other.id] = false })
@@ -2586,7 +2587,7 @@ function renderViewerTable(
               minWidth: 0,
             }}
           >
-            {renderTableCellField(cell, values[cell.id], v => setCell(row, cell, v), readOnly, isHeader)}
+            {renderTableCellField(cell, values[cell.id], v => setCell(r, c, cell, v), readOnly, isHeader)}
           </Box>
         )
       }))}

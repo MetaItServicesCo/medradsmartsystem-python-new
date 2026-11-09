@@ -144,6 +144,58 @@ const page = blankForm(736)
 ok('a canvas at page width prints at its real size', page.includes('width:736px;height:200px;transform:scale(1.0000)') && page.includes('left:100px;top:0px;width:200px'))
 ok('the fixed sections still print around it', page.includes('Inspection Report') && page.includes('Biomed Notes'))
 
+// ── A table with two items in a row ─────────────────────────────────────────
+const twoItemCell = (id, type, label) => ({ id, type, ...(label ? { label } : {}) })
+const twoItemSchema = {
+  version: 5,
+  canvas_form: {
+    canvas_width: 736,
+    canvas_height: 200,
+    elements: [{
+      id: 'fz', type: 'table', x: 0, y: 0, width: 736, height: 150, headerRow: true,
+      cells: [
+        ['Test', 'Pass', 'Fail', 'N/A', 'Test', 'Pass', 'Fail', 'N/A'].map((text, i) => twoItemCell(`fh${i}`, 'label', text)),
+        [twoItemCell('n1', 'label', 'Door Gasket'), twoItemCell('p1', 'radio'), twoItemCell('f1', 'radio'), twoItemCell('x1', 'radio'),
+          twoItemCell('n2', 'label', 'Defrost'), twoItemCell('p2', 'radio'), twoItemCell('f2', 'radio'), twoItemCell('x2', 'radio')],
+      ],
+    }],
+  },
+}
+const marks = html => (html.match(/class="dot on"/g) || []).length
+const twoItems = values => print({ form_schema: twoItemSchema, form_data: { canvas_values: values } })
+const noAnswers = marks(twoItems({}))
+const twoAnswers = twoItems({ f1: true, p2: true })
+ok('a row with two items prints both names', twoAnswers.includes('Door Gasket') && twoAnswers.includes('Defrost'))
+ok('  and both answers, each marked', marks(twoAnswers) === noAnswers + 2, `${noAnswers} then ${marks(twoAnswers)}`)
+
+// ── The cost on the Billing Page ────────────────────────────────────────────
+const billingPage = html => html.slice(html.indexOf('Billing Page'))
+const amounts = html => billingPage(html).match(/\$\d+\.\d\d/g) || []
+const charged = (billing, extra = {}) => amounts(print({ form_data: { billing }, ...extra }))
+ok('the Billing Page lists the asset', billingPage(print({ form_data: {} })).includes('Pump'))
+
+const fromInvoice = charged({ parts: 0, inspection_charges: 0, others: 0 }, { invoice: { id: 9, total_amount: 250 } })
+ok('with an invoice, its amount is shown: here the PM fee it billed', fromInvoice.every(a => a === '$250.00') && fromInvoice.length === 2, fromInvoice.join(' '))
+const fromField = charged({ parts: 0, inspection_charges: 175, others: 0 }, { invoice: { id: 9, total_amount: 175 } })
+ok('with an invoice from the Inspection Charges field, that amount', fromField.every(a => a === '$175.00'), fromField.join(' '))
+ok('the invoice is what counts, whatever the report says', charged({ inspection_charges: 175 }, { invoice: { id: 9, total_amount: 300 } }).every(a => a === '$300.00'))
+
+const beforeInvoice = charged({ parts: 100, inspection_charges: 175, others: 30 })
+ok('before an invoice, the field + parts + others', beforeInvoice.every(a => a === '$305.00'), beforeInvoice.join(' '))
+
+const batchHtml = buildInspectionSingleReportHtml({ ...base, id: 7, form_data: {} }, null, {
+  id: 10, total_amount: 700, batch_items: [{ inspection_id: 7, total_amount: 250 }, { inspection_id: 8, total_amount: 450 }],
+})
+ok('from a batch invoice: this asset\'s own line, and the invoice total', amounts(batchHtml).join(' ') === '$250.00 $700.00', amounts(batchHtml).join(' '))
+
+// KNOWN GAP, for the product owner. The report does not know the tier's PM fee, so
+// until an invoice exists it shows only what was typed. The invoice will still bill
+// the PM fee. Change these two checks when that is decided and fixed.
+const noFieldNoInvoice = charged({ parts: 0, inspection_charges: 0, others: 0 })
+ok('KNOWN GAP: before an invoice, an empty field shows $0.00 though the PM fee will be billed', noFieldNoInvoice.every(a => a === '$0.00'), noFieldNoInvoice.join(' '))
+const partsOnlyNoInvoice = charged({ parts: 100, inspection_charges: 0, others: 0 })
+ok('KNOWN GAP: before an invoice, parts alone show $100.00 though parts + PM fee will be billed', partsOnlyNoInvoice.every(a => a === '$100.00'), partsOnlyNoInvoice.join(' '))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)

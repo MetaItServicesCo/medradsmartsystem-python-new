@@ -6168,14 +6168,20 @@ const Inspections = () => {
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.75 }}>
                     Use Existing Inspection Form
                   </Typography>
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
+                  <SearchableSelect<number>
                     label="Select from saved Inspection Forms"
+                    allowClear={false}
+                    placeholder="Search inspection forms..."
+                    noOptionsText="No matching inspection forms"
                     value={reportFormSource === 'existing' ? selectedReportFormId || '' : ''}
-                    onChange={e => {
-                      const formId = Number(e.target.value)
+                    options={inspectionForms.map(form => ({
+                      value: form.id,
+                      label: form.name,
+                      secondary: form.modality_name || 'General',
+                      keywords: form.description || '',
+                    }))}
+                    onChange={value => {
+                      const formId = Number(value)
                       const template = inspectionForms.find(form => form.id === formId) || null
                       const schema = template ? schemaForForm(template) : null
                       setReportFormSource('existing')
@@ -6191,13 +6197,7 @@ const Inspections = () => {
                           ? 'Selecting a form here will use that saved form for this report.'
                           : 'No saved inspection forms are available yet.'
                     }
-                  >
-                    {inspectionForms.map(form => (
-                      <MenuItem key={form.id} value={form.id}>
-                        {form.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                  />
                 </Box>
                 {reportFormSource === 'custom' && (
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.4fr auto' }, gap: 1.5, mt: 1.5, alignItems: 'center' }}>
