@@ -1016,6 +1016,10 @@ const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
   inventory_date: new Date().toISOString().slice(0, 10),
 })
 
+// The batch window's columns, in the order of the inventory record's Equipment Description:
+// Asset #, Make, Model, Modality, Sub-Modality, Tier, Description, Serial, then Technician, Status, Actions.
+const BATCH_ASSET_COLUMN_WIDTHS = ['8%', '8%', '9%', '9%', '11%', '6%', '13%', '10%', '10%', '9%', '7%']
+
 const Inspections = () => {
   const pageSize = 10
   const queryClient = useQueryClient()
@@ -4664,7 +4668,7 @@ const Inspections = () => {
         )}
       </Card>
 
-      <Dialog open={Boolean(selectedBatchId)} onClose={() => setSelectedBatchId(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+      <Dialog open={Boolean(selectedBatchId)} onClose={() => setSelectedBatchId(null)} maxWidth="xl" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', fontWeight: 900, color: '#1E1B4B' }}>
           <Box>
             Inspection Batch
@@ -4761,13 +4765,33 @@ const Inspections = () => {
               </Box>
 
               <TableContainer className="list-scroll-panel">
-                <Table stickyHeader>
+                <Table
+                  stickyHeader
+                  sx={{
+                    // Fixed columns, so the table fits its width: long text is clipped,
+                    // with the whole of it on hover, instead of pushing the table wider.
+                    tableLayout: 'fixed',
+                    width: '100%',
+                    minWidth: { xs: 1080, lg: 0 },
+                    '& .MuiTableCell-root': { px: 0.75, overflow: 'hidden' },
+                    '& .MuiTableCell-root:first-of-type': { pl: 2 },
+                    '& .MuiTableCell-root:last-of-type': { pr: 1.5 },
+                    '& .MuiTableCell-head': { whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
+                  }}
+                >
+                  <colgroup>
+                    {BATCH_ASSET_COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
+                  </colgroup>
                   <TableHead>
                     <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                       <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>
-                      <TableCell sx={{ fontWeight: 900 }}>Serial</TableCell>
-                      <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Make</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Model</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Sub-Modality</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Tier</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Serial</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Technician</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
@@ -4784,28 +4808,31 @@ const Inspections = () => {
                           hover
                         >
                           <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
-                          <TableCell><ClippedTooltipText value={asset.serial_number || '-'} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
-                          <TableCell>
-                            <ClippedTooltipText
-                              value={asset.asset_name || asset.equipment_name || '-'}
-                              fontWeight={800}
-                              color="#312E81"
-                              maxWidth={210}
-                              sx={{ display: 'inline-block', width: 210, maxWidth: 210, px: 1.1, py: 0.5, borderRadius: '8px', bgcolor: '#F5F3FF' }}
-                              onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')}
-                            />
-                          </TableCell>
+                          <TableCell><ClippedTooltipText value={asset.make} fallback="—" /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.model} fallback="—" /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.modality_name} fallback="—" fontWeight={700} color="#475569" /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.sub_modality_name} fallback="—" fontWeight={700} color="#475569" /></TableCell>
                           <TableCell>
                             <ClippedTooltipText
                               value={asset.tier_name || '-'}
                               fontWeight={700}
                               color="#475569"
-                              maxWidth={210}
-                              sx={{ display: 'inline-block', width: 210, maxWidth: 210, px: 1.1, py: 0.5, borderRadius: '8px', bgcolor: '#F1F5F9' }}
+                              sx={{ px: 1, py: 0.5, borderRadius: '8px', bgcolor: '#F1F5F9' }}
                             />
                           </TableCell>
-                          <TableCell>{asset.inspector_name || '-'}</TableCell>
-                          <TableCell><Chip size="small" label={String(asset.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 800, textTransform: 'none', borderRadius: '8px' }} /></TableCell>
+                          <TableCell>
+                            <ClippedTooltipText
+                              value={asset.equipment_description}
+                              fallback="—"
+                              fontWeight={800}
+                              color="#312E81"
+                              sx={{ px: 1, py: 0.5, borderRadius: '8px', bgcolor: '#F5F3FF' }}
+                              onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')}
+                            />
+                          </TableCell>
+                          <TableCell><ClippedTooltipText value={asset.serial_number || '-'} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.inspector_name} fallback="-" fontWeight={400} /></TableCell>
+                          <TableCell><Chip size="small" label={String(asset.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())} title={String(asset.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())} sx={{ maxWidth: '100%', bgcolor: chip.bg, color: chip.color, fontWeight: 800, textTransform: 'none', borderRadius: '8px' }} /></TableCell>
                           <TableCell align="right">
                             <IconButton size="small" onClick={(event) => openAssetActions(event, asset)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
                               <MoreVertIcon fontSize="small" />

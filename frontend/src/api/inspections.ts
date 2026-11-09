@@ -196,7 +196,14 @@ export interface InspectionBatch {
   closed_count?: number
   pending_count: number
   batch_invoice?: InspectionInvoice | null
-  assets?: Inspection[]
+  assets?: InspectionBatchAsset[]
+}
+
+/** A batch's asset, with what its inventory record says it is. */
+export interface InspectionBatchAsset extends Inspection {
+  modality_name?: string | null
+  sub_modality_name?: string | null
+  equipment_description?: string | null
 }
 
 export interface InspectionBatchListResponse {

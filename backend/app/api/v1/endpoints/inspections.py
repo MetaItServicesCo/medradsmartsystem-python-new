@@ -632,8 +632,21 @@ def _batch_response(
     data["pending_count"] = max(asset_count - completed_count - closed_count, 0)
     data["batch_invoice"] = _invoice_response(getattr(batch, "_batch_invoice", None))
     if include_assets:
-        data["assets"] = [_inspection_response(item) for item in inspections]
+        data["assets"] = [{**_inspection_response(item), **_batch_asset_details(item)} for item in inspections]
     return data
+
+
+def _batch_asset_details(inspection: Inspection) -> dict[str, Any]:
+    """What the batch window shows beside each asset, as its inventory record
+    names it: the modality and sub-modality, and the description."""
+    asset = inspection.inventory_part or inspection.equipment
+    modality = asset.modality if asset else None
+    parent = modality.parent if modality else None
+    return {
+        "modality_name": (parent.name if parent else modality.name) if modality else None,
+        "sub_modality_name": modality.name if parent else None,
+        "equipment_description": (asset.description or None) if asset else None,
+    }
 
 
 def _batch_counts(db: Session, batch_ids: list[int]) -> dict[int, dict[str, int]]:
@@ -1866,8 +1879,9 @@ def get_inspection_batch(
             joinedload(InspectionBatch.inspector),
             selectinload(InspectionBatch.inspections).joinedload(Inspection.facility).joinedload(Facility.tier),
             selectinload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.tier),
-            selectinload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.modality),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.modality).joinedload(Modality.parent),
             selectinload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.inspection_form),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.modality).joinedload(Modality.parent),
             selectinload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
             selectinload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.inspection_form),
             selectinload(InspectionBatch.inspections).joinedload(Inspection.inspector),
