@@ -31,6 +31,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 import app.models  # noqa: E402,F401
 from app.api.v1.endpoints.inspections import (  # noqa: E402
     InspectionReportUpdate,
+    _inspection_response,
     generate_inspection_batch_invoice,
     generate_inspection_invoice,
     save_inspection_report,
@@ -191,12 +192,46 @@ ok("an asset on its own tier", lines[on_other_tier.id] == D("400.00"), lines)
 ok("an asset with parts", lines[with_parts.id] == D("350.00"), lines)
 ok("the batch total is the sum of its lines", D(str(result["total_amount"])) == sum(lines.values()) == D("1175.00"), result["total_amount"])
 
-print("\nKnown gap, recorded so that it is visible (see the note to the product owner)")
+print("\nThe report states the PM cost of the tier the invoice uses")
+
+
+def pm_on_report(where: Facility, tier: Tier | None = None):
+    return _inspection_response(inspection(where, asset(where, tier)))["tier_pm_fee"]
+
+
+ok("an asset on its own tier: that tier's PM cost", pm_on_report(gold_clinic, silver) == 400.0)
+ok("an asset with no tier: the facility's PM cost", pm_on_report(silver_clinic) == 400.0)
+free_tier = Tier(tier_code="T-F", name="Free", labor_rate_per_hour=D("0"), service_call_fee=D("0"),
+                 preventive_maintenance_fee=D("0"), mileage_rate=D("0"))
+db.add(free_tier)
+db.flush()
+ok("a tier with no PM cost: 0", pm_on_report(facility("Free Clinic", free_tier)) == 0.0)
+ok("no tier anywhere: nothing, which the report warns about", pm_on_report(no_tier) is None)
 split = facility("Two Tier Clinic")
 db.add(FacilityTier(facility_id=split.id, tier_id=silver.id))
 db.commit()
-ok("KNOWN GAP: a facility whose tiers are all in its tier list, no main tier: an asset with no tier bills $0",
-   billed(split) == D("0.00"))
+ok("tiers only in the facility's tier list, none on the asset: no tier, which the report warns about", pm_on_report(split) is None)
+ok("  and it bills $0, as the report shows", billed(split) == D("0.00"))
+
+print("\nThe report's cost is the invoice's cost")
+for label, where, tier, report in [
+    ("the PM cost", gold_clinic, None, {}),
+    ("the PM cost of the asset's own tier", gold_clinic, silver, {}),
+    ("a changed cost", gold_clinic, None, {"charge": 175}),
+    ("the PM cost + parts + others", gold_clinic, None, {"parts": 100, "others": 30}),
+    ("a changed cost + parts + others", silver_clinic, gold, {"charge": 60, "parts": 100, "others": 30}),
+    ("0 typed over a PM cost: the PM cost", gold_clinic, None, {"charge": 0}),
+    ("no tier and a typed cost", no_tier, None, {"charge": 120}),
+    ("no tier and no cost", no_tier, None, {}),
+]:
+    row = inspection(where, asset(where, tier))
+    save_report(row, **report)
+    shown = _inspection_response(row)
+    billing = shown["form_data"]["billing"]
+    charge = D(str(billing["inspection_charges"]))
+    on_report = D(str(billing["parts"])) + (charge if charge > 0 else D(str(shown["tier_pm_fee"] or 0))) + D(str(billing["others"]))
+    invoiced = D(str(generate_inspection_invoice(row.id, db, boss)["total_amount"]))
+    ok(f"{label}: report and invoice agree", on_report == invoiced, f"report {on_report}, invoice {invoiced}")
 
 print()
 if failures:

@@ -576,6 +576,14 @@ def _inspection_response(inspection: Inspection) -> dict[str, Any]:
         if inspection.facility and inspection.facility.tier
         else None
     )
+    # The inspection cost the report starts from: the PM cost of the tier the invoice
+    # will use. None when no tier applies, which the report warns about.
+    billable_tier = (
+        _get_billable_tier(inspection.facility, inspection.inventory_part, inspection.equipment)
+        if inspection.facility
+        else None
+    )
+    data["tier_pm_fee"] = float(_money(billable_tier.preventive_maintenance_fee)) if billable_tier else None
     data["inspector_name"] = inspection.inspector.full_name if inspection.inspector else None
     data["form_template_name"] = inspection.form_template.name if inspection.form_template else None
     data["form_template_schema"] = inspection.form_template.schema if inspection.form_template else None

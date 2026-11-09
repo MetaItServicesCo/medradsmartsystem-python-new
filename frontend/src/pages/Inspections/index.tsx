@@ -87,6 +87,7 @@ import {
   printInspectionBatchReport,
   buildInspectionSingleReportHtml,
   buildInspectionReportDocumentHtml,
+  inspectionCost,
   resolveReportInvoice,
 } from '@/utils/inspectionReportHtml'
 import { fetchModalities, type Modality } from '@/api/modalities'
@@ -974,16 +975,27 @@ const makeReport = (inspection: Inspection) => ({
 // fixed Inspection Report check on Pass and the Biomed Notes defaults, so only
 // what failed needs changing; whatever was already answered is kept. A
 // completed or closed report is shown exactly as it was saved.
+// The Inspection Charges field starts from the PM cost of the asset's tier.
+const withInspectionCost = (report: any, inspection: Inspection) => ({
+  ...report,
+  billing: {
+    parts: 0,
+    others: 0,
+    ...(report?.billing || {}),
+    inspection_charges: inspectionCost(report?.billing?.inspection_charges, inspection.tier_pm_fee),
+  },
+})
+
 const reportWithDefaults = (inspection: Inspection) => {
   const saved = inspection.form_data as any
-  if (inspection.status === 'completed' || inspection.status === 'closed') return saved || makeReport(inspection)
-  if (!saved || !Object.keys(saved).length) return makeReport(inspection)
+  if (inspection.status === 'completed' || inspection.status === 'closed') return withInspectionCost(saved || makeReport(inspection), inspection)
+  if (!saved || !Object.keys(saved).length) return withInspectionCost(makeReport(inspection), inspection)
   const blank = (value: unknown) => value === undefined || value === null || String(value).trim() === ''
   const checks = { ...(saved.checks || {}) }
   CHECK_FIELDS.forEach(([key]) => { if (blank(checks[key])) checks[key] = 'pass' })
   const diagnostics = { ...(saved.diagnostics || {}) }
   Object.entries(BIOMED_NOTE_DEFAULTS).forEach(([key, value]) => { if (blank(diagnostics[key])) diagnostics[key] = value })
-  return { ...saved, checks, diagnostics }
+  return withInspectionCost({ ...saved, checks, diagnostics }, inspection)
 }
 
 const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
@@ -3187,7 +3199,7 @@ const Inspections = () => {
         return
       }
     }
-    const normalizedReport = mergeSchemaDefaultsIntoReport(report, activeReportSchema)
+    const normalizedReport = withInspectionCost(mergeSchemaDefaultsIntoReport(report, activeReportSchema), reportInspection)
     // A Fail in the fixed checks, a measurement or the middle custom section
     // fails the report - the same fields the live status reads.
     const hasFail = Object.values(normalizedReport.checks || {}).includes('fail')
@@ -6363,7 +6375,19 @@ const Inspections = () => {
               </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
                 <NumericField label="Parts" value={report.billing.parts} onChange={val => updateReport('billing', 'parts', val)} />
-                <NumericField label="Inspection Charges" value={report.billing.inspection_charges} onChange={val => updateReport('billing', 'inspection_charges', val)} />
+                <NumericField
+                  label="Inspection Charges"
+                  value={report.billing.inspection_charges}
+                  onChange={val => updateReport('billing', 'inspection_charges', val)}
+                  onBlur={() => updateReport('billing', 'inspection_charges', inspectionCost(report.billing.inspection_charges, reportInspection?.tier_pm_fee))}
+                  helperText={
+                    reportInspection?.tier_pm_fee == null
+                      ? 'No tier found for this asset. Enter the inspection cost.'
+                      : Number(reportInspection.tier_pm_fee) > 0
+                        ? `Tier PM cost: $${Number(reportInspection.tier_pm_fee).toFixed(2)}. This amount will be invoiced; change it if needed.`
+                        : 'This tier has no PM cost. Enter the inspection cost if there is one.'
+                  }
+                />
                 <NumericField label="Others" value={report.billing.others} onChange={val => updateReport('billing', 'others', val)} />
               </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>

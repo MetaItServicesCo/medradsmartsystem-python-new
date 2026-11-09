@@ -188,13 +188,20 @@ const batchHtml = buildInspectionSingleReportHtml({ ...base, id: 7, form_data: {
 })
 ok('from a batch invoice: this asset\'s own line, and the invoice total', amounts(batchHtml).join(' ') === '$250.00 $700.00', amounts(batchHtml).join(' '))
 
-// KNOWN GAP, for the product owner. The report does not know the tier's PM fee, so
-// until an invoice exists it shows only what was typed. The invoice will still bill
-// the PM fee. Change these two checks when that is decided and fixed.
-const noFieldNoInvoice = charged({ parts: 0, inspection_charges: 0, others: 0 })
-ok('KNOWN GAP: before an invoice, an empty field shows $0.00 though the PM fee will be billed', noFieldNoInvoice.every(a => a === '$0.00'), noFieldNoInvoice.join(' '))
-const partsOnlyNoInvoice = charged({ parts: 100, inspection_charges: 0, others: 0 })
-ok('KNOWN GAP: before an invoice, parts alone show $100.00 though parts + PM fee will be billed', partsOnlyNoInvoice.every(a => a === '$100.00'), partsOnlyNoInvoice.join(' '))
+// Before an invoice, the report shows what the invoice will bill.
+const pm = { tier_pm_fee: 250 }
+const onPm = charged({ parts: 0, inspection_charges: 0, others: 0 }, pm)
+ok('before an invoice, an empty field shows the tier\'s PM cost', onPm.every(a => a === '$250.00') && onPm.length === 2, onPm.join(' '))
+const pmAndParts = charged({ parts: 100, inspection_charges: 0, others: 30 }, pm)
+ok('before an invoice, the PM cost + parts + others', pmAndParts.every(a => a === '$380.00'), pmAndParts.join(' '))
+const changed = charged({ parts: 0, inspection_charges: 175, others: 0 }, pm)
+ok('before an invoice, a changed cost replaces the PM cost', changed.every(a => a === '$175.00'), changed.join(' '))
+const zeroTier = charged({ parts: 0, inspection_charges: 0, others: 0 }, { tier_pm_fee: 0 })
+ok('a tier with no PM cost shows $0.00', zeroTier.every(a => a === '$0.00'), zeroTier.join(' '))
+const noTier = charged({ parts: 0, inspection_charges: 0, others: 0 }, { tier_pm_fee: null })
+ok('no tier shows $0.00', noTier.every(a => a === '$0.00'), noTier.join(' '))
+const oldSaved = charged({ parts: 0, inspection_charges: 0, others: 0 }, { ...pm, invoice: { id: 9, total_amount: 250 } })
+ok('an old report saved with 0 agrees with its invoice', oldSaved.every(a => a === '$250.00'), oldSaved.join(' '))
 
 console.log()
 if (failures) {

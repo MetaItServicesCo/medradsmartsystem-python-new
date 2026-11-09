@@ -47,6 +47,7 @@ export type InspectionReportLike = {
   parts_amount?: number | string | null
   inspection_charge?: number | string | null
   other_charges?: number | string | null
+  tier_pm_fee?: number | string | null
 }
 
 type ReportInvoiceLike = {
@@ -182,6 +183,13 @@ const assetTag = (inspection: InspectionReportLike) =>
 // The billable amount for one asset. A batch invoice carries a per-asset line item
 // (batch_items); a single invoice carries the total. Fall back to the report's stored
 // billing figures, then to any raw charge fields.
+// The inspection cost: the amount on the report, or the tier's PM cost when there is none.
+// The same rule the invoice uses, so the report shows what will be billed.
+export const inspectionCost = (charge: unknown, tierPmFee: unknown): number => {
+  const entered = Number(charge || 0)
+  return entered > 0 ? entered : Number(tierPmFee || 0)
+}
+
 const amountFromInvoice = (invoice: ReportInvoiceLike, inspectionId?: number | null): number => {
   if (!invoice) return 0
   if (invoice.batch_items?.length && inspectionId != null) {
@@ -199,7 +207,7 @@ const assetAmount = (inspection: InspectionReportLike, contextInvoice?: ReportIn
   const fromOwn = amountFromInvoice(inspection.invoice, id)
   if (fromOwn > 0) return fromOwn
   const data = reportData(inspection)
-  const billed = Number(data.billing?.parts || 0) + Number(data.billing?.inspection_charges || 0) + Number(data.billing?.others || 0)
+  const billed = Number(data.billing?.parts || 0) + inspectionCost(data.billing?.inspection_charges, inspection.tier_pm_fee) + Number(data.billing?.others || 0)
   if (billed > 0) return billed
   return Number(inspection.parts_amount || 0) + Number(inspection.inspection_charge || 0) + Number(inspection.other_charges || 0)
 }
