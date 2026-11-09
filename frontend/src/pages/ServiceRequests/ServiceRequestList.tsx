@@ -117,6 +117,9 @@ const STAT_CARDS = [
   },
 ]
 
+// Request, Facility, Equipment, Asset, Serial, Description, Priority, Status, Created By, Created, Actions.
+const COLUMN_WIDTHS = ['8.5%', '13%', '11%', '7%', '8%', '12%', '7.5%', '10%', '8.5%', '7.5%', '7%']
+
 const ServiceRequestList = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -465,12 +468,31 @@ const ServiceRequestList = () => {
 
         {/* Table */}
         <TableContainer className="list-scroll-panel">
-          <Table stickyHeader>
+          <Table
+            stickyHeader
+            sx={{
+              // Fixed columns, so the table fits its width: long text is clipped,
+              // with the whole of it on hover, instead of pushing the table wider.
+              tableLayout: 'fixed',
+              width: '100%',
+              minWidth: { xs: 980, lg: 0 },
+              '& .MuiTableCell-root': { px: 0.75, overflow: 'hidden' },
+              '& .MuiTableCell-root:first-of-type': { pl: 2 },
+              '& .MuiTableCell-root:last-of-type': { pr: 1.5 },
+              '& .MuiTableCell-head': { whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
+            }}
+          >
+            <colgroup>
+              {COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
+            </colgroup>
             <TableHead>
               <TableRow>
                 <TableCell>Request #</TableCell>
                 <TableCell>Facility</TableCell>
                 <TableCell>Equipment</TableCell>
+                <TableCell>Asset #</TableCell>
+                <TableCell>Serial #</TableCell>
+                <TableCell>Description</TableCell>
                 <TableCell>Priority</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Created By</TableCell>
@@ -482,7 +504,7 @@ const ServiceRequestList = () => {
               {isLoading
                 ? Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 8 }).map((_, j) => (
+                      {COLUMN_WIDTHS.map((_, j) => (
                         <TableCell key={j}><Skeleton variant="text" /></TableCell>
                       ))}
                     </TableRow>
@@ -490,7 +512,7 @@ const ServiceRequestList = () => {
                 : items.length === 0
                   ? (
                     <TableRow>
-                      <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                      <TableCell colSpan={COLUMN_WIDTHS.length} align="center" sx={{ py: 6 }}>
                         <Box sx={{ textAlign: 'center', opacity: 0.8 }}>
                           <BuildIcon sx={{ fontSize: '3.5rem', color: '#DDD6FE', mb: 2 }} />
                           <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B', mb: 0.5 }}>
@@ -532,14 +554,19 @@ const ServiceRequestList = () => {
                             <ClippedTooltipText value={sr.request_number} monospace color="#6757D8" fontWeight={800} />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                              {sr.facility_name || '—'}
-                            </Typography>
+                            <ClippedTooltipText value={sr.facility_name} fallback="—" fontWeight={500} />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                              {sr.equipment_name || '—'}
-                            </Typography>
+                            <ClippedTooltipText value={sr.equipment_name} fallback="—" fontWeight={500} />
+                          </TableCell>
+                          <TableCell>
+                            <ClippedTooltipText value={sr.equipment_asset_tag} fallback="—" fontWeight={500} />
+                          </TableCell>
+                          <TableCell>
+                            <ClippedTooltipText value={sr.equipment_serial_number} fallback="—" fontWeight={500} />
+                          </TableCell>
+                          <TableCell>
+                            <ClippedTooltipText value={sr.equipment_description} fallback="—" fontWeight={500} color="#475569" />
                           </TableCell>
                           <TableCell>
                             <Chip
@@ -559,7 +586,9 @@ const ServiceRequestList = () => {
                             <Chip
                               label={STATUS_LABELS[sr.status] || sr.status}
                               size="small"
+                              title={STATUS_LABELS[sr.status] || sr.status}
                               sx={{
+                                maxWidth: '100%',
                                 backgroundColor: sColor.bg,
                                 color: sColor.color,
                                 fontWeight: 700,
@@ -571,21 +600,17 @@ const ServiceRequestList = () => {
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Avatar
                                 sx={{
-                                  width: 26, height: 26, fontSize: '0.7rem', fontWeight: 700,
+                                  width: 26, height: 26, fontSize: '0.7rem', fontWeight: 700, flexShrink: 0,
                                   background: 'linear-gradient(135deg, #7161D8, #F05D92)',
                                 }}
                               >
                                 {sr.requester_name?.[0] || '?'}
                               </Avatar>
-                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                {sr.requester_name || '—'}
-                              </Typography>
+                              <ClippedTooltipText value={sr.requester_name} fallback="—" fontWeight={500} />
                             </Box>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" sx={{ color: '#6B7280', fontSize: '0.8rem' }}>
-                              {formatDate(sr.created_at)}
-                            </Typography>
+                            <ClippedTooltipText value={formatDate(sr.created_at)} fontWeight={400} color="#6B7280" textSx={{ fontSize: '0.8rem' }} />
                           </TableCell>
                           <TableCell align="right">
                             <Tooltip title="Actions">
