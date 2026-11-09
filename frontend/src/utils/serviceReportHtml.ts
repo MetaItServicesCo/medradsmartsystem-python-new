@@ -213,7 +213,7 @@ const serviceOverviewPageHtml = (sr: any, facility: Facility | null | undefined,
         <td>${esc(sessions.length)}</td>
         <td class="right">${esc(numberValue(sr.time_spent_hours).toFixed(2))} hrs</td>
         <td class="right">${esc(totalMileage(sessions).toFixed(2))} mi</td>
-        <td class="right amount">${esc(money(sr.total_cost))}</td>
+        <td class="right amount">${esc(money(sr.total_cost))}${costBreakdown(sr)}</td>
       </tr></tbody>
     </table>
   `, { break: true })
@@ -261,6 +261,26 @@ const serviceAdditionPageHtml = (addition: any, index: number) => page(`
   ${sessionPartsHtml(addition)}
 `, { break: true })
 
+// How the recorded cost was worked out (4.00 hrs × $175.00/hr), when the server says it adds up.
+const costBreakdown = (sr: any) => (sr.service_cost_breakdown
+  ? `<div class="muted" style="font-size:11px;font-weight:600;white-space:nowrap">${esc(sr.service_cost_breakdown)}</div>`
+  : '')
+
+// The invoice's charge lines, each with how it was worked out, as the invoice shows them.
+const chargesHtml = (invoice: any) => {
+  const charges: any[] = Array.isArray(invoice?.charges) ? invoice.charges : []
+  if (!charges.length) return ''
+  return `
+    <h2 class="sec">Invoice Charges</h2>
+    <table class="doc">
+      <thead><tr><th>Charge</th><th>How It Is Worked Out</th><th class="right">Amount $</th></tr></thead>
+      <tbody>
+        ${charges.map(row => `<tr><td>${esc(row.label || 'Charge')}</td><td>${esc(row.breakdown || '-')}</td><td class="right amount">${esc(money(row.amount))}</td></tr>`).join('')}
+        <tr class="total"><td></td><td class="right">Subtotal</td><td class="right amount">${esc(money(invoice.subtotal))}</td></tr>
+      </tbody>
+    </table>`
+}
+
 const serviceBillingPageHtml = (sr: any) => {
   const invoice = sr.invoice
   const amount = invoice ? numberValue(invoice.total_amount) : numberValue(sr.total_cost)
@@ -292,6 +312,7 @@ const serviceBillingPageHtml = (sr: any) => {
         <tr class="total"><td></td><td></td><td class="right">Total</td><td class="right amount">${esc(money(amount))}</td></tr>
       </tbody>
     </table>
+    ${chargesHtml(invoice)}
     <h2 class="sec">${invoice ? 'Invoice Summary' : 'Billing Summary'}</h2>
     ${detailRowsHtml(summaryRows)}
     ${invoice ? '' : '<p class="muted" style="margin-top:10px">No service invoice has been generated for this request.</p>'}
@@ -436,7 +457,7 @@ export const buildServiceReportSheet = (sr: any): string => {
           <div class="report-summary">
             <span class="report-pill">Total Hours: ${esc(numberValue(sr.time_spent_hours).toFixed(2))}</span>
             <span class="report-pill">Total Mileage: ${esc(totalMileage(sessions).toFixed(2))} mi</span>
-            <span class="report-pill">Total Cost: ${esc(money(sr.total_cost))}</span>
+            <span class="report-pill">Total Cost: ${esc(money(sr.total_cost))}${sr.service_cost_breakdown ? ` (${esc(sr.service_cost_breakdown)})` : ''}</span>
             <span class="report-pill">Billing: ${esc((sr.billing_status || 'pending').replace(/_/g, ' '))}</span>
           </div>
         </div>

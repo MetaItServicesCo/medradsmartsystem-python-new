@@ -58,6 +58,9 @@ const EXTRA_STYLES = `
   .doc-a tr.si-total td { font-weight: 900; color: #1E1B4B; background: #F8FAFC; }
   .doc-a .si-bottom { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-top: 24px; page-break-inside: avoid; }
   .doc-a .si-bottom .totals { margin-top: 0; margin-left: auto; }
+  .doc-a .totals div { gap: 12px; }
+  .doc-a .totals strong { white-space: nowrap; }
+  .doc-a .totals .si-breakdown { color: #94A3B8; font-size: 12px; font-weight: 600; white-space: nowrap; }
   @media (max-width: 720px) {
     .sheet { width: 100%; margin: 0; box-shadow: none; min-height: 0; }
     .doc-a .head { padding: 18px 16px 10px; flex-wrap: wrap; }
@@ -97,7 +100,7 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
   const equipmentRows = doc.test_equipment.map((item, index) => `
     <tr><td>${index + 1}</td><td>${esc(item.description)}</td><td>${esc(item.make)}</td><td>${esc(item.model)}</td><td>${esc(item.serial_number)}</td></tr>`)
 
-  const charge = (label: string, value: unknown) => `<div><span>${esc(label)}</span><strong>${esc(money(value))}</strong></div>`
+  const charge = (label: string, value: unknown, breakdown?: string | null) => `<div><span>${esc(label)}${breakdown ? ` <span class="si-breakdown">(${esc(breakdown)})</span>` : ''}</span><strong>${esc(money(value))}</strong></div>`
   const tax = Number(doc.tax_amount || 0)
   const discount = Number(doc.discount_amount || 0)
   const paid = Number(doc.amount_paid || 0)
@@ -186,7 +189,7 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
 
       <div class="si-bottom">
         <section class="totals">
-          ${doc.charges.map(row => charge(row.label, row.amount)).join('')}
+          ${doc.charges.map(row => charge(row.label, row.amount, row.breakdown)).join('')}
           ${charge('Total', doc.subtotal)}
           ${tax ? charge('Tax', tax) : ''}
           ${discount ? charge('Discount', -discount) : ''}

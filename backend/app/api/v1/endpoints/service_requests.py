@@ -50,6 +50,7 @@ from app.utils.facility_access import (
     scope_query_to_user_facilities,
 )
 from app.utils.service_invoice_document import service_work_entries
+from app.utils.service_charges import labor_breakdown
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
@@ -457,6 +458,10 @@ def _enrich(
     data["tier_mileage_rate"] = tier.mileage_rate if tier else None
     data["tier_service_call_fee"] = tier.service_call_fee if tier else None
     data["calculated_service_cost"] = _calculate_service_cost(sr)
+    # How the recorded cost was worked out (4.00 hrs × $175.00/hr), when it adds up.
+    data["service_cost_breakdown"] = labor_breakdown(
+        sr.time_spent_hours, _service_labor_rate(sr), sr.total_cost, adjusted=False,
+    )
     data["requester_name"] = sr.requester.full_name if sr.requester else None
     data["technician_name"] = sr.assigned_technician.full_name if sr.assigned_technician else None
     # Quotations (multiple)

@@ -288,6 +288,7 @@ class ServiceRequestResponse(BaseModel):
     tier_mileage_rate: Optional[Decimal] = None
     tier_service_call_fee: Optional[Decimal] = None
     calculated_service_cost: Optional[Decimal] = None
+    service_cost_breakdown: Optional[str] = None
     requester_name: Optional[str] = None
     technician_name: Optional[str] = None
 

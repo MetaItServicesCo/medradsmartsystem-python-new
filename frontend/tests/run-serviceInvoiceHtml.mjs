@@ -41,7 +41,7 @@ const doc = (value, over = {}) => ({
   parts: [{ part_number: value, description: value, quantity: value, condition: value }],
   test_equipment: [{ description: value, make: value, model: value, serial_number: value }],
   technician: value, client: value, preferred_date: value, actual_date: value,
-  charges: [{ label: value, amount: '1500.00' }],
+  charges: [{ label: value, amount: '1500.00', breakdown: value }],
   subtotal: '1500.00', tax_amount: '0.00', discount_amount: '0.00', total_amount: '1500.00', amount_paid: '0.00', balance_due: '1500.00',
   paid_quotations: [{ quotation_number: value, description: value, paid_amount: '1.00', paid_at: value }],
   ...over,
@@ -91,6 +91,21 @@ const charged = await buildServiceInvoiceHtml(doc('v', { tax_amount: '10.00', di
 ok('non-zero ones show', /<span>Tax<\/span>/.test(charged) && /<span>Discount<\/span>/.test(charged) && /<span>Paid<\/span>/.test(charged))
 const empty = await buildServiceInvoiceHtml({ ...doc(null), work_entries: [], parts: [], test_equipment: [], charges: [], paid_quotations: undefined, status: 'pending', installment_plan: 'No' })
 ok('a request with nothing filled in still renders, with no "null" or "undefined"', empty.includes('No items to display') && !/>\s*(null|undefined|NaN)\s*</.test(empty) && !/Invalid Date/.test(empty))
+
+console.log('\nHow each charge was worked out')
+const billed = await buildServiceInvoiceHtml(doc('v', { charges: [
+  { label: 'Service Fee', amount: '150.00', breakdown: null },
+  { label: 'Labor', amount: '700.00', breakdown: '4.00 hrs × $175.00/hr' },
+  { label: 'Filter', amount: '90.00', breakdown: '2 × $45.00' },
+], subtotal: '940.00' }))
+ok('labor shows its hours and rate beside $700.00', /<span>Labor <span class="si-breakdown">\(4\.00 hrs × \$175\.00\/hr\)<\/span><\/span><strong>\$700\.00<\/strong>/.test(billed))
+ok('a line billed by quantity shows it', /Filter <span class="si-breakdown">\(2 × \$45\.00\)<\/span><\/span><strong>\$90\.00<\/strong>/.test(billed))
+ok('a line with nothing to explain stays as it was', /<span>Service Fee<\/span><strong>\$150\.00<\/strong>/.test(billed))
+ok('the amounts and total are unchanged', billed.includes('<span>Total</span><strong>$940.00</strong>'))
+const adjusted = await buildServiceInvoiceHtml(doc('v', { charges: [{ label: 'Labor', amount: '600.00', breakdown: '4.00 hrs, adjusted' }] }))
+ok('labor changed by hand reads as adjusted, never as a wrong sum', adjusted.includes('(4.00 hrs, adjusted)') && !adjusted.includes('×'))
+const older = await buildServiceInvoiceHtml(doc('v', { charges: [{ label: 'Labor', amount: '700.00' }] }))
+ok('a server that sends no breakdown: the line as before', /<span>Labor<\/span><strong>\$700\.00<\/strong>/.test(older))
 
 console.log()
 if (failures) {

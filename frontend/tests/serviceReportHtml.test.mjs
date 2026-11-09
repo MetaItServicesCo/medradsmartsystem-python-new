@@ -64,6 +64,40 @@ for (const [name, html] of [
 const noAddition = buildServiceReportSheet({ ...sr, sessions: [appSession], additions: [] })
 ok('a report with no additions prints no additions section', !noAddition.includes('Added to Work Order'))
 
+// How the cost was worked out: 4 hours at $175 an hour is the $700.
+console.log('\nHow the cost was worked out')
+const billedSr = { ...sr, sessions: [appSession], time_spent_hours: 4, total_cost: 700, service_cost_breakdown: '4.00 hrs × $175.00/hr',
+  invoice: { invoice_number: 'INV-1', status: 'pending', subtotal: 940, tax_amount: 0, discount_amount: 0, total_amount: 940, amount_paid: 0, balance_due: 940,
+    charges: [
+      { label: 'Service Fee', amount: '150.00', breakdown: null },
+      { label: 'Labor', amount: '700.00', breakdown: '4.00 hrs × $175.00/hr' },
+      { label: 'Filter', amount: '90.00', breakdown: '2 × $45.00' },
+    ] } }
+const report = buildServiceReportDocument(billedSr, null)
+const workSummary = report.slice(report.indexOf('Work Summary'), report.indexOf('Billing Page'))
+ok('report: Work Summary shows $700.00 with 4.00 hrs × $175.00/hr', workSummary.includes('$700.00') && workSummary.includes('4.00 hrs × $175.00/hr'))
+const billing = report.slice(report.indexOf('Billing Page'))
+ok('report: the Billing Page lists the invoice charges', billing.includes('Invoice Charges'))
+ok('report:   labor with its hours and rate', /<td>Labor<\/td><td>4\.00 hrs × \$175\.00\/hr<\/td><td class="right amount">\$700\.00<\/td>/.test(billing))
+ok('report:   a line billed by quantity', /<td>Filter<\/td><td>2 × \$45\.00<\/td><td class="right amount">\$90\.00<\/td>/.test(billing))
+ok('report:   a line with nothing to explain', /<td>Service Fee<\/td><td>-<\/td><td class="right amount">\$150\.00<\/td>/.test(billing))
+ok('report:   the same subtotal as the invoice', /Subtotal<\/td><td class="right amount">\$940\.00/.test(billing))
+ok('report: the billed total is unchanged', billing.includes('$940.00'))
+const sheet = buildServiceReportSheet(billedSr)
+ok('invoice sheet: Total Cost shows $700.00 with 4.00 hrs × $175.00/hr', sheet.includes('Total Cost: $700.00 (4.00 hrs × $175.00/hr)'))
+
+const adjustedSr = { ...billedSr, invoice: { ...billedSr.invoice, charges: [{ label: 'Labor', amount: '600.00', breakdown: '4.00 hrs, adjusted' }] } }
+const adjustedReport = buildServiceReportDocument(adjustedSr, null)
+ok('report: labor changed by hand reads as adjusted on the Billing Page', adjustedReport.slice(adjustedReport.indexOf('Billing Page')).includes('<td>4.00 hrs, adjusted</td>'))
+
+const plain = { ...sr, sessions: [appSession], time_spent_hours: 4, total_cost: 700 }
+const plainReport = buildServiceReportDocument(plain, null)
+ok('no breakdown from the server: the cost shows as before', plainReport.includes('$700.00') && !plainReport.includes('×') && !plainReport.includes('Invoice Charges'))
+ok('no breakdown from the server: the sheet as before', buildServiceReportSheet(plain).includes('Total Cost: $700.00</span>'))
+const hostile = buildServiceReportDocument({ ...billedSr, service_cost_breakdown: '<img src=x onerror=alert(1)>',
+  invoice: { ...billedSr.invoice, charges: [{ label: '<script>x</script>', amount: '1', breakdown: '<b>y</b>' }] } }, null)
+ok('breakdowns and labels are escaped', !hostile.includes('<img src=x') && !hostile.includes('<script>x') && !hostile.includes('<b>y</b>'))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)

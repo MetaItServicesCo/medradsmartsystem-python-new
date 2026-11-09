@@ -312,14 +312,15 @@ ok("total hours", doc["total_hours"] == 2.0)
 ok("test equipment that was used shows", doc["test_equipment"] == [{"description": "Meter", "make": "Fluke", "model": "87V", "serial_number": "TE-9"}], doc["test_equipment"])
 ok("parts are listed with no amounts", doc["parts"] == [{"part_number": "P-100", "description": "Pedal", "quantity": 1, "condition": None}], doc["parts"])
 ok("charges: service fee and labor; the part is not in the total",
-   doc["charges"] == [{"label": "Service Fee", "amount": "1500.00"}, {"label": "Labor", "amount": "200.00"}]
+   doc["charges"] == [{"label": "Service Fee", "amount": "1500.00", "breakdown": None},
+                       {"label": "Labor", "amount": "200.00", "breakdown": "2.00 hrs × $100.00/hr"}]
    and doc["total_amount"] == "1700.00", doc["charges"])
 ok("technician notes never appear", "INTERNAL" not in str(doc))
 ok("the invoice carries no link", "payment_link" not in doc)
 invoice_b = generate(SR_B).json()
 doc_b = document(invoice_b["id"]).json()
 ok("no test equipment used: none listed", doc_b["test_equipment"] == [])
-ok("no hours: only the Service Fee is charged, Total Hours 0", doc_b["charges"] == [{"label": "Service Fee", "amount": "1500.00"}]
+ok("no hours: only the Service Fee is charged, Total Hours 0", doc_b["charges"] == [{"label": "Service Fee", "amount": "1500.00", "breakdown": None}]
    and doc_b["total_hours"] == 0.0, doc_b["charges"])
 ok("no installment plan set: No", doc_b["installment_plan"] == "No")
 invoice_old = generate(SR_OLD).json()

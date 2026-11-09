@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.deps import get_current_user
 from app.db.base import get_db
@@ -21,6 +21,7 @@ from app.utils.facility_access import scope_query_to_user_facilities
 from app.utils.permission_deps import require_module_access
 from app.utils.permissions import also_assigned, assigned_only
 from app.utils.invoice_approval import scope_invoice_approval_visibility
+from app.utils.service_charges import invoice_charges, labor_breakdown
 
 router = APIRouter(dependencies=[Depends(require_module_access("reports"))])
 
@@ -113,9 +114,18 @@ def _service_work_order_additions(sr: ServiceRequest) -> list[dict[str, Any]]:
     ]
 
 
+def _service_invoice_charges(invoice: Invoice) -> list[dict[str, Any]]:
+    """The invoice's charge lines, as the invoice itself shows them."""
+    # Imported here: the service request endpoints import this module's helpers.
+    from app.api.v1.endpoints.service_requests import _service_invoice_line_items
+
+    return invoice_charges(_service_invoice_line_items(invoice))
+
+
 def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -> dict[str, Any]:
     sessions = _service_session_entries(sr)
     latest_session = sessions[-1] if sessions else {}
+    tier = getattr(sr.equipment, "tier", None) if sr.equipment else None
     return {
         "id": sr.id,
         "request_number": sr.request_number,
@@ -139,6 +149,10 @@ def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -
         "resolution_description": sr.resolution_description,
         "time_spent_hours": _money(sr.time_spent_hours),
         "total_cost": _money(sr.total_cost),
+        # How the recorded cost was worked out (4.00 hrs × $175.00/hr), when it adds up.
+        "service_cost_breakdown": labor_breakdown(
+            sr.time_spent_hours, tier.labor_rate_per_hour if tier else 0, sr.total_cost, adjusted=False,
+        ),
         "billing_status": sr.billing_status,
         "created_at": _dt(sr.created_at),
         "assigned_at": _dt(sr.assigned_at),
@@ -162,6 +176,7 @@ def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -
             "issue_date": _dt(invoice.issue_date),
             "due_date": _dt(invoice.due_date),
             "payment_method": invoice.payment_method,
+            "charges": _service_invoice_charges(invoice),
         } if invoice else None,
     }
 
@@ -433,9 +448,10 @@ def get_service_reports(
         _scope_service_query(db.query(ServiceRequest), db, current_user)
         .options(
             joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
+            selectinload(ServiceRequest.quotations),
         )
         .filter(ServiceRequest.status == ServiceRequestStatus.COMPLETED)
     )

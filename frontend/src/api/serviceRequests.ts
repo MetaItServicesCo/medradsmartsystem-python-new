@@ -335,6 +335,8 @@ export interface ServiceRequest {
   tier_mileage_rate: number | null
   tier_service_call_fee: number | null
   calculated_service_cost: number | null
+  /** How the recorded cost was worked out ("4.00 hrs × $175.00/hr"), when it adds up. */
+  service_cost_breakdown?: string | null
   assigned_at: string | null
   started_at: string | null
   completed_at: string | null
@@ -737,7 +739,8 @@ export interface ServiceInvoiceDocument {
   client: string | null
   preferred_date: string | null
   actual_date: string | null
-  charges: { label: string; amount: string }[]
+  /** Each line, with how it was worked out: breakdown "4.00 hrs × $175.00/hr", or null. */
+  charges: { label: string; amount: string; breakdown?: string | null }[]
   subtotal: string
   tax_amount: string
   discount_amount: string

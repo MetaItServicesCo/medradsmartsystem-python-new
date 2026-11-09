@@ -17,6 +17,7 @@ def _service_request() -> SimpleNamespace:
             make="Acme",
             model="Monitor 2",
             serial_number="SN-1100",
+            tier=SimpleNamespace(labor_rate_per_hour=144.67),
         ),
         assigned_technician_id=3,
         assigned_technician=technician,
@@ -31,6 +32,7 @@ def _service_request() -> SimpleNamespace:
         resolution_description="Replaced the display cable",
         time_spent_hours=2.25,
         total_cost=325.50,
+        quotations=[],
         billing_status="invoiced",
         created_at=datetime(2026, 8, 1, 8, 0),
         assigned_at=datetime(2026, 8, 1, 9, 0),
@@ -74,8 +76,11 @@ def test_service_sessions_do_not_duplicate_the_same_ledger_session() -> None:
 
 
 def test_service_report_maps_request_equipment_and_invoice_values() -> None:
+    sr = _service_request()
     invoice = SimpleNamespace(
         id=91,
+        notes="__FEES__:labor=325.50,travel=0,service_call=0::",
+        service_request=sr,
         invoice_number="INV-SERVICE-000091",
         status="partially_paid",
         subtotal=325.50,
@@ -89,7 +94,7 @@ def test_service_report_maps_request_equipment_and_invoice_values() -> None:
         payment_method="ach",
     )
 
-    report = _service_report_row(_service_request(), invoice)
+    report = _service_report_row(sr, invoice)
 
     assert report["requested_by_name"] == "Facility Requester"
     assert report["reference_number"] == "PO-4100"
@@ -109,4 +114,9 @@ def test_service_report_maps_request_equipment_and_invoice_values() -> None:
         "issue_date": "2026-08-03",
         "due_date": "2026-09-03",
         "payment_method": "ach",
+        # The invoice's own lines; $325.50 for 2.25 hrs at $144.67 does not
+        # multiply out exactly, so the labor reads as adjusted.
+        "charges": [{"label": "Labor", "amount": "325.50", "breakdown": "2.25 hrs, adjusted"}],
     }
+    # The recorded cost is not hours × rate to the cent, so no breakdown is printed.
+    assert report["service_cost_breakdown"] is None

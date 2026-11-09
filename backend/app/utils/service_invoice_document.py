@@ -16,6 +16,7 @@ from typing import Any, Optional
 from app.api.v1.endpoints.reports import _service_session_entries
 from app.models.invoice import Invoice
 from app.models.service_request import ServiceRequest
+from app.utils.service_charges import invoice_charges
 
 MAX_WORK_TEXT = 5000
 
@@ -197,14 +198,8 @@ def build_service_invoice_document(
         "client": facility.name if facility else invoice.customer_name,
         "preferred_date": sr.preferred_datetime if sr else None,
         "actual_date": (sr.completed_at or sr.started_at) if sr else None,
-        "charges": [
-            {
-                "label": "Labor" if str(row.get("description") or "").lower().startswith("service labor")
-                else str(row.get("description") or "Charge"),
-                "amount": _money_text(row.get("total_amount")),
-            }
-            for row in line_items
-        ],
+        # Each line with how it was worked out: Labor (4.00 hrs × $175.00/hr).
+        "charges": invoice_charges(line_items),
         "subtotal": _money_text(invoice.subtotal),
         "tax_amount": _money_text(invoice.tax_amount),
         "discount_amount": _money_text(invoice.discount_amount),
