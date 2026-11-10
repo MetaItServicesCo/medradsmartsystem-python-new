@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { canvasReadingOrder } from '@/utils/canvasReadingOrder'
+import { phoneColumnMinWidths } from '@/utils/canvasPhoneColumns'
 import {
   Box,
   Button,
@@ -2180,11 +2181,14 @@ function StackedCanvasViewer({ schema, values = {}, onChange, readOnly = false }
     }}>
       {canvasReadingOrder(schema.elements).map(el => {
         if (el.type === 'table') {
+          // Each column gets the room what is in it needs to be filled in on
+          // a phone; a table wider than the screen scrolls on its own.
           const cols = el.cols ?? (el.cells?.[0]?.length ?? 1)
+          const columnMins = phoneColumnMinWidths(el.cells ?? [], cols)
           return (
             <Box key={el.id} sx={{ width: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <Box sx={{ minWidth: Math.max(cols * 64, 280) }}>
-                {renderViewerTable(el, values, setMany, readOnly)}
+              <Box sx={{ minWidth: columnMins.reduce((sum, w) => sum + w, 0) }}>
+                {renderViewerTable(el, values, setMany, readOnly, columnMins)}
               </Box>
             </Box>
           )
@@ -2597,6 +2601,7 @@ function renderViewerTable(
   values: CanvasFormValues,
   setMany: (patch: CanvasFormValues) => void,
   readOnly: boolean,
+  columnMins?: number[],
 ) {
   const cells = el.cells ?? []
   // Each item's bare radio cells are one choice, like the Pass / Fail / N/A
@@ -2624,7 +2629,8 @@ function renderViewerTable(
   return (
     <Box sx={{
       display: 'grid',
-      gridTemplateColumns: widths.map(w => `${w}fr`).join(' '),
+      // On a phone each column has a floor (canvasPhoneColumns); elsewhere as laid out.
+      gridTemplateColumns: widths.map((w, i) => (columnMins ? `minmax(${columnMins[i] ?? 0}px, ${w}fr)` : `${w}fr`)).join(' '),
       // Proportional, with a floor: the sizes laid out in the builder are
       // kept, but a row can still grow if what is in it does not fit.
       gridTemplateRows: heights.map(h => `minmax(40px, ${h}fr)`).join(' '),
