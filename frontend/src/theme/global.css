@@ -437,10 +437,11 @@ input[type='number'] {
     margin: 8px !important;
   }
 
-  /* The inspection report fills a phone's screen, so the form has all of it,
-     including while the keyboard is open. Only this window: the others keep
-     the margin above. */
-  .report-activity-dialog .MuiDialog-paper {
+  /* A window that asks to be full screen on a phone (the inspection report,
+     self check-in, agreements and quotations, calls) fills it, so its form has
+     the whole screen, including while the keyboard is open. Every other
+     window keeps the margin above. */
+  .MuiDialog-paper.MuiDialog-paperFullScreen {
     width: 100% !important;
     max-width: 100% !important;
     height: 100% !important;
@@ -452,6 +453,16 @@ input[type='number'] {
   .MuiDialogContent-root,
   .MuiDrawer-paper {
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* Phones zoom in on a field whose text is under 16px when it is tapped,
+     pushing the page around behind the keyboard. Every field is 16px on a
+     phone; computers and tablets keep their sizes. */
+  .MuiInputBase-input,
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  textarea,
+  select {
+    font-size: 16px !important;
   }
 
   .MuiDialogTitle-root {

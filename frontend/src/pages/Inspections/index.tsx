@@ -6422,17 +6422,7 @@ const Inspections = () => {
         maxWidth="lg"
         fullWidth
         fullScreen={reportOnPhone}
-        className="report-activity-dialog"
-        PaperProps={{
-          sx: {
-            borderRadius: reportOnPhone ? 0 : '22px',
-            // Phones zoom in on a field whose text is under 16px when it is
-            // tapped, which pushes the form off the screen behind the keyboard.
-            [muiTheme.breakpoints.down('sm')]: {
-              '& .MuiInputBase-input': { fontSize: 16 },
-            },
-          },
-        }}
+        PaperProps={{ sx: { borderRadius: reportOnPhone ? 0 : '22px' } }}
       >
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap', px: { xs: 2, sm: 3 }, py: { xs: 1.5, sm: 2 }, fontSize: { xs: '1.05rem', sm: undefined } }}>
           <Box>

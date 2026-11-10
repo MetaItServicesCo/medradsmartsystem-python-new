@@ -283,8 +283,8 @@ export default function MyLeave() {
 
       <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Table side */}
-        <Box sx={{ flex: 1, minWidth: 480 }}>
-          <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+        <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 480 }, width: { xs: '100%', sm: 'auto' } }}>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons={false} sx={{ mb: 2 }}>
             <Tab label="All" />
             <Tab label={`Pending${counts.pending > 0 ? ` (${counts.pending})` : ''}`} />
             <Tab label="Approved" />
