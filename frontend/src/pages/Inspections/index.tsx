@@ -1,4 +1,4 @@
-import { type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { NumericField } from '../../components/NumericField'
 import { AnimatedNumber } from '@/components/motion'
@@ -4021,6 +4021,37 @@ const Inspections = () => {
     const leftChecks = ['physical_inspection', 'display', 'functional', 'electrical_safety', 'battery', 'pm_kit'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
     const rightChecks = ['cleaning', 'lubrication', 'calibration'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
     const maxRows = 6
+    if (reportOnPhone) {
+      // On a phone: the same checks and the same Set / Read and Replaced on /
+      // Due readings as the table, one check to a row with its choices named,
+      // and each reading a full-size field.
+      const readings: [number, string, string][] = [[0, 'Set', 'Read'], [1, 'Replaced on', 'Due'], [2, 'Replaced on', 'Due']]
+      return (
+        <Card sx={{ p: 1.5, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Inspection Report</Typography>
+          <Box sx={{ border: '1px solid #D8DEE9', borderRadius: '10px', overflow: 'hidden' }}>
+            {[...leftChecks, ...rightChecks].map(([key, label], index) => (
+              <Box key={key} sx={{ px: 1.5, py: 1, bgcolor: index % 2 ? '#fff' : '#F3F4F6', borderTop: index ? '1px solid #E5E7EB' : 'none' }}>
+                <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: 15 }}>{label}</Typography>
+                <RadioGroup row value={report.checks?.[key] || ''} onChange={e => updateReport('checks', key, e.target.value)} sx={{ justifyContent: 'space-between' }}>
+                  {[['pass', 'Pass'], ['fail', 'Fail'], ['na', 'N/A']].map(([value, text]) => (
+                    <FormControlLabel key={value} value={value} control={<Radio />} label={text} sx={{ mr: 0 }} />
+                  ))}
+                </RadioGroup>
+              </Box>
+            ))}
+          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mt: 1.5 }}>
+            {readings.map(([measurement, first, second]) => (
+              <Fragment key={measurement}>
+                <TextField label={first} value={report.measurements?.[measurement]?.set_value || ''} onChange={e => updateArrayReport('measurements', measurement, 'set_value', e.target.value)} />
+                <TextField label={second} value={report.measurements?.[measurement]?.read_value || ''} onChange={e => updateArrayReport('measurements', measurement, 'read_value', e.target.value)} />
+              </Fragment>
+            ))}
+          </Box>
+        </Card>
+      )
+    }
     return (
       <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
         <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Inspection Report</Typography>
@@ -4278,18 +4309,36 @@ const Inspections = () => {
     )
   }
 
-  const renderBiomedNotes = () => (
+  const BIOMED_NOTE_FIELDS = [
+    ['reported_problem', 'Reported Problem'],
+    ['problem_found', 'Problem Found'],
+    ['corrective_action_taken', 'Corrective action taken'],
+    ['summary', 'Summary'],
+  ]
+
+  const renderBiomedNotes = () => reportOnPhone ? (
+    // On a phone: each note's name above its own full-width field.
+    <Card sx={{ p: 1.5, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Biomed Notes</Typography>
+      <Box sx={{ display: 'grid', gap: 1.5 }}>
+        {BIOMED_NOTE_FIELDS.map(([key, label]) => (
+          <TextField
+            key={key}
+            label={label}
+            fullWidth
+            value={report.diagnostics?.[key] || ''}
+            onChange={e => updateReport('diagnostics', key, e.target.value)}
+          />
+        ))}
+      </Box>
+    </Card>
+  ) : (
     <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
       <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Biomed Notes</Typography>
       <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
         <Table size="small">
           <TableBody>
-            {[
-              ['reported_problem', 'Reported Problem'],
-              ['problem_found', 'Problem Found'],
-              ['corrective_action_taken', 'Corrective action taken'],
-              ['summary', 'Summary'],
-            ].map(([key, label]) => (
+            {BIOMED_NOTE_FIELDS.map(([key, label]) => (
               <TableRow key={key}>
                 <TableCell sx={{ width: 280, fontWeight: 900 }}>{label}</TableCell>
                 <TableCell>

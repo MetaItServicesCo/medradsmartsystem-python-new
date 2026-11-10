@@ -10,6 +10,7 @@ import theme from './theme'
 import './theme/global.css'
 import ErrorBoundary from './components/ErrorBoundary'
 import { isChunkLoadError, reloadOnceForChunkError } from './utils/lazyWithReload'
+import { installKeyboardViewport } from './utils/keyboardViewport'
 
 // Vite fires this when a dynamically-imported chunk fails to load — almost always
 // a stale-deploy hash mismatch. Recover by reloading once to fetch fresh assets.
@@ -26,6 +27,9 @@ window.addEventListener('unhandledrejection', (event) => {
     reloadOnceForChunkError()
   }
 })
+
+// On a phone, windows fit the part of the screen above the on-screen keyboard.
+installKeyboardViewport()
 
 // Select-all on focus so the leading zero doesn't stick when the user starts typing
 document.addEventListener('focusin', (e) => {

@@ -434,7 +434,23 @@ input[type='number'] {
     width: calc(100vw - 16px) !important;
     max-width: calc(100vw - 16px) !important;
     max-height: calc(100dvh - 16px) !important;
+    max-height: calc(var(--visible-height, 100dvh) - 16px) !important;
     margin: 8px !important;
+  }
+
+  /* The on-screen keyboard covers about half a phone's screen, but the page
+     behind it keeps its full height. Windows are fitted into the part above
+     the keyboard (measured in utils/keyboardViewport.ts), so the field being
+     typed in stays in view and the window scrolls within what is left. */
+  .MuiDialog-root > .MuiDialog-container {
+    height: var(--visible-height, 100%);
+    transform: translateY(var(--visible-top, 0px));
+  }
+
+  /* While typing in a full-screen window, its bottom buttons step aside to
+     give the form the room; they come back when the keyboard closes. */
+  html.keyboard-open .MuiDialog-paperFullScreen > .MuiDialogActions-root {
+    display: none;
   }
 
   /* A window that asks to be full screen on a phone (the inspection report,
