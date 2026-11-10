@@ -8,7 +8,7 @@ import {
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, FormControlLabel, IconButton, InputLabel, Menu, MenuItem, Radio, RadioGroup,
   Select, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
-  TextField, Tooltip, Typography,
+  TextField, Tooltip, Typography, useMediaQuery, useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
@@ -1067,6 +1067,10 @@ const Inspections = () => {
   const [frequency, setFrequency] = useState<InspectionFrequency>('instant')
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().slice(0, 10))
   const [reportInspection, setReportInspection] = useState<Inspection | null>(null)
+  // On a phone the report fills the screen, so the form has all of it to work
+  // in, including while the keyboard is open.
+  const muiTheme = useTheme()
+  const reportOnPhone = useMediaQuery(muiTheme.breakpoints.down('sm'))
   const [viewReport, setViewReport] = useState<Inspection | null>(null)
   const [infoInspection, setInfoInspection] = useState<Inspection | null>(null)
 
@@ -6412,8 +6416,25 @@ const Inspections = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(reportInspection)} onClose={() => setReportInspection(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+      <Dialog
+        open={Boolean(reportInspection)}
+        onClose={() => setReportInspection(null)}
+        maxWidth="lg"
+        fullWidth
+        fullScreen={reportOnPhone}
+        className="report-activity-dialog"
+        PaperProps={{
+          sx: {
+            borderRadius: reportOnPhone ? 0 : '22px',
+            // Phones zoom in on a field whose text is under 16px when it is
+            // tapped, which pushes the form off the screen behind the keyboard.
+            [muiTheme.breakpoints.down('sm')]: {
+              '& .MuiInputBase-input': { fontSize: 16 },
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap', px: { xs: 2, sm: 3 }, py: { xs: 1.5, sm: 2 }, fontSize: { xs: '1.05rem', sm: undefined } }}>
           <Box>
             Technician Inspection Report
             <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
@@ -6422,7 +6443,7 @@ const Inspections = () => {
           </Box>
           {renderLiveReportStatusChip()}
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ px: { xs: 1.5, sm: 3 }, py: { xs: 2, sm: 2.5 } }}>
           {report && (
             <Box sx={{ display: 'grid', gap: 3 }}>
               <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', bgcolor: '#FAF5FF' }}>
@@ -6528,7 +6549,7 @@ const Inspections = () => {
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Measurements</Typography>
                   {(report.measurements || []).map((item: any, index: number) => (
-                    <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 0.8fr 0.6fr 0.8fr', gap: 1, mb: 1 }}>
+                    <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1.1fr 0.8fr 0.8fr 0.6fr 0.8fr' }, gap: 1, mb: 1, pb: { xs: 1, sm: 0 }, borderBottom: { xs: '1px dashed #E5E7EB', sm: 'none' }, '& > :first-of-type': { gridColumn: { xs: '1 / -1', sm: 'auto' } } }}>
                       <TextField size="small" label="Measurement" value={item.name} onChange={e => updateArrayReport('measurements', index, 'name', e.target.value)} />
                       <TextField size="small" label="Set" value={item.set_value} onChange={e => updateArrayReport('measurements', index, 'set_value', e.target.value)} />
                       <TextField size="small" label="Read" value={item.read_value} onChange={e => updateArrayReport('measurements', index, 'read_value', e.target.value)} />
@@ -6543,7 +6564,7 @@ const Inspections = () => {
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Photo Documentation</Typography>
                   {(report.photo_documentation || []).map((item: any, index: number) => (
-                    <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 1, mb: 1 }}>
+                    <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1.4fr' }, gap: 1, mb: 1, pb: { xs: 1, sm: 0 }, borderBottom: { xs: '1px dashed #E5E7EB', sm: 'none' } }}>
                       <TextField size="small" label="Label" value={item.label} onChange={e => updateArrayReport('photo_documentation', index, 'label', e.target.value)} />
                       <TextField size="small" label="Photo URL / reference" value={item.url} onChange={e => updateArrayReport('photo_documentation', index, 'url', e.target.value)} />
                     </Box>
@@ -6598,7 +6619,7 @@ const Inspections = () => {
                     sx={{ mb: 1.5 }}
                   />
                   {(report.parts || []).map((part: any, index: number) => (
-                    <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 0.8fr 1fr', gap: 1, mb: 1 }}>
+                    <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1.3fr 1fr 0.8fr 1fr' }, gap: 1, mb: 1, pb: { xs: 1, sm: 0 }, borderBottom: { xs: '1px dashed #E5E7EB', sm: 'none' }, '& > :first-of-type': { gridColumn: { xs: '1 / -1', sm: 'auto' } } }}>
                       <TextField size="small" label="Description" value={part.description} onChange={e => updateArrayReport('parts', index, 'description', e.target.value)} />
                       <TextField size="small" label="Part #" value={part.part_number} onChange={e => updateArrayReport('parts', index, 'part_number', e.target.value)} />
                       <NumericField size="small" label="Price" value={part.price} onChange={val => updateArrayReport('parts', index, 'price', val)} />
@@ -6639,7 +6660,7 @@ const Inspections = () => {
                     sx={{ mb: 1.5 }}
                   />
                   {(report.test_equipment || []).map((item: any, index: number) => (
-                    <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 1, mb: 1 }}>
+                    <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1.2fr 1fr 1fr' }, gap: 1, mb: 1, pb: { xs: 1, sm: 0 }, borderBottom: { xs: '1px dashed #E5E7EB', sm: 'none' }, '& > :first-of-type': { gridColumn: { xs: '1 / -1', sm: 'auto' } } }}>
                       <TextField size="small" label="Description" value={item.description} onChange={e => updateArrayReport('test_equipment', index, 'description', e.target.value)} />
                       <TextField size="small" label="Make" value={item.make} onChange={e => updateArrayReport('test_equipment', index, 'make', e.target.value)} />
                       <TextField size="small" label="SN #" value={item.serial_number} onChange={e => updateArrayReport('test_equipment', index, 'serial_number', e.target.value)} />
@@ -6674,7 +6695,7 @@ const Inspections = () => {
                 label="Report Status"
                 value={reportStatus}
                 onChange={e => setReportStatus(e.target.value as 'completed' | 'in_progress')}
-                sx={{ maxWidth: 260 }}
+                sx={{ maxWidth: { xs: '100%', sm: 260 } }}
               >
                 <MenuItem value="completed">Completed</MenuItem>
                 <MenuItem value="in_progress">In Progress</MenuItem>
@@ -6682,7 +6703,7 @@ const Inspections = () => {
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, pb: { xs: 'calc(16px + env(safe-area-inset-bottom))', sm: 2 } }}>
           <Button onClick={() => setReportInspection(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
           <Button startIcon={reportMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={submitReport} disabled={!canEditInspections || reportMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
             {reportStatus === 'completed' ? 'Complete Report' : 'Save as In Progress'}

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { canvasReadingOrder } from '@/utils/canvasReadingOrder'
 import {
   Box,
   Button,
@@ -2133,6 +2134,9 @@ export function FullWidthCanvasViewer(props: ViewerProps) {
     return () => observer.disconnect()
   }, [])
 
+  // One wrapper, measured throughout, so turning the phone switches between
+  // the one-column form and the sheet.
+  const stacked = available > 0 && available < Math.min(width, STACK_BELOW_WIDTH)
   const stretch = available > width ? available / width : 1
   const schema = stretch === 1 ? props.schema : {
     ...props.schema,
@@ -2140,8 +2144,70 @@ export function FullWidthCanvasViewer(props: ViewerProps) {
     elements: props.schema.elements.map(el => ({ ...el, x: el.x * stretch, width: el.width * stretch })),
   }
   return (
-    <Box ref={outer} sx={{ width: '100%', overflowX: 'auto' }}>
-      <CanvasFormViewer {...props} schema={schema} />
+    <Box ref={outer} sx={{ width: '100%', overflowX: stacked ? 'visible' : 'auto' }}>
+      {stacked ? <StackedCanvasViewer {...props} /> : <CanvasFormViewer {...props} schema={schema} />}
+    </Box>
+  )
+}
+
+/**
+ * Where the sheet does not fit, up to this width (phones, and tablets held
+ * upright), the form is shown as one column instead of scrolling sideways.
+ * Wider than this, the sheet is shown as built.
+ */
+const STACK_BELOW_WIDTH = 900
+
+/**
+ * A canvas form on a phone: the same fields, with the same answers and the same
+ * rules, one under another in the order the sheet is read, each the full width
+ * of the screen. Tables keep their columns and scroll sideways if they are too
+ * wide. Text is 16px in every field, so the phone does not zoom in when a field
+ * is tapped.
+ */
+function StackedCanvasViewer({ schema, values = {}, onChange, readOnly = false }: ViewerProps) {
+  const setMany = (patch: CanvasFormValues) => {
+    onChange?.({ ...values, ...patch })
+  }
+  const set = (id: string, val: string | boolean | string[]) => setMany({ [id]: val })
+
+  return (
+    <Box sx={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 1.25,
+      '& .MuiInputBase-input': { fontSize: 16 },
+      '& .MuiFormControlLabel-root .MuiTypography-root': { fontSize: 15 },
+    }}>
+      {canvasReadingOrder(schema.elements).map(el => {
+        if (el.type === 'table') {
+          const cols = el.cols ?? (el.cells?.[0]?.length ?? 1)
+          return (
+            <Box key={el.id} sx={{ width: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <Box sx={{ minWidth: Math.max(cols * 64, 280) }}>
+                {renderViewerTable(el, values, setMany, readOnly)}
+              </Box>
+            </Box>
+          )
+        }
+        return (
+          <Box
+            key={el.id}
+            sx={{
+              width: '100%',
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 0.4,
+              minHeight: el.type === 'signature' ? Math.max(el.height, 96) : undefined,
+              p: el.bgColor === 'grey' ? 1 : 0,
+              bgcolor: el.bgColor === 'grey' ? '#E5E7EB' : 'transparent',
+              borderRadius: el.bgColor === 'grey' ? '8px' : 0,
+            }}
+          >
+            {renderViewerContent(el, values[el.id], (v) => set(el.id, v), readOnly, true)}
+          </Box>
+        )
+      })}
     </Box>
   )
 }
@@ -2151,6 +2217,7 @@ function renderViewerContent(
   val: string | boolean | string[] | undefined,
   set: (v: string | boolean | string[]) => void,
   readOnly: boolean,
+  stacked = false,
 ) {
   const labelSx = {
     fontSize: el.fontSize ?? (el.type === 'heading' ? 17 : 12),
@@ -2205,6 +2272,7 @@ function renderViewerContent(
           <TextField
             size="small"
             multiline
+            minRows={stacked ? 3 : undefined}
             placeholder={el.placeholder}
             disabled={readOnly}
             value={typeof val === 'string' ? val : ''}
