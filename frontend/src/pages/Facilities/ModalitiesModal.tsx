@@ -17,12 +17,15 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight'
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import { toast } from 'react-toastify'
 import {
   fetchModalities, createModality, updateModality, duplicateModality, deleteModality,
   type Modality, type ModalityCreate, type ModalityUpdate
 } from '@/api/modalities'
-import NewModalitiesTab from './NewModalitiesTab'
+import { fetchInspectionForms } from '@/api/inspections'
+import SearchableSelect from '@/components/SearchableSelect'
+import { hasOldList } from '@/utils/modalityList'
 
 const CATEGORIES = [
   { value: 'imaging', label: 'Imaging' },
@@ -45,7 +48,7 @@ interface Props {
 
 const ModalitiesModal = ({ open, onClose }: Props) => {
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<'current' | 'new'>('current')
+  const [tab, setTab] = useState<'current' | 'old'>('current')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -61,6 +64,20 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
     queryFn: () => fetchModalities(true, deferredSearch || undefined),
     enabled: open,
   })
+  // Whether the current list is in place (there is an old list), whatever is searched for.
+  const { data: allData } = useQuery({
+    queryKey: ['modalities'],
+    queryFn: () => fetchModalities(),
+    enabled: open,
+  })
+  const listInPlace = hasOldList(allData?.items ?? [])
+  // The visible forms a type can give its new assets.
+  const { data: formsData } = useQuery({
+    queryKey: ['inspection-forms', 'all'],
+    queryFn: () => fetchInspectionForms(),
+    enabled: open && listInPlace,
+  })
+  const visibleForms = formsData?.items ?? []
 
   const createMut = useMutation({
     mutationFn: (d: ModalityCreate) => createModality(d),
@@ -86,9 +103,17 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
   })
 
-  const modalities = data?.items ?? []
+  const everyModality = data?.items ?? []
+  // With the current list in place: the current list alphabetically on one tab,
+  // the old list (view only) on the other. Before that, every modality as before.
+  const viewingOld = listInPlace && tab === 'old'
+  const modalities = listInPlace
+    ? everyModality
+      .filter(m => Boolean(m.is_legacy) === (tab === 'old'))
+      .sort((a, b) => (tab === 'old' ? 0 : a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })))
+    : everyModality
 
-  const resetForm = () => { setShowForm(false); setEditingId(null); setForm({ name: '', category: 'imaging', description: '', parent_id: null }) }
+  const resetForm = () => { setShowForm(false); setEditingId(null); setForm({ name: '', category: 'imaging', description: '', parent_id: null, inspection_form_id: null }) }
 
   const handleSubmit = () => {
     if (!form.name || !form.category) { toast.error('Name and category are required'); return }
@@ -104,13 +129,14 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
 
   const handleEdit = (mod: Modality) => {
     setEditingId(mod.id)
-    setForm({ name: mod.name, category: mod.category, description: mod.description || '', parent_id: mod.parent_id })
+    setForm({ name: mod.name, category: mod.category, description: mod.description || '', parent_id: mod.parent_id, inspection_form_id: mod.inspection_form_id ?? null })
     setShowForm(true)
     closeMenu()
   }
 
   const handleAddSub = (parentId: number) => {
-    setForm({ name: '', category: 'imaging', description: '', parent_id: parentId })
+    const parent = everyModality.find(m => m.id === parentId)
+    setForm({ name: '', category: parent?.category || 'imaging', description: '', parent_id: parentId, inspection_form_id: null })
     setShowForm(true)
     setEditingId(null)
     closeMenu()
@@ -120,6 +146,9 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
     const cc = CAT_COLORS[mod.category] || CAT_COLORS.imaging
     const isExpanded = expandedId === mod.id
     const hasChildren = mod.children && mod.children.length > 0
+    const children = listInPlace && !mod.is_legacy
+      ? [...(mod.children || [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+      : mod.children
 
     return (
       <Box key={mod.id}>
@@ -155,6 +184,22 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
           <Chip label={mod.category.replace('_', ' ')} size="small"
             sx={{ backgroundColor: cc.bg, color: cc.color, fontWeight: 600, fontSize: '0.65rem', textTransform: 'capitalize' }} />
 
+          {listInPlace && !mod.is_legacy && mod.inspection_form_name && (
+            <Tooltip title={mod.inspection_form_hidden ? 'This form is hidden, so new assets of this type get no form. Choose a visible one.' : 'The form new assets of this type get'}>
+              <Chip
+                icon={<DescriptionOutlinedIcon sx={{ fontSize: '0.9rem !important' }} />}
+                label={mod.inspection_form_hidden ? `${mod.inspection_form_name} (hidden)` : mod.inspection_form_name}
+                size="small"
+                sx={{
+                  maxWidth: 220, fontWeight: 700, fontSize: '0.65rem',
+                  backgroundColor: mod.inspection_form_hidden ? '#FFF7ED' : '#F5F3FF',
+                  color: mod.inspection_form_hidden ? '#C2410C' : '#6D28D9',
+                  '& .MuiChip-icon': { color: 'inherit' },
+                }}
+              />
+            </Tooltip>
+          )}
+
           {mod.inspection_frequency_days && (
             <Chip label={`${mod.inspection_frequency_days}d`} size="small"
               sx={{ backgroundColor: '#F3F4F6', color: '#6B7280', fontWeight: 600, fontSize: '0.65rem' }} />
@@ -168,7 +213,7 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
 
         {hasChildren && (
           <Collapse in={isExpanded}>
-            {mod.children.map(child => renderModality(child, depth + 1))}
+            {children.map(child => renderModality(child, depth + 1))}
           </Collapse>
         )}
       </Box>
@@ -188,7 +233,7 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>Modalities</Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>Manage modalities and sub-modalities</Typography>
         </Box>
-        {tab === 'current' && (
+        {!viewingOld && (
           <Button size="small" startIcon={<AddIcon />} onClick={() => { resetForm(); setShowForm(true) }}
             sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', border: '1px solid', borderRadius: '10px', fontSize: '0.75rem' }}>
             Add Modality
@@ -199,15 +244,21 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
         </IconButton>
       </Box>
 
-      <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: { xs: 2, sm: 3.5 }, borderBottom: '1px solid #EDE9FE', flexShrink: 0 }}>
-        <Tab value="current" label="Modalities" sx={{ textTransform: 'none', fontWeight: 700 }} />
-        <Tab value="new" label="New Modalities" sx={{ textTransform: 'none', fontWeight: 700 }} />
-      </Tabs>
+      {listInPlace && (
+        <Tabs value={tab} onChange={(_, value) => { setTab(value); resetForm(); setViewMod(null) }} sx={{ px: { xs: 2, sm: 3.5 }, borderBottom: '1px solid #EDE9FE', flexShrink: 0 }}>
+          <Tab value="current" label="Modalities" sx={{ textTransform: 'none', fontWeight: 700 }} />
+          <Tab value="old" label="Old list" sx={{ textTransform: 'none', fontWeight: 700 }} />
+        </Tabs>
+      )}
 
       <DialogContent sx={{ p: { xs: 2, sm: 3.5 } }}>
-        {tab === 'new' ? <NewModalitiesTab /> : <>
+        {viewingOld && (
+          <Typography variant="body2" sx={{ mb: 2, color: '#6B7280' }}>
+            The modalities used before the current list. Existing assets keep them; new assets are added with the current list.
+          </Typography>
+        )}
         {/* Form */}
-        {showForm && (
+        {showForm && !viewingOld && (
           <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid rgba(124,58,237,0.12)' }}>
             <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, mb: 1.5, display: 'block' }}>
               {editingId ? 'Edit Modality' : form.parent_id ? 'Add Sub-Modality' : 'New Modality'}
@@ -221,6 +272,21 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
               <TextField size="small" label="Inspection Freq (days)" type="number"
                 value={form.inspection_frequency_days || ''}
                 onChange={e => setForm({ ...form, inspection_frequency_days: e.target.value ? Number(e.target.value) : undefined })} />
+              {listInPlace && (
+                <SearchableSelect<number>
+                  label="Inspection Form"
+                  value={form.inspection_form_id || ''}
+                  options={visibleForms.map(inspectionForm => ({
+                    value: inspectionForm.id,
+                    label: inspectionForm.name,
+                    keywords: inspectionForm.description || '',
+                  }))}
+                  onChange={value => setForm({ ...form, inspection_form_id: value ? Number(value) : null })}
+                  helperText="New assets of this type get this form"
+                  placeholder="Search inspection forms..."
+                  noOptionsText="No matching inspection forms"
+                />
+              )}
             </Box>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
               <Button size="small" onClick={resetForm} sx={{ color: '#6B7280' }}>Cancel</Button>
@@ -238,7 +304,7 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
           <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F0FDF4', border: '1px solid rgba(16,185,129,0.12)' }}>
             <Typography variant="overline" sx={{ color: '#10B981', fontWeight: 700, mb: 1, display: 'block' }}>Modality Details</Typography>
             <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{viewMod.name}</Typography>
-            <Typography variant="caption" sx={{ color: '#6B7280' }}>Category: {viewMod.category} | Children: {viewMod.children?.length || 0}</Typography>
+            <Typography variant="caption" sx={{ color: '#6B7280' }}>Category: {viewMod.category} | Children: {viewMod.children?.length || 0}{listInPlace && !viewMod.is_legacy ? ` | Form: ${viewMod.inspection_form_name || 'none'}` : ''}</Typography>
             {viewMod.description && <Typography variant="body2" sx={{ mt: 1, color: '#374151' }}>{viewMod.description}</Typography>}
             <Button size="small" onClick={() => setViewMod(null)} sx={{ mt: 1, color: '#6B7280' }}>Close</Button>
           </Box>
@@ -285,7 +351,6 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
         ) : (
           modalities.map(m => renderModality(m))
         )}
-        </>}
       </DialogContent>
 
       {/* Actions Menu */}
@@ -295,23 +360,25 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
           <ListItemIcon><VisibilityOutlinedIcon sx={{ color: '#7C3AED', fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="View" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
         </MenuItem>
-        <MenuItem onClick={() => menuMod && handleEdit(menuMod)} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
+        {!viewingOld && [
+        <MenuItem key="edit" onClick={() => menuMod && handleEdit(menuMod)} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
           <ListItemIcon><EditOutlinedIcon sx={{ color: '#6D28D9', fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="Edit Modality" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
-        </MenuItem>
-        <MenuItem onClick={() => { menuMod && handleAddSub(menuMod.id) }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
+        </MenuItem>,
+        <MenuItem key="sub" onClick={() => { menuMod && handleAddSub(menuMod.id) }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
           <ListItemIcon><SubdirectoryArrowRightIcon sx={{ color: '#3B82F6', fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="Add Sub-Modality" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
-        </MenuItem>
-        <MenuItem onClick={() => { menuMod && dupMut.mutate(menuMod.id); closeMenu() }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
+        </MenuItem>,
+        <MenuItem key="dup" onClick={() => { menuMod && dupMut.mutate(menuMod.id); closeMenu() }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
           <ListItemIcon><ContentCopyIcon sx={{ color: '#10B981', fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="Duplicate" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
-        </MenuItem>
-        <Divider sx={{ mx: 2, borderColor: 'rgba(124,58,237,0.08)' }} />
-        <MenuItem onClick={() => { menuMod && delMut.mutate(menuMod.id); closeMenu() }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px', '&:hover': { backgroundColor: '#FEF2F2' } }}>
+        </MenuItem>,
+        <Divider key="divider" sx={{ mx: 2, borderColor: 'rgba(124,58,237,0.08)' }} />,
+        <MenuItem key="delete" onClick={() => { menuMod && delMut.mutate(menuMod.id); closeMenu() }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px', '&:hover': { backgroundColor: '#FEF2F2' } }}>
           <ListItemIcon><DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600, color: '#EF4444' }} />
-        </MenuItem>
+        </MenuItem>,
+        ]}
       </Menu>
     </Dialog>
   )

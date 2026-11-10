@@ -8,6 +8,7 @@ from app.core.deps import get_current_user, get_admin_user
 from app.db.base import get_db
 from app.models.user import User
 from app.models.modality import Modality
+from app.models.inspection_form import InspectionForm
 from app.schemas.modality import (
     ModalityCreate, ModalityUpdate, ModalityResponse, ModalityListResponse
 )
@@ -40,7 +41,22 @@ def _build_tree(modality: Modality, search: Optional[str] = None) -> Optional[di
         "inspection_frequency_days": modality.inspection_frequency_days,
         "parent_id": modality.parent_id,
         "children": children,
+        "is_legacy": bool(modality.is_legacy),
+        "inspection_form_id": modality.inspection_form_id,
+        "inspection_form_name": modality.inspection_form.name if modality.inspection_form else None,
+        "inspection_form_hidden": bool(modality.inspection_form and modality.inspection_form.archived_at),
     }
+
+
+def _require_visible_form(db: Session, form_id: Optional[int]) -> None:
+    """A type's form must be a visible one: a hidden form is out of use."""
+    if form_id is None:
+        return
+    form = db.query(InspectionForm).filter(InspectionForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Inspection form not found")
+    if form.archived_at is not None:
+        raise HTTPException(status_code=422, detail="A hidden inspection form cannot be given to a modality")
 
 
 @router.get("/", response_model=ModalityListResponse)
@@ -102,11 +118,18 @@ def create_modality(
     current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Create a modality or sub-modality."""
+    parent = None
     if modality_in.parent_id:
         parent = db.query(Modality).filter(Modality.id == modality_in.parent_id).first()
         if not parent:
             raise HTTPException(status_code=404, detail="Parent modality not found")
+    _require_visible_form(db, modality_in.inspection_form_id)
     modality = crud.modality.create(db=db, obj_in=modality_in)
+    # A sub-modality belongs to its modality's list.
+    if parent is not None and parent.is_legacy and not modality.is_legacy:
+        modality.is_legacy = True
+        db.commit()
+        db.refresh(modality)
     return _build_tree(modality)
 
 
@@ -121,6 +144,9 @@ def update_modality(
     modality = db.query(Modality).filter(Modality.id == id).first()
     if not modality:
         raise HTTPException(status_code=404, detail="Modality not found")
+    changes = modality_in.model_dump(exclude_unset=True)
+    if changes.get("inspection_form_id") is not None and changes["inspection_form_id"] != modality.inspection_form_id:
+        _require_visible_form(db, changes["inspection_form_id"])
     updated = crud.modality.update(db=db, db_obj=modality, obj_in=modality_in)
     return _build_tree(updated)
 
@@ -143,6 +169,8 @@ def duplicate_modality(
             description=mod.description,
             inspection_frequency_days=mod.inspection_frequency_days,
             parent_id=new_parent_id,
+            is_legacy=mod.is_legacy,
+            inspection_form_id=mod.inspection_form_id,
         )
         db.add(new_mod)
         db.flush()

@@ -94,6 +94,7 @@ import {
   resolveReportInvoice,
 } from '@/utils/inspectionReportHtml'
 import { fetchModalities, type Modality } from '@/api/modalities'
+import { choiceLabel, defaultFormFor, hasOldList, modalityChoices, subModalityChoices } from '@/utils/modalityList'
 import { fetchUsers, resolveUploadUrl, type UserData } from '@/api/users'
 import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
 import { actsAsTechnician, hasPermission } from '@/config/permissions'
@@ -1158,6 +1159,8 @@ const Inspections = () => {
   const [addAssetOpen, setAddAssetOpen] = useState(false)
   const [addExistingAssetOpen, setAddExistingAssetOpen] = useState(false)
   const [batchAssetForm, setBatchAssetForm] = useState<BatchAssetCreatePayload>(emptyBatchAssetForm())
+  // With the current modality list in place, a new asset's modality, then its sub-modality.
+  const [batchParentModalityId, setBatchParentModalityId] = useState<number | ''>('')
   const [existingAssetSearch, setExistingAssetSearch] = useState('')
   const [selectedExistingEquipmentIds, setSelectedExistingEquipmentIds] = useState<number[]>([])
   const [assetActionAnchor, setAssetActionAnchor] = useState<HTMLElement | null>(null)
@@ -1582,6 +1585,15 @@ const Inspections = () => {
     () => flattenModalities(modalitiesQ.data?.items || []),
     [modalitiesQ.data?.items],
   )
+  const modalityRoots = modalitiesQ.data?.items || []
+  const batchUsesModalityList = hasOldList(modalityRoots)
+  const batchParentModality = modalityRoots.find(item => item.id === batchParentModalityId)
+  const batchSubModalities = subModalityChoices(modalityRoots, batchParentModality)
+  const batchSubModality = batchSubModalities.find(item => item.id === batchAssetForm.modality_id)
+  const batchTypeForm = defaultFormFor(modalityRoots, batchParentModality, batchSubModality)
+  useEffect(() => {
+    if (!addAssetOpen) setBatchParentModalityId('')
+  }, [addAssetOpen])
 
   const refreshInspectionQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['inspections'] })
@@ -3356,6 +3368,10 @@ const Inspections = () => {
     if (!canInitiateInspections) return toast.error('You do not have permission to add assets to inspection batches')
     if (!selectedBatch) return
     if (selectedBatchBillingApproved) return toast.error('Assets cannot be added after the batch invoice is approved for billing')
+    if (batchUsesModalityList && batchParentModality && batchSubModalities.length > 0 && !batchSubModality) {
+      toast.error('Please select a Sub-Modality')
+      return
+    }
     if (!batchAssetForm.asset_tag || !batchAssetForm.make || !batchAssetForm.model || !batchAssetForm.serial_number || !batchAssetForm.modality_id) {
       toast.error('Asset #, make, model, serial, and modality are required')
       return
@@ -5539,20 +5555,60 @@ const Inspections = () => {
             <TextField label="Make *" value={batchAssetForm.make} onChange={e => setBatchAssetForm(prev => ({ ...prev, make: e.target.value }))} />
             <TextField label="Model *" value={batchAssetForm.model} onChange={e => setBatchAssetForm(prev => ({ ...prev, model: e.target.value }))} />
             <TextField label="Serial # *" value={batchAssetForm.serial_number} onChange={e => setBatchAssetForm(prev => ({ ...prev, serial_number: e.target.value }))} />
-            <SearchableSelect<number>
-              label="Modality"
-              value={batchAssetForm.modality_id || ''}
-              required
-              options={assignableModalities.map(modality => ({
-                value: modality.id,
-                label: modality.name,
-                secondary: modality.category || undefined,
-                keywords: modality.description || '',
-              }))}
-              onChange={value => setBatchAssetForm(prev => ({ ...prev, modality_id: Number(value) }))}
-              placeholder="Search modalities..."
-              noOptionsText="No matching modalities"
-            />
+            {batchUsesModalityList ? (
+              <>
+                <SearchableSelect<number>
+                  label="Modality"
+                  value={batchParentModalityId}
+                  required
+                  options={modalityChoices(modalityRoots).map(modality => ({
+                    value: modality.id,
+                    label: choiceLabel(modalityRoots, modality),
+                    keywords: modality.description || '',
+                  }))}
+                  onChange={value => {
+                    const parent = modalityRoots.find(item => item.id === Number(value))
+                    setBatchParentModalityId(value ? Number(value) : '')
+                    // A modality with sub-modalities waits for one; one without is the type.
+                    setBatchAssetForm(prev => ({ ...prev, modality_id: parent && !(parent.children || []).length ? parent.id : 0 }))
+                  }}
+                  placeholder="Search modalities..."
+                  noOptionsText="No matching modalities"
+                />
+                <SearchableSelect<number>
+                  // Redrawn when its value changes, so a cleared choice is not left showing.
+                  key={`batch-sub-modality-${batchParentModalityId || 'none'}-${batchSubModality?.id ?? 'none'}`}
+                  label="Sub-Modality"
+                  value={batchSubModality ? batchSubModality.id : ''}
+                  required={batchSubModalities.length > 0}
+                  disabled={!batchParentModality || batchSubModalities.length === 0}
+                  options={batchSubModalities.map(sub => ({
+                    value: sub.id,
+                    label: sub.name,
+                    keywords: sub.description || '',
+                  }))}
+                  onChange={value => setBatchAssetForm(prev => ({ ...prev, modality_id: value ? Number(value) : 0 }))}
+                  helperText={batchTypeForm ? `Inspection form: ${batchTypeForm.name} (default for ${batchTypeForm.from})` : undefined}
+                  placeholder="Search sub-modalities..."
+                  noOptionsText="No matching sub-modalities"
+                />
+              </>
+            ) : (
+              <SearchableSelect<number>
+                label="Modality"
+                value={batchAssetForm.modality_id || ''}
+                required
+                options={assignableModalities.map(modality => ({
+                  value: modality.id,
+                  label: modality.name,
+                  secondary: modality.category || undefined,
+                  keywords: modality.description || '',
+                }))}
+                onChange={value => setBatchAssetForm(prev => ({ ...prev, modality_id: Number(value) }))}
+                placeholder="Search modalities..."
+                noOptionsText="No matching modalities"
+              />
+            )}
             <TextField select label="PM Scheduling" value={batchAssetForm.pm_scheduling || 'annual'} onChange={e => setBatchAssetForm(prev => ({ ...prev, pm_scheduling: e.target.value }))}>
               <MenuItem value="monthly">Monthly</MenuItem>
               <MenuItem value="quarterly">Quarterly</MenuItem>

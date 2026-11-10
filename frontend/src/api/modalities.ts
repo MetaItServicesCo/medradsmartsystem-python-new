@@ -8,6 +8,12 @@ export interface Modality {
   inspection_frequency_days: number | null
   parent_id: number | null
   children: Modality[]
+  /** The old list: kept on existing assets, not offered for new ones. */
+  is_legacy?: boolean
+  /** The inspection form a new asset of this type gets. */
+  inspection_form_id?: number | null
+  inspection_form_name?: string | null
+  inspection_form_hidden?: boolean
 }
 
 export interface ModalityCreate {
@@ -16,6 +22,7 @@ export interface ModalityCreate {
   description?: string
   inspection_frequency_days?: number
   parent_id?: number | null
+  inspection_form_id?: number | null
 }
 
 export interface ModalityUpdate {
@@ -24,6 +31,7 @@ export interface ModalityUpdate {
   description?: string
   inspection_frequency_days?: number
   parent_id?: number | null
+  inspection_form_id?: number | null
 }
 
 export interface ModalityListResponse {

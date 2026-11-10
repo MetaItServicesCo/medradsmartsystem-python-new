@@ -12,7 +12,8 @@ class ModalityBase(BaseModel):
 
 
 class ModalityCreate(ModalityBase):
-    pass
+    # The form a new asset of this type gets (a visible form).
+    inspection_form_id: Optional[int] = None
 
 
 class ModalityUpdate(BaseModel):
@@ -21,6 +22,7 @@ class ModalityUpdate(BaseModel):
     description: Optional[str] = None
     inspection_frequency_days: Optional[int] = None
     parent_id: Optional[int] = None
+    inspection_form_id: Optional[int] = None
 
 
 class ModalityInDB(ModalityBase):
@@ -32,6 +34,11 @@ class ModalityInDB(ModalityBase):
 
 class ModalityResponse(ModalityInDB):
     children: List["ModalityResponse"] = []
+    # The old list, kept on existing assets and not offered for new ones.
+    is_legacy: bool = False
+    inspection_form_id: Optional[int] = None
+    inspection_form_name: Optional[str] = None
+    inspection_form_hidden: bool = False
 
     class Config:
         from_attributes = True

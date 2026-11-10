@@ -19,6 +19,7 @@ import { toast } from 'react-toastify'
 import { fetchEquipment, createEquipment, updateEquipment, deleteEquipment, type EquipmentCreate, type EquipmentItem } from '@/api/equipment'
 import { fetchInspectionForms } from '@/api/inspections'
 import { fetchModalities } from '@/api/modalities'
+import { choiceLabel, defaultFormFor, modalityChoices, onCurrentList, parentOf, subModalityChoices } from '@/utils/modalityList'
 import { fetchTiers } from '@/api/tiers'
 import { type Facility } from '@/api/facilities'
 import CreateServiceRequestModal from '@/pages/ServiceRequests/CreateServiceRequestModal'
@@ -161,12 +162,22 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     ? tiers.filter((tier) => facilityTierIds.includes(tier.id))
     : tiers
 
+  // The modalities offered: the current list (and the old modality of an asset
+  // being edited), or, before the current list is in place, every one as before.
+  const [keptOldModalityId, setKeptOldModalityId] = useState<number | null>(null)
+  const modalityOptions = useMemo(() => modalityChoices(modalities, keptOldModalityId), [modalities, keptOldModalityId])
+  const selectedParent = useMemo(() => modalities.find(m => m.id === selectedParentMod), [modalities, selectedParentMod])
+
   // Compute children for the selected parent modality
   const subModalities = useMemo(() => {
     if (!selectedParentMod) return []
-    const parent = modalities.find(m => m.id === selectedParentMod)
-    return parent?.children || []
-  }, [selectedParentMod, modalities])
+    return subModalityChoices(modalities, selectedParent)
+  }, [selectedParentMod, modalities, selectedParent])
+  const selectedSub = useMemo(() => subModalities.find(sub => sub.id === Number(selectedSubMod)), [subModalities, selectedSubMod])
+  // On the current list the form comes from the sub-modality, and every
+  // visible form can be chosen instead; the old list works as before.
+  const currentListType = onCurrentList(modalities, selectedParent)
+  const typeForm = defaultFormFor(modalities, selectedParent, selectedSub)
 
   const selectedAssetModalityId = useMemo(() => {
     if (!selectedParentMod) return undefined
@@ -175,8 +186,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   }, [selectedParentMod, selectedSubMod, subModalities.length])
 
   const { data: inspectionFormsData, isSuccess: inspectionFormsLoaded } = useQuery({
-    queryKey: ['inspection-forms', selectedAssetModalityId],
-    queryFn: () => fetchInspectionForms(selectedAssetModalityId),
+    queryKey: ['inspection-forms', currentListType ? 'all' : selectedAssetModalityId],
+    queryFn: () => fetchInspectionForms(currentListType ? undefined : selectedAssetModalityId),
     enabled: open && Boolean(selectedAssetModalityId),
   })
 
@@ -197,6 +208,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     setForm(defaultForm)
     setSelectedParentMod('')
     setSelectedSubMod('')
+    setKeptOldModalityId(null)
     setEditItemId(null)
   }
 
@@ -255,6 +267,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
       status: item.status,
     })
     
+    const assetParent = parentOf(modalities, item.modality_id)
+    setKeptOldModalityId(assetParent?.is_legacy ? assetParent.id : null)
     const isParent = modalities.find(m => m.id === item.modality_id)
     if (isParent) {
       setSelectedParentMod(isParent.id)
@@ -367,20 +381,28 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 label="Modality"
                 value={selectedParentMod}
                 required
-                options={modalities.map(modality => ({
+                options={modalityOptions.map(modality => ({
                   value: modality.id,
-                  label: modality.name,
+                  label: choiceLabel(modalities, modality),
                   keywords: modality.description || '',
                 }))}
                 onChange={value => {
                   setSelectedParentMod(value)
                   setSelectedSubMod('')
+                  // A new type: the form it gives, or none until its sub-modality is chosen.
+                  const parent = modalities.find(m => m.id === Number(value))
+                  if (onCurrentList(modalities, parent)) {
+                    const given = (parent?.children?.length ?? 0) > 0 ? null : defaultFormFor(modalities, parent, null)
+                    setForm(prev => ({ ...prev, inspection_form_id: given?.id ?? null }))
+                  }
                 }}
                 noOptionsText="No matching modalities"
               />
 
               {subModalities.length > 0 ? (
                 <SearchableSelect<number>
+                  // Redrawn when its value changes, so a cleared choice is not left showing.
+                  key={`sub-modality-${selectedParentMod || 'none'}-${selectedSubMod || 'none'}`}
                   label="Sub-Modality"
                   value={selectedSubMod}
                   required
@@ -389,7 +411,15 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                     label: sub.name,
                     keywords: sub.description || '',
                   }))}
-                  onChange={setSelectedSubMod}
+                  onChange={value => {
+                    setSelectedSubMod(value)
+                    // The sub-modality gives the form; it can still be changed for this asset.
+                    if (currentListType) {
+                      const sub = subModalities.find(item => item.id === Number(value))
+                      const given = defaultFormFor(modalities, selectedParent, sub)
+                      setForm(prev => ({ ...prev, inspection_form_id: given?.id ?? null }))
+                    }
+                  }}
                   noOptionsText="No matching sub-modalities"
                 />
               ) : (
@@ -487,6 +517,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <TextField size="small" type="date" label="Last PM Date" InputLabelProps={{ shrink: true }} value={form.last_pm_date || ''} onChange={e => setForm({ ...form, last_pm_date: e.target.value || null })} />
                 <TextField size="small" type="date" label="Next Generated PM Date" InputLabelProps={{ shrink: true }} value={nextInspectionDate || ''} InputProps={{ readOnly: true }} helperText="Generated from the last PM date and selected schedule" />
                 <SearchableSelect<number>
+                  // Redrawn when its value changes, so a form filled in or cleared by the type shows.
+                  key={`inspection-form-${form.inspection_form_id || 'none'}`}
                   label="Inspection Form"
                   value={form.inspection_form_id || ''}
                   options={inspectionForms.map(inspectionForm => ({
@@ -497,7 +529,15 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                   }))}
                   onChange={value => setForm({ ...form, inspection_form_id: value ? Number(value) : null })}
                   disabled={!selectedAssetModalityId}
-                  helperText={selectedAssetModalityId ? 'Forms tagged to this asset type' : 'Select modality first'}
+                  helperText={!selectedAssetModalityId
+                    ? (currentListType && subModalities.length > 0 ? 'Select sub-modality first' : 'Select modality first')
+                    : !currentListType
+                      ? 'Forms tagged to this asset type'
+                      : typeForm && form.inspection_form_id === typeForm.id
+                        ? `Default for ${typeForm.from}`
+                        : typeForm
+                          ? `Default for ${typeForm.from}: ${typeForm.name}`
+                          : 'No form set for this type: choose one'}
                   placeholder="Search inspection forms..."
                   noOptionsText="No matching inspection forms"
                 />

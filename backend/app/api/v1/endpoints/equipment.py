@@ -17,6 +17,7 @@ from app.schemas.equipment import (
     Equipment as EquipmentSchema, EquipmentListResponse
 )
 from app.utils.inspection_schedule import next_inspection_date
+from app.utils.modality_forms import form_for_new_asset, require_type
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.permission_deps import require_module_access
 from app.utils.read_cache import cached_read
@@ -136,7 +137,10 @@ def create_equipment(
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, equip_in.facility_id)
+    # A sub-modality where the modality has them, and its form unless another was chosen.
+    modality = require_type(db, equip_in.modality_id)
     create_data = equip_in.model_dump()
+    create_data["inspection_form_id"] = form_for_new_asset(db, modality, equip_in.inspection_form_id)
     create_data["next_generated_pm_date"] = next_inspection_date(
         equip_in.last_pm_date,
         equip_in.pm_scheduling,
@@ -157,6 +161,8 @@ def update_equipment(
         raise HTTPException(status_code=404, detail="Equipment not found")
     require_facility_access(db, current_user, item.facility_id)
     update_data = equip_in.model_dump(exclude_unset=True)
+    if update_data.get("modality_id") and update_data["modality_id"] != item.modality_id:
+        require_type(db, update_data["modality_id"])
     target_facility_id = update_data.get("facility_id")
     if target_facility_id is not None and target_facility_id != item.facility_id:
         facility = db.query(Facility.id).filter(Facility.id == target_facility_id).first()

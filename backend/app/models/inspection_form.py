@@ -18,4 +18,4 @@ class InspectionForm(Base):
     # leave the picker, they do not leave the history.
     archived_at = Column(DateTime, nullable=True)
 
-    modality = relationship("Modality", back_populates="inspection_forms")
+    modality = relationship("Modality", back_populates="inspection_forms", foreign_keys=[modality_id])

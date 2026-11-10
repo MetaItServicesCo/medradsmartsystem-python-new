@@ -22,6 +22,7 @@ from app.models.modality import Modality
 from app.models.tier import Tier
 from app.models.user import User, UserRole
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
+from app.utils.modality_forms import form_for_new_asset, require_type
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
@@ -2001,8 +2002,9 @@ def add_asset_to_inspection_batch(
     _require_batch_invoice_allows_asset_changes(batch_invoice)
     reopening_completed_batch = batch.status == InspectionStatus.COMPLETED
 
-    if not db.query(Modality.id).filter(Modality.id == payload.modality_id).first():
-        raise HTTPException(status_code=404, detail="Modality not found")
+    # A sub-modality where the modality has them, and its form unless another was chosen.
+    asset_modality = require_type(db, payload.modality_id)
+    asset_form_id = form_for_new_asset(db, asset_modality, payload.inspection_form_id)
     if payload.tier_id and not db.query(Tier.id).filter(Tier.id == payload.tier_id).first():
         raise HTTPException(status_code=404, detail="Tier not found")
     if payload.inspection_form_id and not db.query(InspectionForm.id).filter(InspectionForm.id == payload.inspection_form_id).first():
@@ -2027,7 +2029,7 @@ def add_asset_to_inspection_batch(
         modality_id=payload.modality_id,
         facility_id=batch.facility_id,
         tier_id=payload.tier_id,
-        inspection_form_id=payload.inspection_form_id,
+        inspection_form_id=asset_form_id,
         description=payload.description,
         risk_priority=payload.risk_priority,
         risk_name=payload.risk_name,
@@ -2051,7 +2053,7 @@ def add_asset_to_inspection_batch(
         equipment_id=equipment.id,
         facility_id=batch.facility_id,
         inspector_id=batch.inspector_id or current_user.id,
-        form_template_id=payload.inspection_form_id or batch.form_template_id,
+        form_template_id=asset_form_id or batch.form_template_id,
         status=inspection_status,
         result=InspectionResult.PENDING,
         scheduled_date=batch.scheduled_date,
