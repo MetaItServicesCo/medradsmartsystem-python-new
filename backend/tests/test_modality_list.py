@@ -237,6 +237,22 @@ ok("a sub-modality added under an old modality stays on the old list", under_old
 copy = modalities_api.duplicate_modality(id=beds.id, db=db, current_user=boss)
 ok("duplicating keeps the list and the forms", copy["is_legacy"] is False and any(c["inspection_form_name"] == "Hospital Bed Form" for c in copy["children"]))
 
+print("\nProduction's form names")
+prod_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+Base.metadata.create_all(prod_engine)
+prod = sessionmaker(bind=prod_engine, autoflush=False, expire_on_commit=False)()
+named = {"General Form": "General 1", "Surgical Light Form": "Surgical Lights Form", "BP Monitor Form": "BP Monitor"}
+for name in sorted({named.get(name, name) for name in form_names}):
+    prod.add(InspectionForm(name=name, schema={}))
+prod.add(InspectionForm(name="General", schema={}, archived_at=datetime(2026, 1, 1)))
+prod.commit()
+prod_plan = listing.plan(prod)
+by_key = {key: prod.get(InspectionForm, form_id).name if form_id else None for key, form_id in prod_plan.forms.items()}
+ok("with production's names the plan is clean", prod_plan.ok, prod_plan.problems)
+ok("  General Form is General 1 (the hidden General is not used)", by_key.get("General Form or General 1") == "General 1", by_key)
+ok("  Surgical Light Form is Surgical Lights Form", by_key.get("Surgical Light Form or Surgical Lights Form") == "Surgical Lights Form", by_key)
+ok("  NIBP Monitor's form is BP Monitor", by_key.get("BP Monitor or BP Monitor Form") == "BP Monitor", by_key)
+
 print()
 if failures:
     print(f"{len(failures)} FAILED: {failures}")

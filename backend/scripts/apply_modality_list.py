@@ -31,12 +31,14 @@ warnings.filterwarnings("ignore")
 from sqlalchemy import func  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-GENERAL = "General Form"
+# Production names the general form "General 1" (confirmed 2026-11-11).
+GENERAL = ("General Form", "General 1")
 
 # (modality, category, [(sub-modality, form name or names to accept)]).
 # Names are as given, including their spelling. A tuple of form names means
-# "whichever of these exists": the list says "BP Monitor", which may be named
-# "BP Monitor Form".
+# "the first of these that exists": the list says "BP Monitor", which may be
+# named "BP Monitor Form"; "General Form" is "General 1" in production, and
+# "Surgical Light Form" is "Surgical Lights Form".
 MODALITY_LIST: list[tuple[str, str, list[tuple[str, object]]]] = [
     ("Bed & Stretchers", "treatment", [
         ("Birthing Beds", "Hospital Bed Form"),
@@ -83,7 +85,7 @@ MODALITY_LIST: list[tuple[str, str, list[tuple[str, object]]]] = [
         ("ESU System (Also for RF System)", "RF Generator Form"), ("Cryosurgical System", GENERAL),
         ("Footswitch", GENERAL), ("Surgery General-NO2 delivery system", GENERAL),
         ("Spinal Surgery Table", GENERAL), ("Positioner System", GENERAL), ("Surgery Table", "Surgical Table Form"),
-        ("Surgical Light", "Surgical Light Form"), ("General Surgical Microscope", GENERAL),
+        ("Surgical Light", ("Surgical Light Form", "Surgical Lights Form")), ("General Surgical Microscope", GENERAL),
         ("Ophthalmology Surgical Microscope", GENERAL), ("Plastic Vac", GENERAL),
         ("Powered Instrument set", GENERAL), ("Drill reamer", GENERAL), ("Drill Set", GENERAL),
         ("Handpiece", GENERAL), ("Instrument Set", GENERAL),
