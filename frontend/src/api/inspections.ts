@@ -272,6 +272,8 @@ export interface InstantInspectionPayload {
   frequency?: InspectionFrequency
   scheduled_date?: string
   notes?: string
+  /** The technician for the batch and every asset in it; the creator if not given. */
+  inspector_id?: number
 }
 
 export interface InspectionSchedulePayload {
@@ -282,6 +284,8 @@ export interface InspectionSchedulePayload {
   compliance_requirement?: string
   criticality?: string
   notes?: string
+  /** The technician for the batch and every asset in it; the creator if not given. */
+  inspector_id?: number
 }
 
 export interface InspectionDetailsUpdatePayload {
@@ -472,6 +476,18 @@ export const fetchInspectionBatches = async (
 
 export const fetchInspectionBatch = async (id: number): Promise<InspectionBatch> => {
   const res = await apiClient.get(`/inspections/batches/${id}`)
+  return res.data
+}
+
+/** Give a whole batch to a technician: the batch and every asset not yet completed or closed. */
+export const changeInspectionBatchTechnician = async (id: number, inspectorId: number | null): Promise<InspectionBatch> => {
+  const res = await apiClient.patch(`/inspections/batches/${id}/technician`, { inspector_id: inspectorId })
+  return res.data
+}
+
+/** Delete an upcoming or in-progress batch and its asset inspections; the assets stay in inventory. */
+export const deleteInspectionBatch = async (id: number): Promise<{ detail: string; id: number; batch_number: string; deleted_inspections: number }> => {
+  const res = await apiClient.delete(`/inspections/batches/${id}`)
   return res.data
 }
 

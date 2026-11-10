@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, case, false, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.deps import get_admin_user, get_current_user
@@ -39,7 +39,7 @@ from app.utils.invoice_approval import (
     validate_requested_payment_status,
 )
 from app.utils.logging import log_activity
-from app.utils.notifications import notify_admins, notify_facility_users
+from app.utils.notifications import create_notification, notify_admins, notify_facility_users
 from app.utils.facility_access import (
     require_assignable_technician, require_facility_access, scope_query_to_user_facilities,
 )
@@ -129,6 +129,8 @@ class InstantInspectionCreate(BaseModel):
     frequency: str = "instant"
     scheduled_date: Optional[datetime] = None
     notes: Optional[str] = None
+    # The technician for the batch and every asset in it; the creator if not given.
+    inspector_id: Optional[int] = None
 
 
 class InspectionScheduleCreate(BaseModel):
@@ -139,6 +141,8 @@ class InspectionScheduleCreate(BaseModel):
     compliance_requirement: Optional[str] = None
     criticality: Optional[str] = None
     notes: Optional[str] = None
+    # The technician for the batch and every asset in it; the creator if not given.
+    inspector_id: Optional[int] = None
 
 
 class InspectionBatchReschedule(BaseModel):
@@ -679,6 +683,34 @@ def _batch_counts(db: Session, batch_ids: list[int]) -> dict[int, dict[str, int]
         for batch_id, total, completed, in_progress, closed in rows
         if batch_id is not None
     }
+
+
+def _assignable_technician(db: Session, inspector_id: Optional[int], facility_id: int) -> Optional[User]:
+    """The technician being given work: an active user who may work at the
+    facility (the same rule as changing an asset's technician)."""
+    if not inspector_id:
+        return None
+    technician = db.query(User).filter(User.id == inspector_id, User.is_active.is_(True)).first()
+    if not technician:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    require_assignable_technician(db, inspector_id, facility_id)
+    return technician
+
+
+def _tell_technician(db: Session, technician_id: Optional[int], actor: User, title: str, message: str) -> None:
+    """A bell for the technician given (or taken off) inspection work, unless
+    they did it themselves."""
+    if not technician_id or technician_id == actor.id:
+        return
+    create_notification(
+        db,
+        user_id=technician_id,
+        title=title,
+        message=message,
+        notification_type="inspection",
+        link_url="/inspections",
+        actor_id=actor.id,
+    )
 
 
 def _batch_asset_names(db: Session, batch_ids: list[int]) -> dict[int, list[str]]:
@@ -2264,9 +2296,14 @@ def update_inspection_technician(
         if not technician:
             raise HTTPException(status_code=404, detail="Technician not found")
         require_assignable_technician(db, payload.inspector_id, inspection.facility_id)
+    previous_technician_id = inspection.inspector_id
     inspection.inspector_id = payload.inspector_id
     inspection.updated_at = datetime.utcnow()
     log_activity(db, "inspections", inspection.id, "CHANGE_TECHNICIAN", current_user, {"inspector_id": payload.inspector_id})
+    if payload.inspector_id and payload.inspector_id != previous_technician_id:
+        label = inspection.batch.batch_number if inspection.batch else inspection.inspection_number
+        _tell_technician(db, payload.inspector_id, current_user, f"Inspection assigned: {label}",
+                         f"{inspection.inspection_number} at {inspection.facility.name if inspection.facility else 'the facility'}.")
     db.commit()
     db.refresh(inspection)
     return _inspection_response(inspection)
@@ -2296,11 +2333,13 @@ def schedule_inspections(
     if not equipment_items:
         raise HTTPException(status_code=400, detail="No equipment found for scheduling")
 
+    technician = _assignable_technician(db, payload.inspector_id, facility.id)
+    technician_id = technician.id if technician else current_user.id
     form = _get_default_form(db)
     batch = InspectionBatch(
         batch_number=_next_batch_number(db),
         facility_id=facility.id,
-        inspector_id=current_user.id,
+        inspector_id=technician_id,
         form_template_id=form.id,
         status=InspectionStatus.UPCOMING,
         scheduled_date=payload.scheduled_date,
@@ -2320,7 +2359,7 @@ def schedule_inspections(
             equipment_id=equipment.id,
             inventory_part_id=None,
             facility_id=facility.id,
-            inspector_id=current_user.id,
+            inspector_id=technician_id,
             form_template_id=equipment.inspection_form_id or form.id,
             status=InspectionStatus.UPCOMING,
             result=InspectionResult.PENDING,
@@ -2337,6 +2376,8 @@ def schedule_inspections(
         log_activity(db, "inspections", inspection.id, "SCHEDULE", current_user, {"equipment_id": equipment.id})
         created.append(inspection)
 
+    _tell_technician(db, technician_id, current_user, f"Inspection assigned: {batch.batch_number}",
+                     f"{len(created)} asset(s) at {facility.name}, scheduled for {payload.scheduled_date:%b %d, %Y}.")
     notify_facility_users(
         db,
         facility_id=facility.id,
@@ -2447,6 +2488,100 @@ def close_inspection_batch(
     _sync_batch_status(batch)
     db.commit()
     return get_inspection_batch(batch.id, db, current_user)
+
+
+@router.patch("/batches/{batch_id}/technician")
+def change_inspection_batch_technician(
+    batch_id: int,
+    payload: InspectionTechnicianUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Give a whole batch to a technician: the batch and every asset in it not
+    yet completed or closed. Each asset can still be changed on its own."""
+    require_module_permission(current_user, "inspections", "edit")
+    batch = _load_batch_for_update(db, batch_id, current_user)
+    if batch.status not in (InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS):
+        raise HTTPException(status_code=400, detail="Only upcoming or in-progress batches can change technician")
+    _assignable_technician(db, payload.inspector_id, batch.facility_id)
+
+    now = datetime.utcnow()
+    previous = batch.inspector_id
+    batch.inspector_id = payload.inspector_id
+    batch.updated_at = now
+    changed = 0
+    for inspection in batch.inspections:
+        if inspection.status not in (InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS):
+            continue
+        if inspection.inspector_id != payload.inspector_id:
+            inspection.inspector_id = payload.inspector_id
+            inspection.updated_at = now
+            log_activity(db, "inspections", inspection.id, "CHANGE_TECHNICIAN", current_user,
+                         {"inspector_id": payload.inspector_id, "batch_id": batch.id})
+            changed += 1
+    log_activity(db, "inspection_batches", batch.id, "CHANGE_TECHNICIAN", current_user,
+                 {"before": previous, "after": payload.inspector_id, "assets_changed": changed})
+    if payload.inspector_id and payload.inspector_id != previous:
+        facility = db.query(Facility).filter(Facility.id == batch.facility_id).first()
+        _tell_technician(db, payload.inspector_id, current_user, f"Inspection assigned: {batch.batch_number}",
+                         f"{len(batch.inspections)} asset(s) at {facility.name if facility else 'the facility'}.")
+    db.commit()
+    return get_inspection_batch(batch.id, db, current_user)
+
+
+@router.delete("/batches/{batch_id}")
+def delete_inspection_batch(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Delete an upcoming or in-progress batch and its asset inspections. The
+    assets stay in inventory. Refused when an asset in it is completed (its
+    report is kept) or anything has been invoiced for it."""
+    require_module_permission(current_user, "inspections", "delete")
+    batch = _load_batch_for_update(db, batch_id, current_user)
+    if batch.status not in (InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS):
+        raise HTTPException(status_code=400, detail="Only upcoming or in-progress batches can be deleted")
+    completed = [item for item in batch.inspections if item.status == InspectionStatus.COMPLETED]
+    if completed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{len(completed)} asset(s) in this batch are completed, so it cannot be deleted. Remove the other assets one by one instead.",
+        )
+    inspection_ids = [item.id for item in batch.inspections]
+    invoiced = db.query(Invoice.id).filter(
+        or_(
+            Invoice.inspection_batch_id == batch.id,
+            Invoice.inspection_id.in_(inspection_ids) if inspection_ids else false(),
+        )
+    ).first()
+    if invoiced:
+        raise HTTPException(status_code=409, detail="This batch has an invoice, so it cannot be deleted")
+
+    technician_ids = {item.inspector_id for item in batch.inspections if item.inspector_id} | ({batch.inspector_id} if batch.inspector_id else set())
+    facility = db.query(Facility).filter(Facility.id == batch.facility_id).first()
+    for inspection in batch.inspections:
+        log_activity(db, "inspections", inspection.id, "DELETE_WITH_BATCH", current_user, {
+            "batch_id": batch.id,
+            "batch_number": batch.batch_number,
+            "equipment_id": inspection.equipment_id,
+            "inventory_part_id": inspection.inventory_part_id,
+            "status": _value(inspection.status),
+        })
+    log_activity(db, "inspection_batches", batch.id, "DELETE", current_user, {
+        "batch_number": batch.batch_number,
+        "facility_id": batch.facility_id,
+        "status": _value(batch.status),
+        "asset_count": len(inspection_ids),
+        "inspection_ids": inspection_ids,
+    })
+    for technician_id in technician_ids:
+        _tell_technician(db, technician_id, current_user, f"Inspection cancelled: {batch.batch_number}",
+                         f"The inspection batch at {facility.name if facility else 'the facility'} was deleted.")
+    batch_number = batch.batch_number
+    db.delete(batch)
+    db.commit()
+    return {"detail": f"{batch_number} deleted", "id": batch_id, "batch_number": batch_number, "deleted_inspections": len(inspection_ids)}
 
 
 @router.post("/generate-upcoming", status_code=status.HTTP_201_CREATED)
@@ -2784,11 +2919,13 @@ def create_instant_inspection(
     if not equipment_items:
         raise HTTPException(status_code=400, detail="No facility assets found for inspection")
 
+    technician = _assignable_technician(db, payload.inspector_id, facility.id)
+    technician_id = technician.id if technician else current_user.id
     form = _get_default_form(db)
     batch = InspectionBatch(
         batch_number=_next_batch_number(db),
         facility_id=facility.id,
-        inspector_id=current_user.id,
+        inspector_id=technician_id,
         form_template_id=form.id,
         status=InspectionStatus.IN_PROGRESS,
         scheduled_date=payload.scheduled_date or datetime.utcnow(),
@@ -2808,7 +2945,7 @@ def create_instant_inspection(
             equipment_id=equipment.id,
             inventory_part_id=None,
             facility_id=facility.id,
-            inspector_id=current_user.id,
+            inspector_id=technician_id,
             form_template_id=equipment.inspection_form_id or form.id,
             status=InspectionStatus.IN_PROGRESS,
             result=InspectionResult.PENDING,
@@ -2826,6 +2963,8 @@ def create_instant_inspection(
         log_activity(db, "inspections", inspection.id, "INITIATE", current_user, {"equipment_id": equipment.id})
         created.append(inspection)
 
+    _tell_technician(db, technician_id, current_user, f"Inspection assigned: {batch.batch_number}",
+                     f"{len(created)} asset(s) at {facility.name}, started now.")
     notify_facility_users(
         db,
         facility_id=facility.id,

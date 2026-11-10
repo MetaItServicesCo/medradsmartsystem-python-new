@@ -46,7 +46,9 @@ import {
   addInspectionBatchAsset,
   addInspectionBatchExistingAssets,
   closeInspection as closeScheduledInspection,
+  changeInspectionBatchTechnician,
   closeInspectionBatch,
+  deleteInspectionBatch,
   createInspectionForm,
   createInstantInspection,
   fetchInspectionBatch,
@@ -1103,6 +1105,11 @@ const Inspections = () => {
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [closeInspectionTarget, setCloseInspectionTarget] = useState<Inspection | null>(null)
   const [upcomingBatchAnchor, setUpcomingBatchAnchor] = useState<HTMLElement | null>(null)
+  // The technician a new inspection is given: the person creating it, unless another is chosen.
+  const [createTechnicianId, setCreateTechnicianId] = useState<number | ''>('')
+  const [batchTechOpen, setBatchTechOpen] = useState(false)
+  const [batchTechId, setBatchTechId] = useState<number | ''>('')
+  const [deleteBatchTarget, setDeleteBatchTarget] = useState<InspectionBatch | null>(null)
   const [upcomingBatchItem, setUpcomingBatchItem] = useState<InspectionBatch | null>(null)
   const [rescheduleBatch, setRescheduleBatch] = useState<InspectionBatch | null>(null)
   const [rescheduleBatchDate, setRescheduleBatchDate] = useState('')
@@ -1542,7 +1549,7 @@ const Inspections = () => {
   })
   const formListQ = formListView === 'hidden' ? hiddenFormsQ : formsQ
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen, staleTime: 5 * 60_000 })
-  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection), staleTime: 60_000 })
+  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 0 || tab === 1 || tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection), staleTime: 60_000 })
   const testEquipmentQ = useQuery({
     queryKey: ['test-equipment', 'inspection-active-options', debouncedTestEquipmentSearch],
     queryFn: () => fetchActiveTestEquipment({ search: debouncedTestEquipmentSearch || undefined, limit: 50 }),
@@ -1711,6 +1718,27 @@ const Inspections = () => {
       })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection batch'),
+  })
+
+  const batchTechMut = useMutation({
+    mutationFn: ({ id, inspectorId }: { id: number; inspectorId: number | null }) => changeInspectionBatchTechnician(id, inspectorId),
+    onSuccess: (batch) => {
+      toast.success(`${batch.batch_number} given to ${batch.inspector_name || 'no technician'}`)
+      setBatchTechOpen(false)
+      refreshInspectionQueries()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not change the technician'),
+  })
+
+  const deleteBatchMut = useMutation({
+    mutationFn: deleteInspectionBatch,
+    onSuccess: (result) => {
+      toast.success(`${result.batch_number} deleted`)
+      setDeleteBatchTarget(null)
+      setSelectedBatchId(previous => previous === result.id ? null : previous)
+      refreshInspectionQueries()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not delete the batch'),
   })
 
   const rescheduleBatchMut = useMutation({
@@ -2168,6 +2196,26 @@ const Inspections = () => {
         ].some(value => String(value || '').toLowerCase().includes(search))
       })
   }, [batchEquipmentIds, batchEquipmentQ.data, existingAssetSearch])
+  // Who a new inspection at the chosen facility can be given to: the same rule
+  // as a batch's technicians, and always the person creating it.
+  const createTechnicians = useMemo(() => {
+    const users = (usersQ.data?.items || []) as UserData[]
+    const facility = Number(facilityId) || null
+    const eligible = facility
+      ? users.filter((user: UserData) =>
+        user.facility_id === facility ||
+        (user.facilities || []).some(item => item.id === facility) ||
+        ['superadmin', 'admin'].includes(user.role) || actsAsTechnician(user),
+      )
+      : users
+    if (currentUser && !eligible.some(user => user.id === currentUser.id)) {
+      return [currentUser as unknown as UserData, ...eligible]
+    }
+    return eligible
+  }, [usersQ.data?.items, facilityId, currentUser])
+  const createTechnicianValue: number | '' = createTechnicianId || currentUser?.id || ''
+  const createTechnicianPayload = () => (createTechnicianId && createTechnicianId !== currentUser?.id ? { inspector_id: Number(createTechnicianId) } : {})
+
   const batchTechnicians = useMemo(() => {
     const users = usersQ.data?.items || []
     if (!selectedBatch?.facility_id) return users
@@ -2231,6 +2279,7 @@ const Inspections = () => {
       facility_id: Number(facilityId),
       equipment_ids: selectedInstantEquipmentIds,
       frequency,
+      ...createTechnicianPayload(),
     })
   }
 
@@ -2243,6 +2292,7 @@ const Inspections = () => {
       equipment_ids: selectedEquipmentIds,
       frequency: frequency === 'instant' ? 'annual' : frequency,
       scheduled_date: new Date(scheduleDate).toISOString(),
+      ...createTechnicianPayload(),
     })
   }
 
@@ -3569,6 +3619,18 @@ const Inspections = () => {
                         </Tooltip>
                       </>
                     )}
+                    {mode === 'progress' && canDeleteInspections && (
+                      <Tooltip title="Delete batch">
+                        <IconButton
+                          size="small"
+                          aria-label={`Delete ${batch.batch_number}`}
+                          onClick={() => setDeleteBatchTarget(batch)}
+                          sx={{ bgcolor: '#FEF2F2', color: '#DC2626', '&:hover': { bgcolor: '#FEE2E2' } }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <Button
                       startIcon={<AssessmentIcon />}
                       variant="contained"
@@ -3723,6 +3785,19 @@ const Inspections = () => {
           <CancelIcon fontSize="small" />
           Close batch
         </MenuItem>
+        {canDeleteInspections && (
+          <MenuItem
+            onClick={() => {
+              const batch = upcomingBatchItem
+              closeUpcomingBatchActions()
+              if (batch) setDeleteBatchTarget(batch)
+            }}
+            sx={{ gap: 1.25, fontWeight: 800, color: '#DC2626' }}
+          >
+            <DeleteIcon fontSize="small" />
+            Delete batch
+          </MenuItem>
+        )}
       </Menu>
       </>
     )
@@ -4489,12 +4564,13 @@ const Inspections = () => {
 
         {tab === 0 && (
           <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 180px auto auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 2fr) minmax(0, 1.2fr) 170px 180px' }, gap: 2, alignItems: 'center', mb: 3 }}>
               <SearchableSelect<number>
                 label="Facility"
                 value={facilityId}
                 onChange={(nextFacilityId) => {
                   setFacilityId(nextFacilityId)
+                  setCreateTechnicianId('')
                   setSelectedInstantEquipmentIds([])
                   setSelectedEquipmentIds([])
                   setScheduleAssetSearch('')
@@ -4510,12 +4586,27 @@ const Inspections = () => {
                 placeholder="Search facility name, tier, or ID"
                 noOptionsText="No matching facilities available"
               />
+              <SearchableSelect<number>
+                label="Technician"
+                value={createTechnicianValue}
+                allowClear={false}
+                onChange={value => setCreateTechnicianId(value ? Number(value) : '')}
+                options={createTechnicians.map((user: UserData) => ({
+                  value: user.id,
+                  label: user.id === currentUser?.id ? `${user.full_name || user.username} (you)` : (user.full_name || user.username),
+                  secondary: user.role ? user.role.replace(/_/g, ' ') : undefined,
+                  keywords: `${user.username || ''} ${user.email || ''} ${user.role || ''}`,
+                }))}
+                placeholder="Search technician"
+                noOptionsText="No matching technicians"
+              />
               <TextField select label="Frequency" value={frequency} onChange={e => setFrequency(e.target.value as InspectionFrequency)}>
                 <MenuItem value="quarterly">Quarterly</MenuItem>
                 <MenuItem value="semi_annual">Semi-Annual</MenuItem>
                 <MenuItem value="annual">Annual</MenuItem>
               </TextField>
               <TextField label="Schedule Date" type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+              <Box sx={{ gridColumn: '1 / -1', display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <Button startIcon={<EventAvailableIcon />} variant="outlined" onClick={scheduleSelected} disabled={!canAddInspections || !facilityId || !selectedEquipmentIds.length || scheduleMut.isPending} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
                 Schedule Selected
               </Button>
@@ -4525,6 +4616,7 @@ const Inspections = () => {
               }} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
                 Auto Generate
               </Button>
+              </Box>
             </Box>
             {facilityId && (
               <Box sx={{ mb: 3 }}>
@@ -4645,12 +4737,13 @@ const Inspections = () => {
 
         {tab === 1 && (
           <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px auto auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
               <SearchableSelect<number>
                 label="Facility"
                 value={facilityId}
                 onChange={(nextFacilityId) => {
                   setFacilityId(nextFacilityId)
+                  setCreateTechnicianId('')
                   setSelectedInstantEquipmentIds([])
                   setSelectedEquipmentIds([])
                   setInstantAssetSearch('')
@@ -4665,6 +4758,20 @@ const Inspections = () => {
                 }))}
                 placeholder="Search facility name, tier, or ID"
                 noOptionsText="No matching facilities available"
+              />
+              <SearchableSelect<number>
+                label="Technician"
+                value={createTechnicianValue}
+                allowClear={false}
+                onChange={value => setCreateTechnicianId(value ? Number(value) : '')}
+                options={createTechnicians.map((user: UserData) => ({
+                  value: user.id,
+                  label: user.id === currentUser?.id ? `${user.full_name || user.username} (you)` : (user.full_name || user.username),
+                  secondary: user.role ? user.role.replace(/_/g, ' ') : undefined,
+                  keywords: `${user.username || ''} ${user.email || ''} ${user.role || ''}`,
+                }))}
+                placeholder="Search technician"
+                noOptionsText="No matching technicians"
               />
               <TextField select label="Frequency" value={frequency} onChange={e => setFrequency(e.target.value as InspectionFrequency)} sx={{ minWidth: 180 }}>
                 <MenuItem value="instant">Instant</MenuItem>
@@ -4996,6 +5103,17 @@ const Inspections = () => {
                   label={`${selectedBatch.batch_invoice.invoice_number} will be updated`}
                   sx={{ alignSelf: 'center', bgcolor: '#F5F3FF', color: '#6D28D9', fontWeight: 900 }}
                 />
+              )}
+              {canEditInspections && (selectedBatch.status === 'upcoming' || selectedBatch.status === 'in_progress') && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<PersonIcon />}
+                  onClick={() => { setBatchTechId(selectedBatch.inspector_id || ''); setBatchTechOpen(true) }}
+                  sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+                >
+                  Change Technician
+                </Button>
               )}
               <Tooltip
                 title={selectedBatchBillingApproved ? 'The approved batch invoice protects this inspection scope from further asset additions.' : ''}
@@ -6858,6 +6976,68 @@ const Inspections = () => {
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
           >
             Close Inspection
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={batchTechOpen} onClose={() => !batchTechMut.isPending && setBatchTechOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Change Technician for the Batch
+          <Typography sx={{ mt: 0.5, color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            {selectedBatch?.batch_number} · {selectedBatch?.asset_count || 0} asset{selectedBatch?.asset_count === 1 ? '' : 's'}
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          <SearchableSelect<number>
+            label="Technician"
+            value={batchTechId}
+            onChange={setBatchTechId}
+            options={batchTechnicians.map(user => ({
+              value: user.id,
+              label: user.full_name || user.username,
+              secondary: `${user.role.replace(/_/g, ' ')} · ${user.email}`,
+              keywords: `${user.username} ${user.email} ${user.role}`,
+            }))}
+            placeholder="Search technician name, username, or email"
+            helperText="The batch and every asset not yet completed go to this technician. Completed assets keep who did them."
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setBatchTechOpen(false)} disabled={batchTechMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => selectedBatch && batchTechMut.mutate({ id: selectedBatch.id, inspectorId: batchTechId ? Number(batchTechId) : null })}
+            disabled={!canEditInspections || batchTechMut.isPending}
+            startIcon={batchTechMut.isPending ? <CircularProgress size={18} color="inherit" /> : <PersonIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteBatchTarget)} onClose={() => !deleteBatchMut.isPending && setDeleteBatchTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Delete Batch?</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: '#475569', fontWeight: 650, lineHeight: 1.65 }}>
+            {deleteBatchTarget?.batch_number} and its {deleteBatchTarget?.asset_count || 0} asset inspection{deleteBatchTarget?.asset_count === 1 ? '' : 's'} will be deleted
+            {deleteBatchTarget?.status === 'in_progress' ? ', including any report details entered on them' : ''}. The assets stay in inventory. This cannot be undone.
+          </Typography>
+          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 650, mt: 1.5 }}>
+            A batch with a completed asset or an invoice cannot be deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setDeleteBatchTarget(null)} disabled={deleteBatchMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => deleteBatchTarget && deleteBatchMut.mutate(deleteBatchTarget.id)}
+            disabled={!canDeleteInspections || deleteBatchMut.isPending}
+            startIcon={deleteBatchMut.isPending ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Delete Batch
           </Button>
         </DialogActions>
       </Dialog>
