@@ -420,6 +420,7 @@ const CalendarPage = () => {
             // colour, its title and its technicians' initials, with everything
             // else on hover. Week, day and list views name the technicians.
             const oneLine = eventInfo.view.type.startsWith('dayGrid')
+            const timeGrid = eventInfo.view.type.startsWith('timeGrid')
             if (oneLine) {
               const timed = !eventInfo.event.allDay
               const techs = event.technicians || []
@@ -454,13 +455,33 @@ const CalendarPage = () => {
               )
             }
             return (
-              <Box sx={{ p: 0.5, overflow: 'hidden' }} title={event.is_schedule && names ? `${eventInfo.event.title} · ${names}` : undefined}>
-                <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <Box
+                title={event.is_schedule && names ? `${eventInfo.event.title} · ${names}` : undefined}
+                sx={{
+                  p: 0.5,
+                  overflow: 'hidden',
+                  // In week and day views a long event's title and technicians stay at the
+                  // top of the part in view, so scrolling past its start never hides them.
+                  ...(timeGrid ? { position: 'sticky', top: 0 } : {}),
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={timeGrid ? {
+                    // A long title wraps onto up to three lines instead of being cut short.
+                    fontWeight: 700, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.3,
+                  } : { fontWeight: 700, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                >
                   {eventInfo.event.title}
                 </Typography>
                 {event.is_schedule && names && (
                   <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.85 }}>
                     <EngineeringIcon sx={{ fontSize: '0.8rem' }} />{names}
+                  </Typography>
+                )}
+                {timeGrid && (eventInfo.timeText || event.location) && (
+                  <Typography variant="caption" sx={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.85 }}>
+                    {[eventInfo.timeText, event.location].filter(Boolean).join(' · ')}
                   </Typography>
                 )}
                 {eventInfo.event.extendedProps.is_meeting && (
