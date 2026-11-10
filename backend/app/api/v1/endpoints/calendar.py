@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -83,12 +83,12 @@ def _event_response(db: Session, event: CalendarEvent, user: User, can_edit: Opt
         "workspace_id": event.workspace_id,
         "title": event.title,
         "description": event.description,
-        "start_time": event.start_time,
-        "end_time": event.end_time,
+        "start_time": _as_utc(event.start_time),
+        "end_time": _as_utc(event.end_time),
         "is_meeting": bool(event.is_meeting),
         "color": event.color,
-        "created_at": event.created_at,
-        "updated_at": event.updated_at,
+        "created_at": _as_utc(event.created_at),
+        "updated_at": _as_utc(event.updated_at),
         "is_schedule": bool(event.is_schedule),
         "all_day": bool(event.all_day),
         "location": event.location,
@@ -120,6 +120,27 @@ def _load_technicians(db: Session, ids: Iterable[int]) -> list[User]:
     if missing:
         raise HTTPException(status_code=422, detail="Only active technicians can be tagged")
     return [found[i] for i in wanted]
+
+
+# ── Times ────────────────────────────────────────────────────────────────────
+# Calendar times are stored as UTC without a zone. The browser sends them in
+# UTC ("...Z"); they are saved as plain UTC whatever zone they arrive in, and
+# sent back marked as UTC, so each browser shows them in its own local time.
+# Without the mark a browser reads a time as its own local time, and every
+# event showed shifted by the viewer's distance from UTC.
+
+def _utc_naive(value: Optional[datetime]) -> Optional[datetime]:
+    """A time as stored: in UTC, without a zone."""
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """A stored time as sent to the browser: marked as UTC."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 def _require_valid_times(start: datetime, end: datetime) -> None:
@@ -169,7 +190,8 @@ def schedule_clashes(
     """Schedules the tagged technicians already have at that time. A warning only."""
     if not _can_schedule(current_user):
         raise HTTPException(status_code=403, detail="Only Admins, Super Admins and technicians create schedules")
-    if not payload.technician_ids or payload.end_time < payload.start_time:
+    start, end = _utc_naive(payload.start_time), _utc_naive(payload.end_time)
+    if not payload.technician_ids or end < start:
         return []
     rows = (
         db.query(CalendarEvent, calendar_event_technicians.c.user_id)
@@ -177,8 +199,8 @@ def schedule_clashes(
         .filter(
             CalendarEvent.is_schedule.is_(True),
             calendar_event_technicians.c.user_id.in_(payload.technician_ids),
-            CalendarEvent.start_time < payload.end_time,
-            CalendarEvent.end_time > payload.start_time,
+            CalendarEvent.start_time < end,
+            CalendarEvent.end_time > start,
         )
     )
     if payload.exclude_event_id:
@@ -192,8 +214,8 @@ def schedule_clashes(
             "event_id": event.id,
             # Someone who cannot see that schedule learns only that the time is taken.
             "title": event.title if _can_see_schedule(event, current_user) else "Another booking",
-            "start_time": event.start_time,
-            "end_time": event.end_time,
+            "start_time": _as_utc(event.start_time),
+            "end_time": _as_utc(event.end_time),
         })
     return clashes
 
@@ -235,6 +257,8 @@ def create_event(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Create a new calendar event, or a technician schedule when technicians are tagged."""
+    event_in.start_time = _utc_naive(event_in.start_time)
+    event_in.end_time = _utc_naive(event_in.end_time)
     data = event_in.model_dump(exclude={"technician_ids"})
     technicians: list[User] = []
     if event_in.technician_ids:
@@ -303,6 +327,9 @@ def update_event(
             raise HTTPException(status_code=403, detail="Permission denied")
 
     update_data = event_in.model_dump(exclude_unset=True)
+    for field in ("start_time", "end_time"):
+        if field in update_data:
+            update_data[field] = _utc_naive(update_data[field])
     technician_ids = update_data.pop("technician_ids", None)
     old_data = {c.name: getattr(db_obj, c.name) for c in db_obj.__table__.columns}
     before_ids = [t.id for t in db_obj.technicians or []]

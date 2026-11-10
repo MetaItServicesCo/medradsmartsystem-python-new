@@ -214,6 +214,37 @@ own = create(omar, title="My own reminder")
 turned = update(omar, own["id"], technician_ids=[sam.id])
 ok("a technician's own event becomes a schedule when he tags someone", turned["is_schedule"] and turned["technicians"][0]["id"] == sam.id)
 
+print("\nTimes: saved in UTC, sent back marked as UTC")
+from datetime import timedelta, timezone as tz  # noqa: E402
+from app.schemas.calendar import CalendarEventResponse, ScheduleClash  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+
+as_json = lambda event: CalendarEventResponse(**event).model_dump(mode="json")
+check = lambda user, ids, start, end, exclude=None: cal.schedule_clashes(
+    ScheduleClashCheck(technician_ids=ids, start_time=start, end_time=end, exclude_event_id=exclude), db=db, current_user=user)
+karachi, el_paso = tz(timedelta(hours=5)), tz(timedelta(hours=-7))
+pk = create(boss, title="Karachi 9am", start_time=datetime(2026, 12, 1, 9, 0, tzinfo=karachi), end_time=datetime(2026, 12, 1, 10, 0, tzinfo=karachi))
+stored = db.execute(text("select start_time from calendar_events where id = :i"), {"i": pk["id"]}).scalar()
+ok("9:00 AM typed in Karachi is saved as 4:00 UTC", str(stored).startswith("2026-12-01 04:00"), stored)
+ok("and sent back as 04:00 marked UTC, which a Karachi browser shows as 9:00 AM", as_json(pk)["start_time"] == "2026-12-01T04:00:00Z", as_json(pk)["start_time"])
+ok("  when listed too", as_json(seen(boss)[pk["id"]])["end_time"] == "2026-12-01T05:00:00Z")
+ep = create(boss, title="El Paso 9am", start_time=datetime(2026, 12, 1, 9, 0, tzinfo=el_paso), end_time=datetime(2026, 12, 1, 10, 0, tzinfo=el_paso))
+ok("9:00 AM typed in El Paso is sent back as 16:00 UTC", as_json(ep)["start_time"] == "2026-12-01T16:00:00Z", as_json(ep)["start_time"])
+browser = create(boss, title="Browser", start_time=datetime(2026, 12, 2, 4, 0, tzinfo=tz.utc), end_time=datetime(2026, 12, 2, 5, 0, tzinfo=tz.utc))
+ok("what a browser sends (UTC, with Z) comes back unchanged", as_json(browser)["start_time"] == "2026-12-02T04:00:00Z")
+ok("an event saved earlier, with no zone, is taken as UTC", as_json(seen(staff)[meet["id"]])["start_time"].endswith("Z"))
+ok("created and updated times are marked too", as_json(pk)["created_at"].endswith("Z") and as_json(pk)["updated_at"].endswith("Z"))
+moved = update(boss, pk["id"], start_time=datetime(2026, 12, 1, 8, 30, tzinfo=karachi))
+ok("changing only the start (from a browser) works and is saved in UTC",
+   as_json(moved)["start_time"] == "2026-12-01T03:30:00Z" and as_json(moved)["end_time"] == "2026-12-01T05:00:00Z", as_json(moved))
+sched = create(admin, title="Karachi visit", technician_ids=[omar.id], start_time=datetime(2026, 12, 3, 9, 0, tzinfo=karachi), end_time=datetime(2026, 12, 3, 11, 0, tzinfo=karachi))
+clash = check(admin, [omar.id], datetime(2026, 12, 3, 5, 0, tzinfo=tz.utc), datetime(2026, 12, 3, 5, 30, tzinfo=tz.utc))
+ok("a clash is found whatever zone the times are asked in", [c["event_id"] for c in clash] == [sched["id"]], clash)
+ok("  and its times come back marked UTC", clash and ScheduleClash(**clash[0]).model_dump(mode="json")["start_time"] == "2026-12-03T04:00:00Z")
+ok("  next to it, not overlapping, is no clash", check(admin, [omar.id], datetime(2026, 12, 3, 11, 0, tzinfo=karachi), datetime(2026, 12, 3, 12, 0, tzinfo=karachi)) == [])
+ok("a schedule's end before its start is still refused across zones",
+   refused(lambda: create(admin, technician_ids=[omar.id], start_time=datetime(2026, 12, 4, 9, 0, tzinfo=karachi), end_time=datetime(2026, 12, 4, 0, 30, tzinfo=tz.utc)), 400))
+
 print("\nDeleting needs only calendar.edit to ask; the rules above still decide")
 checker = cal.router.dependencies[0].dependency
 
