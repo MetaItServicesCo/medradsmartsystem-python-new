@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
@@ -60,6 +60,14 @@ const blankForm = (start: Date, end: Date): FormState => ({
 
 const errorText = (error: any, fallback: string) => error?.response?.data?.detail || fallback
 
+/** A technician's initials for the month view: Omar Ahmad is OA. */
+const initialsOf = (name: string) => {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  if (!words.length) return '?'
+  const letters = words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[words.length - 1][0]
+  return letters.toUpperCase()
+}
+
 const CalendarPage = () => {
   const theme = useTheme()
   const onPhone = useMediaQuery(theme.breakpoints.down('sm'))
@@ -78,6 +86,7 @@ const CalendarPage = () => {
   const [colorChosen, setColorChosen] = useState(false)
   const [technicianFilter, setTechnicianFilter] = useState<number | 'all'>('all')
   const [clashes, setClashes] = useState<ScheduleClash[]>([])
+  const calendarRef = useRef<FullCalendar>(null)
 
   const { data: events = [] } = useQuery({
     queryKey: ['calendar-events'],
@@ -375,6 +384,7 @@ const CalendarPage = () => {
         backdropFilter: 'blur(20px)',
       }}>
         <FullCalendar
+          ref={calendarRef}
           key={onPhone ? 'phone' : 'screen'}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
           initialView={onPhone ? 'listWeek' : 'dayGridMonth'}
@@ -393,7 +403,12 @@ const CalendarPage = () => {
           editable={true}
           selectable={true}
           selectMirror={true}
-          dayMaxEvents={true}
+          // Every event of a day is shown in the month, one line each; a busy
+          // day is taller and the calendar scrolls, nothing hides behind "+ more".
+          dayMaxEvents={false}
+          eventTimeFormat={{ hour: 'numeric', minute: '2-digit', omitZeroMinute: true, meridiem: 'short' }}
+          navLinks={true}
+          navLinkDayClick={(date) => calendarRef.current?.getApi().changeView(onPhone ? 'listDay' : 'timeGridDay', date)}
           weekends={true}
           dateClick={handleDateClick}
           eventClick={handleEventClick}
@@ -401,16 +416,49 @@ const CalendarPage = () => {
           eventContent={(eventInfo) => {
             const event = eventInfo.event.extendedProps as CalendarEvent
             const names = (event.technicians || []).map(t => t.full_name).join(', ')
-            // A month's days hold one line per event, so there a schedule is its
-            // title with a technician mark; week, day and list views name them.
+            // A month's days hold one line per event: its time, a dot in its
+            // colour, its title and its technicians' initials, with everything
+            // else on hover. Week, day and list views name the technicians.
             const oneLine = eventInfo.view.type.startsWith('dayGrid')
+            if (oneLine) {
+              const timed = !eventInfo.event.allDay
+              const techs = event.technicians || []
+              const tooltip = [eventInfo.event.title, eventInfo.timeText || 'All day', names, event.location].filter(Boolean).join(' · ')
+              return (
+                <Box title={tooltip} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5, py: '1px', width: '100%', minWidth: 0, overflow: 'hidden' }}>
+                  {timed && <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: event.color || DEFAULT_COLOR, flexShrink: 0 }} />}
+                  {timed && (
+                    <Typography component="span" sx={{ fontSize: 11, fontWeight: 700, color: '#6B7280', flexShrink: 0, lineHeight: 1.5 }}>{eventInfo.timeText}</Typography>
+                  )}
+                  <Typography component="span" sx={{ fontSize: 12, fontWeight: 700, color: timed ? '#1E1B4B' : 'inherit', flex: 1, minWidth: '3.5em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.5 }}>
+                    {eventInfo.event.title}
+                  </Typography>
+                  {event.is_meeting && <VideocamIcon sx={{ fontSize: '0.85rem', flexShrink: 0 }} />}
+                  {techs.slice(0, 2).map(tech => (
+                    <Box
+                      key={tech.id}
+                      component="span"
+                      sx={{
+                        flexShrink: 0, px: 0.5, borderRadius: '8px', fontSize: 9, fontWeight: 800, lineHeight: '14px', color: '#fff',
+                        bgcolor: technicianColor.get(tech.id) || '#6B7280',
+                        border: timed ? 'none' : '1px solid rgba(255,255,255,0.8)',
+                      }}
+                    >
+                      {initialsOf(tech.full_name)}
+                    </Box>
+                  ))}
+                  {techs.length > 2 && (
+                    <Typography component="span" sx={{ fontSize: 10, fontWeight: 800, color: timed ? '#6B7280' : 'inherit', flexShrink: 0 }}>+{techs.length - 2}</Typography>
+                  )}
+                </Box>
+              )
+            }
             return (
-              <Box sx={{ p: oneLine ? '1px 4px' : 0.5, overflow: 'hidden' }} title={event.is_schedule && names ? `${eventInfo.event.title} · ${names}` : undefined}>
-                <Typography variant="caption" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: oneLine ? 1.5 : undefined }}>
-                  {oneLine && event.is_schedule && <EngineeringIcon sx={{ fontSize: '0.85rem', flexShrink: 0 }} />}
-                  <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{eventInfo.event.title}</Box>
+              <Box sx={{ p: 0.5, overflow: 'hidden' }} title={event.is_schedule && names ? `${eventInfo.event.title} · ${names}` : undefined}>
+                <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {eventInfo.event.title}
                 </Typography>
-                {!oneLine && event.is_schedule && names && (
+                {event.is_schedule && names && (
                   <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.85 }}>
                     <EngineeringIcon sx={{ fontSize: '0.8rem' }} />{names}
                   </Typography>
