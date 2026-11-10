@@ -669,6 +669,30 @@ const statusChip = (value: string) => {
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 
+// Everyone who can be given inspection work, fetched by who they are rather than
+// as the newest few hundred accounts of every kind, which left older technicians
+// (such as accounts brought over from the old system) out of every picker.
+// Technicians (by role, or flagged to work as one), Admins and Super Admins;
+// a request that fails only leaves its own people out.
+const mergeUsers = (lists: UserData[][]): UserData[] => {
+  const byId = new Map<number, UserData>()
+  lists.flat().forEach(user => { if (!byId.has(user.id)) byId.set(user.id, user) })
+  return [...byId.values()]
+}
+
+const fetchInspectionStaff = async (): Promise<UserData[]> => {
+  const results = await Promise.allSettled(['technician', 'admin', 'superadmin'].map(role =>
+    fetchUsers({ is_active: true, role, limit: 500 })))
+  return mergeUsers(results.map(result => (result.status === 'fulfilled' ? result.value.items || [] : [])))
+}
+
+// The active users attached to the given facilities, who the pickers also offer there.
+const fetchFacilityStaff = async (facilityIds: number[]): Promise<UserData[]> => {
+  const results = await Promise.allSettled(facilityIds.map(facility_id =>
+    fetchUsers({ is_active: true, facility_id, limit: 500 })))
+  return mergeUsers(results.map(result => (result.status === 'fulfilled' ? result.value.items || [] : [])))
+}
+
 const flattenModalities = (items: Modality[]): Modality[] =>
   items.flatMap((item) => [item, ...flattenModalities(item.children || [])])
 
@@ -1549,7 +1573,7 @@ const Inspections = () => {
   })
   const formListQ = formListView === 'hidden' ? hiddenFormsQ : formsQ
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen, staleTime: 5 * 60_000 })
-  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 0 || tab === 1 || tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection), staleTime: 60_000 })
+  const staffQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: fetchInspectionStaff, enabled: tab === 0 || tab === 1 || tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection), staleTime: 60_000 })
   const testEquipmentQ = useQuery({
     queryKey: ['test-equipment', 'inspection-active-options', debouncedTestEquipmentSearch],
     queryFn: () => fetchActiveTestEquipment({ search: debouncedTestEquipmentSearch || undefined, limit: 50 }),
@@ -2196,10 +2220,25 @@ const Inspections = () => {
         ].some(value => String(value || '').toLowerCase().includes(search))
       })
   }, [batchEquipmentIds, batchEquipmentQ.data, existingAssetSearch])
+  const staffFacilityIds = useMemo(
+    () => [...new Set([Number(facilityId) || 0, selectedBatch?.facility_id || 0, infoInspection?.facility_id || 0].filter(Boolean))].sort((a, b) => a - b),
+    [facilityId, selectedBatch?.facility_id, infoInspection?.facility_id],
+  )
+  const facilityStaffQ = useQuery({
+    queryKey: ['users', 'inspection-facility-staff', staffFacilityIds],
+    queryFn: () => fetchFacilityStaff(staffFacilityIds),
+    enabled: staffFacilityIds.length > 0 && (tab === 0 || tab === 1 || tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection)),
+    staleTime: 60_000,
+  })
+  const inspectionUsers = useMemo(
+    () => mergeUsers([staffQ.data || [], facilityStaffQ.data || []]),
+    [staffQ.data, facilityStaffQ.data],
+  )
+
   // Who a new inspection at the chosen facility can be given to: the same rule
   // as a batch's technicians, and always the person creating it.
   const createTechnicians = useMemo(() => {
-    const users = (usersQ.data?.items || []) as UserData[]
+    const users = inspectionUsers
     const facility = Number(facilityId) || null
     const eligible = facility
       ? users.filter((user: UserData) =>
@@ -2212,23 +2251,23 @@ const Inspections = () => {
       return [currentUser as unknown as UserData, ...eligible]
     }
     return eligible
-  }, [usersQ.data?.items, facilityId, currentUser])
+  }, [inspectionUsers, facilityId, currentUser])
   const createTechnicianValue: number | '' = createTechnicianId || currentUser?.id || ''
   const createTechnicianPayload = () => (createTechnicianId && createTechnicianId !== currentUser?.id ? { inspector_id: Number(createTechnicianId) } : {})
 
   const batchTechnicians = useMemo(() => {
-    const users = usersQ.data?.items || []
+    const users = inspectionUsers
     if (!selectedBatch?.facility_id) return users
     return users.filter((user: UserData) =>
       user.facility_id === selectedBatch.facility_id ||
       (user.facilities || []).some(facility => facility.id === selectedBatch.facility_id) ||
       ['superadmin', 'admin'].includes(user.role) || actsAsTechnician(user),
     )
-  }, [selectedBatch?.facility_id, usersQ.data?.items])
+  }, [selectedBatch?.facility_id, inspectionUsers])
 
   const infoTechnicians = useMemo(() => {
     if (!infoInspection) return []
-    return (usersQ.data?.items || []).filter((user: UserData) => {
+    return inspectionUsers.filter((user: UserData) => {
       const isCurrentInspector = user.id === infoInspection.inspector_id
       if (!actsAsTechnician(user) && !isCurrentInspector) return false
       return isCurrentInspector
@@ -2236,7 +2275,7 @@ const Inspections = () => {
         || (user.facilities || []).some(facility => facility.id === infoInspection.facility_id)
         || ['superadmin', 'admin'].includes(user.role)
     })
-  }, [infoInspection, usersQ.data?.items])
+  }, [infoInspection, inspectionUsers])
 
   const toggleInstantEquipment = (id: number) => {
     setSelectedInstantEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
