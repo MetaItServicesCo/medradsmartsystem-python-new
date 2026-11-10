@@ -46,6 +46,7 @@ import {
   addInspectionBatchAsset,
   addInspectionBatchExistingAssets,
   closeInspection as closeScheduledInspection,
+  closeInspectionBatch,
   createInspectionForm,
   createInstantInspection,
   fetchInspectionBatch,
@@ -60,9 +61,11 @@ import {
   generateUpcomingInspections,
   removeInspectionBatchAsset,
   reopenInspection,
+  rescheduleInspectionBatch,
   scheduleInspections,
   saveInspectionReport,
   startInspection as startScheduledInspection,
+  startInspectionBatch,
   updateInspectionDetails,
   updateInspectionForm,
   updateInspectionTechnician,
@@ -1094,6 +1097,11 @@ const Inspections = () => {
   const [rescheduleInspection, setRescheduleInspection] = useState<Inspection | null>(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [closeInspectionTarget, setCloseInspectionTarget] = useState<Inspection | null>(null)
+  const [upcomingBatchAnchor, setUpcomingBatchAnchor] = useState<HTMLElement | null>(null)
+  const [upcomingBatchItem, setUpcomingBatchItem] = useState<InspectionBatch | null>(null)
+  const [rescheduleBatch, setRescheduleBatch] = useState<InspectionBatch | null>(null)
+  const [rescheduleBatchDate, setRescheduleBatchDate] = useState('')
+  const [closeBatchTarget, setCloseBatchTarget] = useState<InspectionBatch | null>(null)
   const [reopenInspectionTarget, setReopenInspectionTarget] = useState<Inspection | null>(null)
   const [closedActionAnchor, setClosedActionAnchor] = useState<HTMLElement | null>(null)
   const [closedActionItem, setClosedActionItem] = useState<Inspection | null>(null)
@@ -1183,6 +1191,7 @@ const Inspections = () => {
   const [debouncedFormSearch, setDebouncedFormSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
+  const [upcomingBatchPage, setUpcomingBatchPage] = useState(0)
   const [inProgressBatchPage, setInProgressBatchPage] = useState(0)
   const [completedBatchPage, setCompletedBatchPage] = useState(0)
   const [legacyInProgressPage, setLegacyInProgressPage] = useState(0)
@@ -1205,6 +1214,7 @@ const Inspections = () => {
     if (queryTab === 0) {
       setDebouncedUpcomingSearch(activitySearch)
       setUpcomingPage(0)
+      setUpcomingBatchPage(0)
     } else if (queryTab === 2) {
       setDebouncedInProgressSearch(activitySearch)
       setInProgressBatchPage(0)
@@ -1248,6 +1258,16 @@ const Inspections = () => {
     }
   }
 
+  // An upcoming batch has not been started, so its assets open their details,
+  // not the report; once the batch is started they open the report as before.
+  const openBatchAsset = (asset: Inspection, batch: InspectionBatch) => {
+    if (batch.status === 'upcoming') {
+      openInspectionInfo(asset)
+      return
+    }
+    openInspectionRecord(asset, batch.status === 'completed' ? 'completed' : 'progress')
+  }
+
   const openInspectionInfo = (inspection: Inspection) => {
     setInfoInspection(inspection)
     setInfoDraft(inspectionDetailsDraft(inspection))
@@ -1289,6 +1309,7 @@ const Inspections = () => {
   }, [builderDrag])
   useEffect(() => {
     setUpcomingPage(0)
+    setUpcomingBatchPage(0)
   }, [debouncedUpcomingSearch, upcomingSearchField, upcomingRange])
 
   useEffect(() => {
@@ -1301,6 +1322,7 @@ const Inspections = () => {
 
   useEffect(() => {
     setUpcomingPage(0)
+    setUpcomingBatchPage(0)
     setInProgressBatchPage(0)
     setCompletedBatchPage(0)
     setLegacyInProgressPage(0)
@@ -1392,14 +1414,33 @@ const Inspections = () => {
       : upcomingWindow
   ), [dateFrom, dateTo, upcomingWindow])
   const upcomingQ = useQuery({
-    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize, debouncedUpcomingSearch, upcomingSearchField, upcomingRange, dateFrom, dateTo],
+    queryKey: ['inspections', 'upcoming', 'unbatched', upcomingPage, pageSize, debouncedUpcomingSearch, upcomingSearchField, upcomingRange, dateFrom, dateTo],
     queryFn: () => fetchInspections({
       status: 'upcoming',
+      // Scheduled batches are listed one row each above; this is for the
+      // inspections that belong to no batch, such as auto-generated ones.
+      unbatched_only: true,
       search: debouncedUpcomingSearch || undefined,
       search_field: upcomingSearchField === 'all' ? undefined : upcomingSearchField,
       date_from: effectiveUpcomingWindow.date_from,
       date_to: effectiveUpcomingWindow.date_to,
       skip: upcomingPage * pageSize,
+      limit: pageSize,
+    }),
+    enabled: tab === 0 && !invalidDateRange,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+    retry: 1,
+  })
+  const upcomingBatchesQ = useQuery({
+    queryKey: ['inspection-batches', 'upcoming', upcomingBatchPage, pageSize, debouncedUpcomingSearch, upcomingSearchField, upcomingRange, dateFrom, dateTo],
+    queryFn: () => fetchInspectionBatches({
+      status: 'upcoming',
+      search: debouncedUpcomingSearch || undefined,
+      search_field: upcomingSearchField === 'all' ? undefined : upcomingSearchField,
+      date_from: effectiveUpcomingWindow.date_from,
+      date_to: effectiveUpcomingWindow.date_to,
+      skip: upcomingBatchPage * pageSize,
       limit: pageSize,
     }),
     enabled: tab === 0 && !invalidDateRange,
@@ -1581,21 +1622,17 @@ const Inspections = () => {
       setSearchResetSeed((seed) => seed + 1)
       setDebouncedUpcomingSearch('')
       setUpcomingPage(0)
+      setUpcomingBatchPage(0)
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
       setTab(0)
       if (batch) {
-        const firstInspection = batch.assets?.[0]
-        focusRecord(
-          firstInspection ? `inspection-${firstInspection.id}` : `inspection-batch-${batch.id}`,
-          firstInspection?.inspection_number || batch.batch_number,
-          {
+        focusRecord(`inspection-batch-${batch.id}`, batch.batch_number, {
           message: 'Scheduled and available under Upcoming inspections.',
           announce: true,
           query: { tab: 0 },
-          },
-        )
+        })
       } else {
         selectTab(0)
       }
@@ -1639,6 +1676,52 @@ const Inspections = () => {
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
   })
 
+  const startBatchMut = useMutation({
+    mutationFn: startInspectionBatch,
+    onSuccess: (batch) => {
+      toast.success(`${batch.batch_number} moved to in progress`)
+      queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+      setTab(2)
+      setSearchResetSeed((seed) => seed + 1)
+      setDebouncedInProgressSearch('')
+      setInProgressBatchPage(0)
+      setLegacyInProgressPage(0)
+      focusRecord(`inspection-batch-${batch.id}`, batch.batch_number, {
+        message: 'Started and moved from Upcoming to In Progress.',
+        announce: true,
+        query: { tab: 2, date_from: null, date_to: null },
+      })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection batch'),
+  })
+
+  const rescheduleBatchMut = useMutation({
+    mutationFn: ({ id, scheduledDate }: { id: number; scheduledDate: string }) => rescheduleInspectionBatch(id, scheduledDate),
+    onSuccess: (batch) => {
+      toast.success(`${batch.batch_number} rescheduled`)
+      setRescheduleBatch(null)
+      setRescheduleBatchDate('')
+      refreshInspectionQueries()
+      focusRecord(`inspection-batch-${batch.id}`, batch.batch_number, { message: 'Schedule updated.', announce: true })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not reschedule inspection batch'),
+  })
+
+  const closeBatchMut = useMutation({
+    mutationFn: closeInspectionBatch,
+    onSuccess: (batch) => {
+      toast.success(`${batch.batch_number} closed`)
+      setCloseBatchTarget(null)
+      setSelectedBatchId(previous => previous === batch.id ? null : previous)
+      refreshInspectionQueries()
+      setTab(5)
+      setClosedPage(0)
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not close inspection batch'),
+  })
+
   const rescheduleMut = useMutation({
     mutationFn: ({ id, scheduledDate, reopen }: { id: number; scheduledDate: string; reopen: boolean }) =>
       reopen
@@ -1651,7 +1734,9 @@ const Inspections = () => {
       setInfoInspection(previous => previous?.id === updated.id ? (variables.reopen ? null : updated) : previous)
       setInfoDraft(previous => infoInspection?.id === updated.id ? (variables.reopen ? null : inspectionDetailsDraft(updated)) : previous)
       refreshInspectionQueries()
-      focusRecord(`inspection-${updated.id}`, updated.inspection_number, {
+      // A reopened asset of a batch returns to Upcoming as part of its batch row.
+      const reopenedInBatch = variables.reopen && updated.batch_id
+      focusRecord(reopenedInBatch ? `inspection-batch-${updated.batch_id}` : `inspection-${updated.id}`, reopenedInBatch ? (updated.batch_number || updated.inspection_number) : updated.inspection_number, {
         message: variables.reopen ? 'Reopened and returned to Upcoming.' : 'Schedule updated.',
         announce: true,
         query: variables.reopen ? { tab: 0 } : undefined,
@@ -1704,7 +1789,8 @@ const Inspections = () => {
       refreshInspectionQueries()
       setTab(0)
       setUpcomingPage(0)
-      focusRecord(`inspection-${reopened.id}`, reopened.inspection_number, {
+      setUpcomingBatchPage(0)
+      focusRecord(reopened.batch_id ? `inspection-batch-${reopened.batch_id}` : `inspection-${reopened.id}`, reopened.batch_id ? (reopened.batch_number || reopened.inspection_number) : reopened.inspection_number, {
         message: 'Reopened and returned to Upcoming.',
         announce: true,
         query: { tab: 0 },
@@ -3481,6 +3567,147 @@ const Inspections = () => {
     </TableContainer>
   )
 
+  const openUpcomingBatchActions = (event: MouseEvent<HTMLElement>, batch: InspectionBatch) => {
+    setUpcomingBatchAnchor(event.currentTarget)
+    setUpcomingBatchItem(batch)
+  }
+
+  const closeUpcomingBatchActions = () => {
+    setUpcomingBatchAnchor(null)
+    setUpcomingBatchItem(null)
+  }
+
+  const openRescheduleBatchDialog = (batch: InspectionBatch) => {
+    closeUpcomingBatchActions()
+    setRescheduleBatch(batch)
+    setRescheduleBatchDate(toDateTimeLocalValue(batch.scheduled_date))
+  }
+
+  const submitRescheduleBatch = () => {
+    if (!rescheduleBatch || !rescheduleBatchDate) return toast.error('Select a scheduled date and time')
+    const parsed = new Date(rescheduleBatchDate)
+    if (Number.isNaN(parsed.getTime())) return toast.error('Enter a valid scheduled date and time')
+    rescheduleBatchMut.mutate({ id: rescheduleBatch.id, scheduledDate: parsed.toISOString() })
+  }
+
+  // A scheduled inspection is one batch, listed as one row: its assets are
+  // started, rescheduled and closed together, as they are in In Progress.
+  const renderUpcomingBatchRows = () => {
+    const batches = upcomingBatchesQ.data?.items || []
+    const hasIndividual = (upcomingQ.data?.total || 0) > 0
+    return (
+      <>
+      <TableContainer className="list-scroll-panel">
+        <Table stickyHeader>
+          <TableHead>
+            <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+              <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Assets</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Frequency</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Scheduled</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {upcomingBatchesQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
+              <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
+            )) : batches.length === 0 ? (
+              <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{hasIndividual ? 'No upcoming inspection batches.' : 'No upcoming inspections scheduled.'}</TableCell></TableRow>
+            ) : batches.map(batch => {
+              const total = batch.asset_count || 0
+              const names = batch.asset_names || []
+              const shown = names.slice(0, 2).join(', ')
+              const assetText = names.length > 2 ? `${shown} +${names.length - 2} more` : shown
+              return (
+                <ContextTableRow
+                  key={batch.id}
+                  recordKey={`inspection-batch-${batch.id}`}
+                  recordLabel={batch.batch_number}
+                  hover
+                >
+                  <TableCell><ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} /></TableCell>
+                  <TableCell><ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} /></TableCell>
+                  <TableCell sx={{ maxWidth: 360 }}>
+                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{total} asset{total === 1 ? '' : 's'}</Typography>
+                    {assetText && (
+                      <Tooltip title={names.join(', ')}>
+                        <Typography sx={{ color: '#8B95A7', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assetText}</Typography>
+                      </Tooltip>
+                    )}
+                  </TableCell>
+                  <TableCell>{String(batch.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(batch.scheduled_date)}</TableCell>
+                  <TableCell align="right">
+                    <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <Button
+                        startIcon={<AssessmentIcon />}
+                        variant="contained"
+                        onClick={() => setSelectedBatchId(batch.id)}
+                        sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap' }}
+                      >
+                        View Batch
+                      </Button>
+                      {canEditInspections && (
+                        <IconButton
+                          size="small"
+                          aria-label={`Actions for ${batch.batch_number}`}
+                          onClick={(event) => openUpcomingBatchActions(event, batch)}
+                          sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Box>
+                  </TableCell>
+                </ContextTableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Menu
+        anchorEl={upcomingBatchAnchor}
+        open={Boolean(upcomingBatchAnchor && upcomingBatchItem)}
+        onClose={closeUpcomingBatchActions}
+        PaperProps={{ sx: { borderRadius: '14px', minWidth: 190, boxShadow: '0 18px 45px rgba(30,27,75,0.16)' } }}
+      >
+        <MenuItem
+          onClick={() => {
+            const batch = upcomingBatchItem
+            closeUpcomingBatchActions()
+            if (batch) startBatchMut.mutate(batch.id)
+          }}
+          disabled={startBatchMut.isPending}
+          sx={{ gap: 1.25, fontWeight: 800 }}
+        >
+          <PlayArrowIcon fontSize="small" sx={{ color: '#7C3AED' }} />
+          Start
+        </MenuItem>
+        <MenuItem
+          onClick={() => upcomingBatchItem && openRescheduleBatchDialog(upcomingBatchItem)}
+          sx={{ gap: 1.25, fontWeight: 800 }}
+        >
+          <EventAvailableIcon fontSize="small" sx={{ color: '#2563EB' }} />
+          Reschedule
+        </MenuItem>
+        <Divider sx={{ my: 0.5 }} />
+        <MenuItem
+          onClick={() => {
+            const batch = upcomingBatchItem
+            closeUpcomingBatchActions()
+            if (batch) setCloseBatchTarget(batch)
+          }}
+          sx={{ gap: 1.25, fontWeight: 800, color: '#DC2626' }}
+        >
+          <CancelIcon fontSize="small" />
+          Close batch
+        </MenuItem>
+      </Menu>
+      </>
+    )
+  }
+
   const renderUpcomingRows = () => (
     <>
     <TableContainer className="list-scroll-panel">
@@ -4333,8 +4560,17 @@ const Inspections = () => {
                   : `Showing inspections scheduled from ${formatDate(upcomingWindow.date_from)} to ${formatDate(upcomingWindow.date_to)}.`}
               </Typography>
             </Card>
-            {renderUpcomingRows()}
-            {renderPagination(upcomingQ.data?.total || 0, upcomingPage, setUpcomingPage)}
+            {renderUpcomingBatchRows()}
+            {renderPagination(upcomingBatchesQ.data?.total || 0, upcomingBatchPage, setUpcomingBatchPage)}
+            {(upcomingQ.data?.total || 0) > 0 && (
+              <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
+                <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
+                  Individual Inspections
+                </Typography>
+                {renderUpcomingRows()}
+                {renderPagination(upcomingQ.data?.total || 0, upcomingPage, setUpcomingPage)}
+              </Box>
+            )}
           </Box>
         )}
 
@@ -4807,7 +5043,7 @@ const Inspections = () => {
                           recordLabel={asset.inspection_number}
                           hover
                         >
-                          <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color="#7161D8" fontWeight={900} onClick={() => openBatchAsset(asset, selectedBatch)} /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.make} fallback="—" /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.model} fallback="—" /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.modality_name} fallback="—" fontWeight={700} color="#475569" /></TableCell>
@@ -4827,10 +5063,10 @@ const Inspections = () => {
                               fontWeight={800}
                               color="#312E81"
                               sx={{ px: 1, py: 0.5, borderRadius: '8px', bgcolor: '#F5F3FF' }}
-                              onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')}
+                              onClick={() => openBatchAsset(asset, selectedBatch)}
                             />
                           </TableCell>
-                          <TableCell><ClippedTooltipText value={asset.serial_number || '-'} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.serial_number || '-'} onClick={() => openBatchAsset(asset, selectedBatch)} /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.inspector_name} fallback="-" fontWeight={400} /></TableCell>
                           <TableCell><Chip size="small" label={String(asset.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())} title={String(asset.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())} sx={{ maxWidth: '100%', bgcolor: chip.bg, color: chip.color, fontWeight: 800, textTransform: 'none', borderRadius: '8px' }} /></TableCell>
                           <TableCell align="right">
@@ -4852,6 +5088,17 @@ const Inspections = () => {
         <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
           {selectedBatch && (
             <>
+              {selectedBatch.status === 'upcoming' && canEditInspections && (
+                <Button
+                  startIcon={startBatchMut.isPending ? <CircularProgress size={18} color="inherit" /> : <PlayArrowIcon />}
+                  variant="contained"
+                  onClick={() => startBatchMut.mutate(selectedBatch.id, { onSuccess: () => setSelectedBatchId(null) })}
+                  disabled={startBatchMut.isPending}
+                  sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: '#7C3AED' }}
+                >
+                  Start Batch
+                </Button>
+              )}
               <Button
                 startIcon={<AssessmentIcon />}
                 variant="outlined"
@@ -4883,7 +5130,7 @@ const Inspections = () => {
       </Dialog>
 
       <Menu anchorEl={assetActionAnchor} open={Boolean(assetActionAnchor)} onClose={closeAssetActions}>
-        {canEditInspections && (
+        {canEditInspections && selectedBatch?.status !== 'upcoming' && (
           <MenuItem
             onClick={() => {
               if (!assetActionItem) return
@@ -6495,6 +6742,60 @@ const Inspections = () => {
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
           >
             Close Inspection
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(rescheduleBatch)} onClose={() => !rescheduleBatchMut.isPending && setRescheduleBatch(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Reschedule Batch
+          <Typography sx={{ mt: 0.5, color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            {rescheduleBatch?.batch_number} · {rescheduleBatch?.asset_count || 0} asset{rescheduleBatch?.asset_count === 1 ? '' : 's'}
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            fullWidth
+            type="datetime-local"
+            label="Scheduled date and time"
+            value={rescheduleBatchDate}
+            onChange={event => setRescheduleBatchDate(event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            helperText="Every upcoming asset in this batch moves to this date. Past dates are allowed when correcting or backdating the schedule."
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRescheduleBatch(null)} disabled={rescheduleBatchMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={submitRescheduleBatch}
+            disabled={!rescheduleBatchDate || rescheduleBatchMut.isPending}
+            startIcon={rescheduleBatchMut.isPending ? <CircularProgress size={18} color="inherit" /> : <EventAvailableIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Save Schedule
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(closeBatchTarget)} onClose={() => !closeBatchMut.isPending && setCloseBatchTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Close Batch?</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: '#475569', fontWeight: 650, lineHeight: 1.65 }}>
+            {closeBatchTarget?.batch_number} and its {closeBatchTarget?.asset_count || 0} asset{closeBatchTarget?.asset_count === 1 ? '' : 's'} will be removed from Upcoming without being completed or deleted. Each can be reopened from the Closed tab, and the audit record remains available.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setCloseBatchTarget(null)} disabled={closeBatchMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => closeBatchTarget && closeBatchMut.mutate(closeBatchTarget.id)}
+            disabled={closeBatchMut.isPending}
+            startIcon={closeBatchMut.isPending ? <CircularProgress size={18} color="inherit" /> : <CancelIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Close Batch
           </Button>
         </DialogActions>
       </Dialog>

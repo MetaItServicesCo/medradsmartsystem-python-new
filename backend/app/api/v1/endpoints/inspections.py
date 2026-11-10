@@ -140,6 +140,10 @@ class InspectionScheduleCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class InspectionBatchReschedule(BaseModel):
+    scheduled_date: datetime
+
+
 class UpcomingGenerationRequest(BaseModel):
     facility_id: Optional[int] = None
     days_ahead: int = 90
@@ -674,6 +678,38 @@ def _batch_counts(db: Session, batch_ids: list[int]) -> dict[int, dict[str, int]
         for batch_id, total, completed, in_progress, closed in rows
         if batch_id is not None
     }
+
+
+def _batch_asset_names(db: Session, batch_ids: list[int]) -> dict[int, list[str]]:
+    """Each batch's asset names, in the batch window's order."""
+    if not batch_ids:
+        return {}
+    rows = (
+        db.query(Inspection)
+        .options(joinedload(Inspection.equipment), joinedload(Inspection.inventory_part))
+        .filter(Inspection.batch_id.in_(batch_ids))
+        .order_by(Inspection.inspection_number)
+        .all()
+    )
+    names: dict[int, list[str]] = {}
+    for inspection in rows:
+        name = _part_name(inspection.inventory_part) if inspection.inventory_part else _equipment_name(inspection.equipment)
+        names.setdefault(int(inspection.batch_id), []).append(name or "Inspection asset")
+    return names
+
+
+def _load_batch_for_update(db: Session, batch_id: int, current_user: User) -> InspectionBatch:
+    batch = (
+        db.query(InspectionBatch)
+        .options(selectinload(InspectionBatch.inspections))
+        .filter(InspectionBatch.id == batch_id)
+        .with_for_update(of=InspectionBatch)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Inspection batch not found")
+    require_facility_access(db, current_user, batch.facility_id)
+    return batch
 
 
 def _sync_batch_status(batch: Optional[InspectionBatch]) -> None:
@@ -1534,6 +1570,7 @@ def inspection_summary(
                     (
                         and_(
                             Inspection.status == InspectionStatus.UPCOMING,
+                            Inspection.batch_id.is_(None),
                             *date_conditions(Inspection.scheduled_date),
                         ),
                         1,
@@ -1582,6 +1619,21 @@ def inspection_summary(
                 case(
                     (
                         and_(
+                            InspectionBatch.status == InspectionStatus.UPCOMING,
+                            *date_conditions(InspectionBatch.scheduled_date),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
+        ),
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
                             InspectionBatch.status == InspectionStatus.IN_PROGRESS,
                             *date_conditions(func.coalesce(InspectionBatch.started_at, InspectionBatch.scheduled_date)),
                         ),
@@ -1609,9 +1661,9 @@ def inspection_summary(
         ),
     ).one()
     return {
-        "upcoming": int(inspection_counts[0] or 0),
-        "in_progress": int(inspection_counts[1] or 0) + int(batch_counts[0] or 0),
-        "completed": int(inspection_counts[2] or 0) + int(batch_counts[1] or 0),
+        "upcoming": int(inspection_counts[0] or 0) + int(batch_counts[0] or 0),
+        "in_progress": int(inspection_counts[1] or 0) + int(batch_counts[1] or 0),
+        "completed": int(inspection_counts[2] or 0) + int(batch_counts[2] or 0),
         "assets": equipment.count(),
         "quotations": invoices.filter(Invoice.invoice_type == InvoiceType.INSPECTION).count(),
     }
@@ -1852,12 +1904,17 @@ def list_inspection_batches(
     total = query.count()
     batches = query.order_by(InspectionBatch.created_at.desc()).offset(skip).limit(limit).all()
     count_map = _batch_counts(db, [batch.id for batch in batches])
+    # Upcoming batches are listed one row each, so the row names its assets.
+    asset_names = _batch_asset_names(db, [batch.id for batch in batches]) if status_filter == InspectionStatus.UPCOMING else None
     return {
         "items": [
-            _batch_response(
-                batch,
-                counts=count_map.get(batch.id, {"total": 0, "completed": 0, "in_progress": 0}),
-            )
+            {
+                **_batch_response(
+                    batch,
+                    counts=count_map.get(batch.id, {"total": 0, "completed": 0, "in_progress": 0}),
+                ),
+                **({"asset_names": asset_names.get(batch.id, [])} if asset_names is not None else {}),
+            }
             for batch in batches
         ],
         "total": total,
@@ -2290,6 +2347,104 @@ def schedule_inspections(
     db.commit()
     db.refresh(batch)
     return {"items": [_batch_response(batch, include_assets=True)], "total": 1}
+
+
+@router.put("/batches/{batch_id}/start")
+def start_inspection_batch(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Start every upcoming asset in a batch together, so the whole batch
+    moves to In Progress. Closed assets stay closed; a technician already
+    assigned to an asset stays assigned."""
+    require_module_permission(current_user, "inspections", "edit")
+    batch = _load_batch_for_update(db, batch_id, current_user)
+    upcoming = [item for item in batch.inspections if item.status == InspectionStatus.UPCOMING]
+    if not upcoming:
+        raise HTTPException(status_code=400, detail="This batch has no upcoming inspections to start")
+
+    now = datetime.utcnow()
+    for inspection in upcoming:
+        inspection.status = InspectionStatus.IN_PROGRESS
+        inspection.started_at = now
+        if not inspection.inspector_id:
+            inspection.inspector_id = current_user.id
+        inspection.updated_at = now
+        log_activity(db, "inspections", inspection.id, "START", current_user, {"status": "in_progress", "batch_id": batch.id})
+    _sync_batch_status(batch)
+    db.commit()
+    return get_inspection_batch(batch.id, db, current_user)
+
+
+@router.patch("/batches/{batch_id}/schedule")
+def reschedule_inspection_batch(
+    batch_id: int,
+    payload: InspectionBatchReschedule,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Move an upcoming batch, and each of its upcoming assets, to a new date."""
+    require_module_permission(current_user, "inspections", "edit")
+    batch = _load_batch_for_update(db, batch_id, current_user)
+    if batch.status != InspectionStatus.UPCOMING:
+        raise HTTPException(status_code=400, detail="Only upcoming batches can be rescheduled")
+
+    now = datetime.utcnow()
+    previous = batch.scheduled_date
+    batch.scheduled_date = payload.scheduled_date
+    batch.updated_at = now
+    for inspection in batch.inspections:
+        if inspection.status != InspectionStatus.UPCOMING:
+            continue
+        before = inspection.scheduled_date
+        inspection.scheduled_date = payload.scheduled_date
+        inspection.updated_at = now
+        log_activity(
+            db, "inspections", inspection.id, "RESCHEDULE", current_user,
+            {"before": {"scheduled_date": before}, "after": {"scheduled_date": payload.scheduled_date}, "batch_id": batch.id},
+        )
+    log_activity(
+        db, "inspection_batches", batch.id, "RESCHEDULE", current_user,
+        {"before": {"scheduled_date": previous}, "after": {"scheduled_date": payload.scheduled_date}},
+    )
+    db.commit()
+    return get_inspection_batch(batch.id, db, current_user)
+
+
+@router.put("/batches/{batch_id}/close")
+def close_inspection_batch(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Close every upcoming asset in a batch without completing or deleting them."""
+    require_module_permission(current_user, "inspections", "edit")
+    batch = _load_batch_for_update(db, batch_id, current_user)
+    if batch.status != InspectionStatus.UPCOMING:
+        raise HTTPException(status_code=400, detail="Only upcoming batches can be closed")
+    upcoming = [item for item in batch.inspections if item.status == InspectionStatus.UPCOMING]
+    if not upcoming:
+        raise HTTPException(status_code=400, detail="This batch has no upcoming inspections to close")
+
+    now = datetime.utcnow()
+    for inspection in upcoming:
+        inspection.status = InspectionStatus.CLOSED
+        inspection.started_at = None
+        inspection.completed_at = None
+        inspection.updated_at = now
+        log_activity(
+            db, "inspections", inspection.id, "CLOSE", current_user,
+            {
+                "previous_status": InspectionStatus.UPCOMING.value,
+                "status": InspectionStatus.CLOSED.value,
+                "scheduled_date": inspection.scheduled_date,
+                "batch_id": batch.id,
+            },
+        )
+    _sync_batch_status(batch)
+    db.commit()
+    return get_inspection_batch(batch.id, db, current_user)
 
 
 @router.post("/generate-upcoming", status_code=status.HTTP_201_CREATED)

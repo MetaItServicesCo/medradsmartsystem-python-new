@@ -197,6 +197,8 @@ export interface InspectionBatch {
   pending_count: number
   batch_invoice?: InspectionInvoice | null
   assets?: InspectionBatchAsset[]
+  /** Upcoming list only: each asset's name, in the batch window's order. */
+  asset_names?: string[]
 }
 
 /** A batch's asset, with what its inventory record says it is. */
@@ -470,6 +472,24 @@ export const fetchInspectionBatches = async (
 
 export const fetchInspectionBatch = async (id: number): Promise<InspectionBatch> => {
   const res = await apiClient.get(`/inspections/batches/${id}`)
+  return res.data
+}
+
+/** Start every upcoming asset in a batch together. */
+export const startInspectionBatch = async (id: number): Promise<InspectionBatch> => {
+  const res = await apiClient.put(`/inspections/batches/${id}/start`)
+  return res.data
+}
+
+/** Move an upcoming batch, and its upcoming assets, to a new date. */
+export const rescheduleInspectionBatch = async (id: number, scheduledDate: string): Promise<InspectionBatch> => {
+  const res = await apiClient.patch(`/inspections/batches/${id}/schedule`, { scheduled_date: scheduledDate })
+  return res.data
+}
+
+/** Close every upcoming asset in a batch, without completing or deleting them. */
+export const closeInspectionBatch = async (id: number): Promise<InspectionBatch> => {
+  const res = await apiClient.put(`/inspections/batches/${id}/close`)
   return res.data
 }
 
