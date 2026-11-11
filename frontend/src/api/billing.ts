@@ -90,6 +90,15 @@ export const approveInvoiceForBilling = async (invoiceId: number): Promise<Invoi
   return response.data
 }
 
+/** A Super Admin marks an invoice paid: its remaining balance is recorded as one payment. */
+export const markInvoicePaid = async (
+  invoiceId: number,
+  data: { payment_method: string; reference?: string; notes?: string },
+) => {
+  const response = await apiClient.post(`/billing/invoices/${invoiceId}/mark-paid`, data)
+  return response.data
+}
+
 export const recordInvoicePayment = async (
   invoiceId: number,
   data: { amount: number; payment_method: string; notes?: string; card_brand?: string; card_last4?: string },

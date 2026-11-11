@@ -21,6 +21,7 @@ from app.models.user_facility import UserFacility
 from app.utils.invoice_approval import (
     approval_response,
     approve_invoice_for_billing,
+    invoice_requires_billing_approval,
     is_facility_billing_user,
     is_invoice_approver,
     require_invoice_approved,
@@ -64,6 +65,7 @@ from app.utils.payment_proofs import (
     store_encrypted_payment_proof,
 )
 from app.utils.rate_limit import enforce_rate_limit
+from app.utils.logging import log_activity
 
 
 router = APIRouter(dependencies=[Depends(require_module_access("billing"))])
@@ -76,6 +78,23 @@ class InvoicePaymentCreate(BaseModel):
     idempotency_key: Optional[str] = None
     card_brand: Optional[str] = None
     card_last4: Optional[str] = None
+
+
+# How a Super Admin says an invoice was paid when marking it paid.
+MARK_PAID_METHODS = {
+    "cash": "Cash",
+    "cheque": "Cheque",
+    "ach": "ACH",
+    "bank_transfer": "Bank transfer",
+    "credit_card": "Card",
+    "other": "Other",
+}
+
+
+class InvoiceMarkPaid(BaseModel):
+    payment_method: str
+    reference: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class PaymentProofReview(BaseModel):
@@ -249,6 +268,107 @@ def _apply_invoice_payment_locked(
             card_last4=card_last4,
         )
     return payment_transaction, receipt_delivery
+
+
+@router.post("/invoices/{invoice_id}/mark-paid")
+def mark_invoice_paid(
+    invoice_id: int,
+    payload: InvoiceMarkPaid,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """A Super Admin marks an invoice paid in full.
+
+    The remaining balance is recorded as one payment through the same path as
+    every other payment, so everything an invoice payment updates is updated:
+    the invoice's paid amount, balance and status, its ledger, the service
+    request's, sales quotation's or rental's history (and a sales quotation's
+    paid status and completion, and its inventory), and a rental's receipt.
+    An invoice that needs billing approval is approved first, under the same
+    rule as approving it (a batch's inspections must all be complete).
+    """
+    if current_user.role != UserRole.SUPERADMIN:
+        raise HTTPException(status_code=403, detail="Only a Super Admin can mark an invoice as paid")
+    method = (payload.payment_method or "").strip().lower().replace(" ", "_")
+    if method not in MARK_PAID_METHODS:
+        raise HTTPException(status_code=422, detail="Choose how the invoice was paid")
+    reference = (payload.reference or "").strip()
+    notes = (payload.notes or "").strip()
+    if len(reference) > 120 or len(notes) > 1000:
+        raise HTTPException(status_code=422, detail="The reference or note is too long")
+
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.status == InvoiceStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="A cancelled invoice cannot be marked as paid")
+    balance = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
+    if invoice.status == InvoiceStatus.PAID or balance <= 0:
+        raise HTTPException(status_code=409, detail="This invoice is already paid")
+    # A payment someone has already reported would be counted twice.
+    if (
+        db.query(PaymentProof.id)
+        .filter(PaymentProof.invoice_id == invoice.id, PaymentProof.status == "pending_verification")
+        .first()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="A payment for this invoice is waiting for review. Approve or reject it first.",
+        )
+    require_no_other_service_payment(db, invoice)
+
+    if invoice_requires_billing_approval(invoice) and invoice.billing_approval_status != "approved":
+        if invoice.inspection_batch_id:
+            batch_status = (
+                db.query(InspectionBatch.status)
+                .filter(InspectionBatch.id == invoice.inspection_batch_id)
+                .scalar()
+            )
+            has_incomplete_asset = (
+                db.query(Inspection.id)
+                .filter(
+                    Inspection.batch_id == invoice.inspection_batch_id,
+                    Inspection.status != InspectionStatus.COMPLETED,
+                )
+                .first()
+                is not None
+            )
+            if batch_status != InspectionStatus.COMPLETED or has_incomplete_asset:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Complete every inspection in the batch before this invoice can be approved and marked as paid",
+                )
+        approve_invoice_for_billing(db, invoice, current_user)
+
+    actor = current_user.full_name or current_user.username
+    ledger_note = " · ".join(part for part in (
+        f"Marked as paid by Super Admin {actor}",
+        f"Ref {reference}" if reference else "",
+        notes,
+    ) if part)
+    previous_status = invoice.status.value if hasattr(invoice.status, "value") else invoice.status
+    payment_transaction, receipt_delivery = _apply_invoice_payment_locked(
+        db,
+        invoice,
+        amount=balance,
+        payment_method=method,
+        notes=ledger_note,
+        user=current_user,
+    )
+    log_activity(db, "invoices", invoice.id, "MARK_PAID", current_user, {
+        "invoice_number": invoice.invoice_number,
+        "amount": str(balance),
+        "payment_method": method,
+        "reference": reference or None,
+        "notes": notes or None,
+        "previous_status": previous_status,
+        "transaction": payment_transaction.reference_number if payment_transaction else None,
+    })
+    db.commit()
+    if receipt_delivery:
+        deliver_payment_receipt(db, receipt_delivery.id)
+    db.refresh(invoice)
+    return _invoice_payment_response(invoice)
 
 
 @router.put("/invoices/{invoice_id}/approve")

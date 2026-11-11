@@ -24,6 +24,7 @@ import PrintIcon from '@mui/icons-material/Print'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
+import PriceCheckIcon from '@mui/icons-material/PriceCheck'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
 
@@ -75,6 +76,7 @@ import {
   fetchInvoicePaymentEvidence,
   fetchPaymentProofQueue,
   openPaymentProofFile,
+  markInvoicePaid,
   recordInvoicePayment,
   rejectInvoicePaymentProof,
   retryPaymentProofOcr,
@@ -464,6 +466,8 @@ const Billing = () => {
   const canPay = (user?.role === 'superadmin' || isFacilityBillingUser) && hasPermission(user, 'billing', 'edit')
   const canEditInvoices = isInternalBillingAdmin && hasPermission(user, 'billing', 'edit')
   const canApproveBilling = isInternalBillingAdmin && hasPermission(user, 'billing', 'edit')
+  // A Super Admin can mark any invoice paid; the server applies the same rule.
+  const canMarkPaid = user?.role === 'superadmin'
   const canManageQuotationAuthorization = isInternalBillingAdmin && hasPermission(user, 'billing', 'edit')
   const canSelfAuthorizeQuotation = ['facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
 
@@ -481,6 +485,10 @@ const Billing = () => {
   const [editItem, setEditItem] = useState<BillingItem | null>(null)
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionItem, setActionItem] = useState<BillingItem | null>(null)
+  const [markPaidItem, setMarkPaidItem] = useState<BillingItem | null>(null)
+  const [markPaidMethod, setMarkPaidMethod] = useState('cheque')
+  const [markPaidReference, setMarkPaidReference] = useState('')
+  const [markPaidNotes, setMarkPaidNotes] = useState('')
   const [authorizationItem, setAuthorizationItem] = useState<BillingItem | null>(null)
   const [authorizationChannel, setAuthorizationChannel] = useState<'self_service' | 'phone'>('self_service')
   const [authorizationDecision, setAuthorizationDecision] = useState<'authorized' | 'declined'>('authorized')
@@ -975,6 +983,26 @@ const Billing = () => {
       publishBillingActivity(variables.item, 'Invoice payment updated in the billing ledger.')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice payment'),
+  })
+
+  const markPaidMut = useMutation({
+    mutationFn: ({ item }: { item: BillingItem }) => markInvoicePaid(item.id, {
+      payment_method: markPaidMethod,
+      reference: markPaidReference.trim() || undefined,
+      notes: markPaidNotes.trim() || undefined,
+    }),
+    onSuccess: async (_, variables) => {
+      toast.success(`${variables.item.number} marked as paid`)
+      setMarkPaidItem(null)
+      await Promise.all([
+        invalidateBilling(),
+        queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['invoice-payment-evidence'] }),
+        queryClient.invalidateQueries({ queryKey: ['service-invoice-document'] }),
+      ])
+      publishBillingActivity(variables.item, 'Invoice marked as paid by a Super Admin.')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not mark the invoice as paid'),
   })
 
   const paymentProofMut = useMutation({
@@ -1850,6 +1878,24 @@ const Billing = () => {
             {paymentInReview(actionItem) ? 'Pay (a payment is waiting for approval)' : 'Pay'}
           </MenuItem>
         )}
+        {/* Invoices only: a service quotation is paid through its own authorization. */}
+        {actionItem && canMarkPaid && !(actionItem.source === 'service' && actionItem.billingKind !== 'service_invoice')
+          && actionItem.balance > 0 && !['paid', 'cancelled'].includes(String(actionItem.status)) && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            disabled={paymentInReview(actionItem)}
+            onClick={() => {
+              setMarkPaidItem(actionItem)
+              setMarkPaidMethod('cheque')
+              setMarkPaidReference('')
+              setMarkPaidNotes('')
+              closeActions()
+            }}
+          >
+            <ListItemIcon><PriceCheckIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            {paymentInReview(actionItem) ? 'Mark as Paid (a payment is waiting for review)' : 'Mark as Paid'}
+          </MenuItem>
+        )}
         {actionItem && canEditInvoices && !(actionItem.source === 'service' && actionItem.billingKind !== 'service_invoice') && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
             const item = actionItem
@@ -1908,6 +1954,47 @@ const Billing = () => {
           </MenuItem>
         )}
       </Menu>
+
+      <Dialog open={Boolean(markPaidItem)} onClose={() => !markPaidMut.isPending && setMarkPaidItem(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Mark as Paid
+          <Typography sx={{ mt: 0.5, color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            {markPaidItem?.number}{markPaidItem?.facility ? ` · ${markPaidItem.facility}` : ''}
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
+          <Typography sx={{ color: '#475569', fontWeight: 650, lineHeight: 1.6 }}>
+            The balance of <strong>{money(markPaidItem?.balance)}</strong> will be recorded as paid, and the invoice and its linked records updated.
+          </Typography>
+          {markPaidItem && requiresBillingApproval(markPaidItem) && markPaidItem.billingApprovalStatus !== 'approved' && (
+            <Alert severity="info" sx={{ borderRadius: '12px' }}>It is not yet approved for billing; it will be approved as well.</Alert>
+          )}
+          <TextField select label="How it was paid" value={markPaidMethod} onChange={event => setMarkPaidMethod(event.target.value)}>
+            <MenuItem value="cash">Cash</MenuItem>
+            <MenuItem value="cheque">Cheque</MenuItem>
+            <MenuItem value="ach">ACH</MenuItem>
+            <MenuItem value="bank_transfer">Bank transfer</MenuItem>
+            <MenuItem value="credit_card">Card</MenuItem>
+            <MenuItem value="other">Other</MenuItem>
+          </TextField>
+          <TextField label="Reference (optional)" placeholder="Cheque number, transaction ID..." value={markPaidReference}
+            onChange={event => setMarkPaidReference(event.target.value)} inputProps={{ maxLength: 120 }} />
+          <TextField label="Note (optional)" value={markPaidNotes} onChange={event => setMarkPaidNotes(event.target.value)}
+            multiline minRows={2} inputProps={{ maxLength: 1000 }} />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setMarkPaidItem(null)} disabled={markPaidMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => markPaidItem && markPaidMut.mutate({ item: markPaidItem })}
+            disabled={!canMarkPaid || markPaidMut.isPending}
+            startIcon={markPaidMut.isPending ? <CircularProgress size={18} color="inherit" /> : <PriceCheckIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: '#047857', '&:hover': { bgcolor: '#065F46' } }}
+          >
+            Mark as Paid
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ServiceInvoiceShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
       <ServiceInvoicePayDialog
