@@ -1103,6 +1103,8 @@ const Inspections = () => {
   // in, including while the keyboard is open.
   const muiTheme = useTheme()
   const reportOnPhone = useMediaQuery(PHONE_EITHER_WAY)
+  // The Inspection Batch window goes by the same rule: a phone either way.
+  const batchOnPhone = reportOnPhone
   const [viewReport, setViewReport] = useState<Inspection | null>(null)
   const [infoInspection, setInfoInspection] = useState<Inspection | null>(null)
 
@@ -4541,6 +4543,70 @@ const Inspections = () => {
     || (reportFormSource === 'attached' && Boolean(activeReportSchema?.custom_grid))
     || (reportFormSource === 'existing' && Boolean(activeReportSchema?.custom_grid))
 
+  // The batch window's buttons: beside the title on a wide screen; on a phone, at
+  // the top of the list, so they scroll away instead of taking the height.
+  const batchToolbar = selectedBatch && canInitiateInspections ? (
+    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end', ...(batchOnPhone ? { justifyContent: 'stretch', mb: 1.5, '& > span, & > .MuiButton-root': { flex: '1 1 auto' }, '& > span > .MuiButton-root': { width: '100%' }, '& > .MuiChip-root': { flexBasis: '100%', justifyContent: 'flex-start', width: 'fit-content', maxWidth: '100%' } } : {}) }}>
+      {selectedBatchBillingApproved && (
+        <Chip
+          size="small"
+          label="Billing approved · batch locked"
+          sx={{ alignSelf: 'center', bgcolor: '#ECFDF5', color: '#047857', fontWeight: 900 }}
+        />
+      )}
+      {selectedBatch.batch_invoice && !selectedBatchBillingApproved && (
+        <Chip
+          size="small"
+          label={`${selectedBatch.batch_invoice.invoice_number} will be updated`}
+          sx={{ alignSelf: 'center', bgcolor: '#F5F3FF', color: '#6D28D9', fontWeight: 900 }}
+        />
+      )}
+      {canEditInspections && (selectedBatch.status === 'upcoming' || selectedBatch.status === 'in_progress') && (
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<PersonIcon />}
+          onClick={() => { setBatchTechId(selectedBatch.inspector_id || ''); setBatchTechOpen(true) }}
+          sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+        >
+          Change Technician
+        </Button>
+      )}
+      <Tooltip
+        title={selectedBatchBillingApproved ? 'The approved batch invoice protects this inspection scope from further asset additions.' : ''}
+      >
+        <span>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => setAddExistingAssetOpen(true)}
+            disabled={!canAddAssetsToSelectedBatch}
+            sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+          >
+            Add Existing Inventory
+          </Button>
+        </span>
+      </Tooltip>
+      <Tooltip
+        title={selectedBatchBillingApproved ? 'The approved batch invoice protects this inspection scope from further asset additions.' : ''}
+      >
+        <span>
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setAddAssetOpen(true)}
+            disabled={!canAddAssetsToSelectedBatch}
+            sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: '#10B981' }}
+          >
+            Add New Inventory
+          </Button>
+        </span>
+      </Tooltip>
+    </Box>
+  ) : null
+
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
       <Card sx={{ p: 3, mb: 3, borderRadius: '24px', border: '1px solid #E6E8F2', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
@@ -5124,84 +5190,30 @@ const Inspections = () => {
         )}
       </Card>
 
-      <Dialog open={Boolean(selectedBatchId)} onClose={() => setSelectedBatchId(null)} maxWidth="xl" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', fontWeight: 900, color: '#1E1B4B' }}>
-          <Box>
+      <Dialog open={Boolean(selectedBatchId)} onClose={() => setSelectedBatchId(null)} maxWidth="xl" fullWidth fullScreen={batchOnPhone} PaperProps={{ sx: { borderRadius: batchOnPhone ? 0 : '22px' } }}>
+        <DialogTitle sx={{
+          display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', fontWeight: 900, color: '#1E1B4B',
+          // On a phone: a slim title, so the assets have the height.
+          ...(batchOnPhone ? { px: 2, py: 1.25, fontSize: '1.05rem', lineHeight: 1.3 } : {}),
+          [PHONE_ON_ITS_SIDE]: { py: '6px !important', fontSize: '0.95rem' },
+        }}>
+          <Box sx={{ minWidth: 0 }}>
             Inspection Batch
-            <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, ...(batchOnPhone ? { fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>
               {selectedBatch?.batch_number || 'Loading'} - {selectedBatch?.facility_name || ''}
             </Typography>
           </Box>
-          {selectedBatch && canInitiateInspections && (
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {selectedBatchBillingApproved && (
-                <Chip
-                  size="small"
-                  label="Billing approved · batch locked"
-                  sx={{ alignSelf: 'center', bgcolor: '#ECFDF5', color: '#047857', fontWeight: 900 }}
-                />
-              )}
-              {selectedBatch.batch_invoice && !selectedBatchBillingApproved && (
-                <Chip
-                  size="small"
-                  label={`${selectedBatch.batch_invoice.invoice_number} will be updated`}
-                  sx={{ alignSelf: 'center', bgcolor: '#F5F3FF', color: '#6D28D9', fontWeight: 900 }}
-                />
-              )}
-              {canEditInspections && (selectedBatch.status === 'upcoming' || selectedBatch.status === 'in_progress') && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<PersonIcon />}
-                  onClick={() => { setBatchTechId(selectedBatch.inspector_id || ''); setBatchTechOpen(true) }}
-                  sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
-                >
-                  Change Technician
-                </Button>
-              )}
-              <Tooltip
-                title={selectedBatchBillingApproved ? 'The approved batch invoice protects this inspection scope from further asset additions.' : ''}
-              >
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<AddIcon />}
-                    onClick={() => setAddExistingAssetOpen(true)}
-                    disabled={!canAddAssetsToSelectedBatch}
-                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
-                  >
-                    Add Existing Inventory
-                  </Button>
-                </span>
-              </Tooltip>
-              <Tooltip
-                title={selectedBatchBillingApproved ? 'The approved batch invoice protects this inspection scope from further asset additions.' : ''}
-              >
-                <span>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => setAddAssetOpen(true)}
-                    disabled={!canAddAssetsToSelectedBatch}
-                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: '#10B981' }}
-                  >
-                    Add New Inventory
-                  </Button>
-                </span>
-              </Tooltip>
-            </Box>
-          )}
+          {!batchOnPhone && batchToolbar}
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={batchOnPhone ? { px: 1.5, py: 1.5, [PHONE_ON_ITS_SIDE]: { py: 1 } } : undefined}>
+          {batchOnPhone && batchToolbar}
           {batchDetailQ.isLoading ? (
             <Box sx={{ display: 'grid', gap: 1 }}>
               {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} height={44} />)}
             </Box>
           ) : selectedBatch ? (
-            <Box sx={{ display: 'grid', gap: 2 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+            <Box sx={{ display: 'grid', gap: batchOnPhone ? 1.5 : 2 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: batchOnPhone ? 1 : 2, [PHONE_ON_ITS_SIDE]: { gridTemplateColumns: 'repeat(4, 1fr)' }, ...(batchOnPhone ? { '& > .MuiCard-root': { p: 1.25, borderRadius: '12px' } } : {}) }}>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
                   <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Work Order</Typography>
                   <Typography sx={{ color: '#6D28D9', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontWeight: 900, fontSize: '1.02rem', mt: 0.75 }}>{selectedBatch.batch_number}</Typography>
@@ -5231,6 +5243,44 @@ const Inspections = () => {
                 </Card>
               </Box>
 
+              {batchOnPhone ? (
+                <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: '1fr', [PHONE_ON_ITS_SIDE]: { gridTemplateColumns: '1fr 1fr' } }}>
+                  {(selectedBatch.assets || []).map(asset => {
+                    const chip = statusChip(asset.status)
+                    const status = String(asset.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+                    const line = (label: string, value?: string | null) => (
+                      <Box sx={{ display: 'flex', gap: 1, minWidth: 0, fontSize: 13 }}>
+                        <Typography component="span" sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0, width: 82, pt: '2px' }}>{label}</Typography>
+                        <Typography component="span" sx={{ color: '#334155', fontSize: 13, fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>{value || '—'}</Typography>
+                      </Box>
+                    )
+                    return (
+                      <Card key={asset.id} data-batch-asset={asset.id} sx={{ p: 1.25, borderRadius: '12px', border: '1px solid #EEF0F6', boxShadow: 'none', display: 'grid', gap: 0.5, alignContent: 'start' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                          <Typography onClick={() => openBatchAsset(asset, selectedBatch)} sx={{ color: '#7161D8', fontWeight: 900, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', cursor: 'pointer', overflowWrap: 'anywhere', minWidth: 0 }}>
+                            {asset.asset_tag || asset.part_number || '-'}
+                          </Typography>
+                          <Chip size="small" label={status} sx={{ ml: 'auto', maxWidth: '55%', bgcolor: chip.bg, color: chip.color, fontWeight: 800, borderRadius: '8px' }} />
+                          <IconButton size="small" aria-label="Actions" onClick={(event) => openAssetActions(event, asset)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                        {asset.equipment_description && (
+                          <Typography onClick={() => openBatchAsset(asset, selectedBatch)} sx={{ color: '#312E81', fontWeight: 800, fontSize: 14, cursor: 'pointer', overflowWrap: 'anywhere' }}>
+                            {asset.equipment_description}
+                          </Typography>
+                        )}
+                        {line('Make', asset.make)}
+                        {line('Model', asset.model)}
+                        {line('Modality', [asset.modality_name, asset.sub_modality_name].filter(Boolean).join(' / '))}
+                        <Box onClick={() => openBatchAsset(asset, selectedBatch)} sx={{ cursor: 'pointer' }}>{line('Serial', asset.serial_number)}</Box>
+                        {line('Tier', asset.tier_name)}
+                        {line('Technician', asset.inspector_name)}
+                      </Card>
+                    )
+                  })}
+                </Box>
+              ) : (
               <TableContainer className="list-scroll-panel">
                 <Table
                   stickyHeader
@@ -5311,12 +5361,17 @@ const Inspections = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+              )}
             </Box>
           ) : (
             <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Batch not found.</Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+        <DialogActions sx={{
+          px: 3, py: 2, gap: 1,
+          ...(batchOnPhone ? { px: 1.5, py: 1, pb: 'calc(8px + env(safe-area-inset-bottom))', flexWrap: 'wrap', '& > :not(style) ~ :not(style)': { ml: 0 }, '& .MuiButton-root': { minHeight: 40, py: 0.5, px: 1.5 } } : {}),
+          [PHONE_ON_ITS_SIDE]: { py: '6px !important', flexWrap: 'nowrap', '& .MuiButton-root': { minHeight: 36, whiteSpace: 'nowrap' } },
+        }}>
           {selectedBatch && (
             <>
               {selectedBatch.status === 'upcoming' && canEditInspections && (
