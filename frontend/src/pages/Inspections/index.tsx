@@ -693,6 +693,11 @@ const fetchFacilityStaff = async (facilityIds: number[]): Promise<UserData[]> =>
   return mergeUsers(results.map(result => (result.status === 'fulfilled' ? result.value.items || [] : [])))
 }
 
+// A phone held upright (narrow) or on its side (a short touch screen). On its side
+// a phone is wide but only about 390px tall, so width alone took it for a tablet.
+const PHONE_EITHER_WAY = '(max-width:599.95px), (max-height:500px) and (pointer:coarse)'
+const PHONE_ON_ITS_SIDE = '@media (max-height:500px) and (pointer:coarse)'
+
 const flattenModalities = (items: Modality[]): Modality[] =>
   items.flatMap((item) => [item, ...flattenModalities(item.children || [])])
 
@@ -1097,7 +1102,7 @@ const Inspections = () => {
   // On a phone the report fills the screen, so the form has all of it to work
   // in, including while the keyboard is open.
   const muiTheme = useTheme()
-  const reportOnPhone = useMediaQuery(muiTheme.breakpoints.down('sm'))
+  const reportOnPhone = useMediaQuery(PHONE_EITHER_WAY)
   const [viewReport, setViewReport] = useState<Inspection | null>(null)
   const [infoInspection, setInfoInspection] = useState<Inspection | null>(null)
 
@@ -6686,7 +6691,10 @@ const Inspections = () => {
         fullScreen={reportOnPhone}
         PaperProps={{ sx: { borderRadius: reportOnPhone ? 0 : '22px' } }}
       >
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap', px: { xs: 2, sm: 3 }, py: { xs: 1.5, sm: 2 }, fontSize: { xs: '1.05rem', sm: undefined } }}>
+        <DialogTitle sx={{
+          fontWeight: 900, color: '#1E1B4B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap', px: { xs: 2, sm: 3 }, py: { xs: 1.5, sm: 2 }, fontSize: { xs: '1.05rem', sm: undefined },
+          [PHONE_ON_ITS_SIDE]: { py: '6px !important', px: '16px !important', fontSize: '0.95rem', flexWrap: 'nowrap', '& p': { fontSize: '12px' }, '& .MuiChip-root': { height: 26 } },
+        }}>
           <Box>
             Technician Inspection Report
             <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
@@ -6703,7 +6711,7 @@ const Inspections = () => {
                 <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
                   Choose the form source for this inspection report. Custom forms can be saved for future assets.
                 </Typography>
-                <RadioGroup row value={reportFormSource} onChange={(event) => applyReportFormSource(event.target.value as ReportFormSource)}>
+                <RadioGroup row={!reportOnPhone} value={reportFormSource} onChange={(event) => applyReportFormSource(event.target.value as ReportFormSource)} sx={reportOnPhone ? { gap: 0.25, '& .MuiFormControlLabel-root': { alignItems: 'flex-start', mr: 0 }, '& .MuiRadio-root': { pt: 0.5 }, '& .MuiFormControlLabel-label': { pt: 0.75, lineHeight: 1.35 } } : undefined}>
                   <FormControlLabel
                     value="default"
                     control={<Radio />}
@@ -6955,7 +6963,10 @@ const Inspections = () => {
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, pb: { xs: 'calc(16px + env(safe-area-inset-bottom))', sm: 2 } }}>
+        <DialogActions sx={{
+          px: { xs: 2, sm: 3 }, py: 2, pb: { xs: 'calc(16px + env(safe-area-inset-bottom))', sm: 2 },
+          [PHONE_ON_ITS_SIDE]: { py: '6px !important', px: '16px !important', '& .MuiButton-root': { minHeight: 36, py: 0.5 } },
+        }}>
           <Button onClick={() => setReportInspection(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
           <Button startIcon={reportMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={submitReport} disabled={!canEditInspections || reportMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
             {reportStatus === 'completed' ? 'Complete Report' : 'Save as In Progress'}

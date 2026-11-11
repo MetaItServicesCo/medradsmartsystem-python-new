@@ -529,6 +529,43 @@ input[type='number'] {
   }
 }
 
+/* A phone on its side: wide, but only about 390px tall, so the rules above,
+   which go by width, take it for a tablet. Give it the phone essentials: a
+   window that asks to be full screen fills it, every window fits above the
+   keyboard, fields are 16px so tapping one does not zoom the page, and while
+   typing a full-screen window's title and buttons step aside for the form. */
+@media (max-height: 500px) and (pointer: coarse) {
+  .MuiDialog-paper.MuiDialog-paperFullScreen {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .MuiDialog-root > .MuiDialog-container {
+    height: var(--visible-height, 100%);
+    transform: translateY(var(--visible-top, 0px));
+  }
+
+  .MuiDialog-paper:not(.MuiDialog-paperFullScreen) {
+    max-height: calc(var(--visible-height, 100dvh) - 16px) !important;
+  }
+
+  html.keyboard-open .MuiDialog-paperFullScreen > .MuiDialogActions-root,
+  html.keyboard-open .MuiDialog-paperFullScreen > .MuiDialogTitle-root {
+    display: none;
+  }
+
+  .MuiInputBase-input,
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* Preserve the full motion system by default while respecting the platform's
    accessibility preference when a user explicitly requests reduced motion. */
 @media (prefers-reduced-motion: reduce) {
