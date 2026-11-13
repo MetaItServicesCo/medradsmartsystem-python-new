@@ -596,13 +596,17 @@ const partsHtml = (inspection: InspectionReportLike) => {
 
 const testEquipmentHtml = (inspection: InspectionReportLike) => {
   const data = reportData(inspection)
-  const items: any[] = (data.test_equipment || []).filter((t: any) => hasVal(t.description) || hasVal(t.make) || hasVal(t.serial_number))
+  const items: any[] = (data.test_equipment || []).filter((t: any) => t && (hasVal(t.description) || hasVal(t.make) || hasVal(t.model) || hasVal(t.serial_number) || hasVal(t.asset)))
   if (!items.length) return ''
+  // Equipment picked from the Test Equipment list also carries its model and
+  // asset number: a column for each when any item has one.
+  const withModel = items.some((t: any) => hasVal(t.model))
+  const withAsset = items.some((t: any) => hasVal(t.asset))
   return `
     <h2 class="sec">Test Equipment</h2>
     <table class="doc">
-      <thead><tr><th>Make</th><th>SN#</th><th>Description</th></tr></thead>
-      <tbody>${items.map((t: any) => `<tr><td>${esc(t.make || '-')}</td><td>${esc(t.serial_number || '-')}</td><td>${esc(t.description || '-')}</td></tr>`).join('')}</tbody>
+      <thead><tr><th>Make</th>${withModel ? '<th>Model</th>' : ''}<th>SN#</th><th>Description</th>${withAsset ? '<th>Asset #</th>' : ''}</tr></thead>
+      <tbody>${items.map((t: any) => `<tr><td>${esc(t.make || '-')}</td>${withModel ? `<td>${esc(t.model || '-')}</td>` : ''}<td>${esc(t.serial_number || '-')}</td><td>${esc(t.description || '-')}</td>${withAsset ? `<td>${esc(t.asset || '-')}</td>` : ''}</tr>`).join('')}</tbody>
     </table>`
 }
 

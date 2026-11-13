@@ -290,6 +290,18 @@ ok('a report with none of it adds no empty sections', !['Measurements', 'Photo D
 const hostile = cePage(print({ form_data: { photo_documentation: [{ label: '<b>x</b>', url: 'javascript:alert(1)//.png' }, { label: 'q', url: 'https://x.test/a.png" onerror="alert(1)' }] } }))
 ok('a hostile photo link is printed as text, never run', !hostile.includes('<img src="javascript') && !hostile.includes('onerror="alert') && !hostile.includes('<b>x</b>'))
 
+// ── Test equipment ─────────────────────────────────────────────────────────
+const picked = cePage(print({ form_data: { test_equipment: [
+  { id: 4, description: 'Safety Analyzer', make: 'Fluke', model: 'ESA615', serial_number: 'F-1', asset: 'TE-0007' },
+  { description: 'MultiMeter', make: 'Fluke', serial_number: 'M-2' },
+] } }))
+ok('test equipment from the list prints its model and asset #', picked.includes('ESA615') && picked.includes('TE-0007') && picked.includes('>Model<') && picked.includes('>Asset #<'))
+ok('  and every item, with dashes where one has none', picked.includes('MultiMeter') && picked.includes('M-2'))
+const typedEquipment = cePage(print({ form_data: { test_equipment: [{ description: 'Safety Analyzer', make: 'Fluke', serial_number: 'F-1' }] } }))
+ok('typed-in test equipment prints as before: no empty Model or Asset # column', typedEquipment.includes('Safety Analyzer') && !typedEquipment.includes('>Model<') && !typedEquipment.includes('>Asset #<'))
+const blankDefaults = cePage(print({ form_data: { test_equipment: [{ description: '', make: '', serial_number: '' }] } }))
+ok('no test equipment entered: no section', !blankDefaults.includes('Test Equipment'))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)
