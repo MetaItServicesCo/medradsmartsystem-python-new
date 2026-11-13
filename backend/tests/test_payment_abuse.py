@@ -511,9 +511,9 @@ db.close()
 
 square.answer, square.charges = "ok", []
 r = rpay(RENTAL_TOKEN, {**card, "idempotency_key": "rent-good-00001", "amount": "0.01", "amount_paid": "300"})
-ok("a payment charges the server's balance plus the 3% card fee, whatever amount the browser sends",
-   r.status_code == 200 and square.charges == [("rent-good-00001", D("309.00"))], str(square.charges))
-ok("  and the invoice is paid, the fee on it", money_on(RENTAL_INV) == (D("309.00"), InvoiceStatus.PAID))
+ok("a payment charges the server's balance plus the 3.5% card fee, whatever amount the browser sends",
+   r.status_code == 200 and square.charges == [("rent-good-00001", D("310.50"))], str(square.charges))
+ok("  and the invoice is paid, the fee on it", money_on(RENTAL_INV) == (D("310.50"), InvoiceStatus.PAID))
 r = rpay(RENTAL_TOKEN, {**card, "idempotency_key": "rent-good-00001"})
 ok("replaying it charges nothing more", len(square.charges) == 1 and r.status_code == 200)
 r = rpay(RENTAL_TOKEN, {**card, "idempotency_key": "rent-good-00002"})

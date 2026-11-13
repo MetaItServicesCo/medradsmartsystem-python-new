@@ -1,8 +1,8 @@
 """Card payments through Square, with the card processing fee.
 
-Every card payment charges the amount being paid plus 3%, in one Square
+Every card payment charges the amount being paid plus 3.5%, in one Square
 payment, and the fee becomes part of the invoice: a $300 invoice paid by card
-charges $309, its card fee is $9 and its total $309, all paid. ACH, MBMTS ACH
+charges $310.50, its card fee is $10.50 and its total $310.50, all paid. ACH, MBMTS ACH
 and cheque add nothing. A card payment is never typed in.
 
 Exactly once: a retry with the same key never charges again, a different
@@ -66,7 +66,7 @@ settings.SQUARE_ENVIRONMENT, settings.SQUARE_APPLICATION_ID = "sandbox", "sandbo
 settings.SQUARE_ACCESS_TOKEN, settings.SQUARE_LOCATION_ID, settings.SQUARE_CURRENCY = "server-token", "LOC", "USD"
 settings.SQUARE_WEBHOOK_SIGNATURE_KEY = "webhook-signing-key"
 settings.SQUARE_WEBHOOK_NOTIFICATION_URL = "https://medcodesolution.com/api/v1/webhooks/square"
-settings.CARD_PROCESSING_FEE_PERCENT = "3"
+settings.CARD_PROCESSING_FEE_PERCENT = "3.5"
 read_cache.settings.READ_CACHE_ENABLED = False
 
 failures: list[str] = []
@@ -271,21 +271,23 @@ def pay(invoice_id, key, charge_amount):
 
 
 print("The fee")
-ok("$300 -> $9.00 fee, $309.00 charged", card_charge("300") == card_charge(D("300.00")) and card_charge("300").fee == D("9.00") and card_charge("300").total == D("309.00"))
-ok("$200 -> $6.00 fee, $206.00 charged", card_charge("200").fee == D("6.00") and card_charge("200").total == D("206.00"))
-ok("cents round half up: $100.50 -> $3.02", card_charge("100.50").fee == D("3.02"))
+ok("$300 -> $10.50 fee, $310.50 charged", card_charge("300") == card_charge(D("300.00")) and card_charge("300").fee == D("10.50") and card_charge("300").total == D("310.50"))
+ok("$200 -> $7.00 fee, $207.00 charged", card_charge("200").fee == D("7.00") and card_charge("200").total == D("207.00"))
+ok("cents round half up: $100.50 -> $3.52 (3.5175)", card_charge("100.50").fee == D("3.52"))
+ok("  and $125 -> $4.38 (4.375)", card_charge("125").fee == D("4.38"))
 
 print("\nA Super Admin pays a service invoice by card")
 current["who"] = "boss"
 view = preview(SERVICE).json()
-ok("the card window is told the balance, the fee and the total", (view["balance_due"], view["card_fee"], view["charge_amount"]) == ("300.00", "9.00", "309.00"), view)
-ok("  with the fee's name", view["card_fee_label"] == "Card processing fee (3%)", view.get("card_fee_label"))
+ok("the card window is told the balance, the fee and the total", (view["balance_due"], view["card_fee"], view["charge_amount"]) == ("300.00", "10.50", "310.50"), view)
+ok("  with the fee's name", view["card_fee_label"] == "Card processing fee (3.5%)", view.get("card_fee_label"))
+ok("  and its percentage", view["card_fee_percent"] == "3.5", view.get("card_fee_percent"))
 ok("  and the secure card form's settings", view["square_payment"]["enabled"] is True and view["can_pay"] is True)
-r = pay(SERVICE, "pay-service-0001-aaaa", "309.00")
+r = pay(SERVICE, "pay-service-0001-aaaa", "310.50")
 inv = row(SERVICE)
-ok("Square is charged $309.00, once", r.status_code == 200 and square.charges == [("pay-service-0001-aaaa", D("309.00"))], (r.status_code, r.text[:150], square.charges))
-ok("  the invoice's total becomes $309.00, its fee $9.00", inv.total_amount == D("309.00") and inv.card_fee_amount == D("9.00"), (inv.total_amount, inv.card_fee_amount))
-ok("  and it is paid in full", inv.status == InvoiceStatus.PAID and inv.amount_paid == D("309.00") and inv.balance_due == D("0"), (inv.status, inv.amount_paid, inv.balance_due))
+ok("Square is charged $310.50, once", r.status_code == 200 and square.charges == [("pay-service-0001-aaaa", D("310.50"))], (r.status_code, r.text[:150], square.charges))
+ok("  the invoice's total becomes $310.50, its fee $10.50", inv.total_amount == D("310.50") and inv.card_fee_amount == D("10.50"), (inv.total_amount, inv.card_fee_amount))
+ok("  and it is paid in full", inv.status == InvoiceStatus.PAID and inv.amount_paid == D("310.50") and inv.balance_due == D("0"), (inv.status, inv.amount_paid, inv.balance_due))
 ok("  by card through Square", inv.payment_method == "square_card")
 ok("  the ledger shows the fee, then the payment", ledger(SERVICE)[-3:-1] == ["card_processing_fee", "payment"] or ledger(SERVICE)[-2:] == ["card_processing_fee", "payment"] or ("card_processing_fee" in ledger(SERVICE) and ledger(SERVICE).index("card_processing_fee") < ledger(SERVICE).index("payment")), ledger(SERVICE))
 db = Session()
@@ -293,49 +295,49 @@ payment_row = db.query(InvoiceTransaction).filter(InvoiceTransaction.invoice_id 
 operation = db.query(PaymentOperation).filter(PaymentOperation.invoice_id == SERVICE).one()
 db.close()
 ok("  the payment carries Square's id and the card", payment_row.reference_number == "SQ-1" and payment_row.card_last4 == "4242", (payment_row.reference_number, payment_row.card_last4))
-ok("  the charge's record says what fee it carried", operation.status == "succeeded" and operation.response_data.get("card_fee") == "9.00", operation.response_data)
-r = pay(SERVICE, "pay-service-0001-aaaa", "309.00")
-ok("the same request again charges nothing", r.status_code == 200 and len(square.charges) == 1 and row(SERVICE).amount_paid == D("309.00"))
-r = pay(SERVICE, "pay-service-0002-bbbb", "309.00")
+ok("  the charge's record says what fee it carried", operation.status == "succeeded" and operation.response_data.get("card_fee") == "10.50", operation.response_data)
+r = pay(SERVICE, "pay-service-0001-aaaa", "310.50")
+ok("the same request again charges nothing", r.status_code == 200 and len(square.charges) == 1 and row(SERVICE).amount_paid == D("310.50"))
+r = pay(SERVICE, "pay-service-0002-bbbb", "310.50")
 ok("a new request on the paid invoice is refused, nothing charged", r.status_code == 409 and len(square.charges) == 1)
 
 print("\nThe fee is on what is left to pay")
 view = preview(PARTLY).json()
-ok("$200 paid of $500: the card pays $300 + $9.00", (view["balance_due"], view["card_fee"], view["charge_amount"]) == ("300.00", "9.00", "309.00"), view)
-r = pay(PARTLY, "pay-partly-0001-cccc", "309.00")
+ok("$200 paid of $500: the card pays $300 + $10.50", (view["balance_due"], view["card_fee"], view["charge_amount"]) == ("300.00", "10.50", "310.50"), view)
+r = pay(PARTLY, "pay-partly-0001-cccc", "310.50")
 inv = row(PARTLY)
-ok("  charged $309.00; the invoice is $509.00, all paid", r.status_code == 200 and square.charges[-1][1] == D("309.00") and inv.total_amount == D("509.00") and inv.amount_paid == D("509.00") and inv.status == InvoiceStatus.PAID, (inv.total_amount, inv.amount_paid))
+ok("  charged $310.50; the invoice is $510.50, all paid", r.status_code == 200 and square.charges[-1][1] == D("310.50") and inv.total_amount == D("510.50") and inv.amount_paid == D("510.50") and inv.status == InvoiceStatus.PAID, (inv.total_amount, inv.amount_paid))
 
 print("\nAny invoice: an inspection invoice")
-r = pay(INSPECTION, "pay-inspect-0001-dddd", "1030.00")
+r = pay(INSPECTION, "pay-inspect-0001-dddd", "1035.00")
 inv = row(INSPECTION)
-ok("$1,000 charges $1,030.00 and is paid", r.status_code == 200 and inv.card_fee_amount == D("30.00") and inv.status == InvoiceStatus.PAID, (r.status_code, r.text[:100]))
+ok("$1,000 charges $1,035.00 and is paid", r.status_code == 200 and inv.card_fee_amount == D("35.00") and inv.status == InvoiceStatus.PAID, (r.status_code, r.text[:100]))
 
 print("\nThe amount the payer saw")
 before = len(square.charges)
 r = pay(MOVED, "pay-moved-0001-eeee", "300.00")
-ok("a card payment for the balance without the fee is refused, nothing charged", r.status_code == 409 and "changed to $309.00" in r.text and len(square.charges) == before, r.text[:120])
+ok("a card payment for the balance without the fee is refused, nothing charged", r.status_code == 409 and "changed to $310.50" in r.text and len(square.charges) == before, r.text[:120])
 ok("  and the invoice is untouched", row(MOVED).amount_paid == 0 and row(MOVED).card_fee_amount == 0)
 
 print("\nA declined card")
 square.answer = "decline"
-r = pay(DECLINED, "pay-decline-0001-ffff", "51.50")
+r = pay(DECLINED, "pay-decline-0001-ffff", "51.75")
 inv = row(DECLINED)
 ok("records nothing: no fee, no payment", r.status_code == 400 and inv.amount_paid == 0 and inv.card_fee_amount == 0 and inv.total_amount == D("50.00"), (r.status_code, inv.total_amount))
 square.answer = "ok"
-r = pay(DECLINED, "pay-decline-0002-gggg", "51.50")
-ok("  another card then pays it", r.status_code == 200 and row(DECLINED).status == InvoiceStatus.PAID and row(DECLINED).total_amount == D("51.50"))
+r = pay(DECLINED, "pay-decline-0002-gggg", "51.75")
+ok("  another card then pays it", r.status_code == 200 and row(DECLINED).status == InvoiceStatus.PAID and row(DECLINED).total_amount == D("51.75"))
 
 print("\nAn answer lost on the way")
 square.answer = "lost"
-r = pay(LOST, "pay-lost-0001-hhhh", "206.00")
+r = pay(LOST, "pay-lost-0001-hhhh", "207.00")
 inv = row(LOST)
 ok("records nothing yet", r.status_code >= 400 and inv.amount_paid == 0 and inv.card_fee_amount == 0, (r.status_code, inv.amount_paid))
 square.answer = "ok"
 before = len(square.charges)
-r = pay(LOST, "pay-lost-0002-iiii", "206.00")
+r = pay(LOST, "pay-lost-0002-iiii", "207.00")
 ok("  and no new charge can be made until it is settled", r.status_code == 409 and len(square.charges) == before, (r.status_code, r.text[:100]))
-r = pay(LOST, "pay-lost-0001-hhhh", "206.00")
+r = pay(LOST, "pay-lost-0001-hhhh", "207.00")
 ok("  nor the same one sent again", r.status_code == 409 and len(square.charges) == before, (r.status_code, r.text[:100]))
 
 
@@ -353,23 +355,23 @@ def webhook(event_id, reference, cents, payment_id):
                        headers={"content-type": "application/json", "x-square-hmacsha256-signature": signed(body)})
 
 
-r = webhook("ev-lost-1", row(LOST).invoice_number, 20600, "SQ-LOST")
+r = webhook("ev-lost-1", row(LOST).invoice_number, 20700, "SQ-LOST")
 inv = row(LOST)
-ok("Square's webhook settles it: $206.00 recorded, the $6.00 fee on the invoice", r.status_code == 200 and inv.status == InvoiceStatus.PAID and inv.card_fee_amount == D("6.00") and inv.total_amount == D("206.00") and inv.amount_paid == D("206.00"), (r.text, inv.total_amount, inv.card_fee_amount, inv.amount_paid))
-r = webhook("ev-lost-2", row(LOST).invoice_number, 20600, "SQ-LOST")
+ok("Square's webhook settles it: $207.00 recorded, the $7.00 fee on the invoice", r.status_code == 200 and inv.status == InvoiceStatus.PAID and inv.card_fee_amount == D("7.00") and inv.total_amount == D("207.00") and inv.amount_paid == D("207.00"), (r.text, inv.total_amount, inv.card_fee_amount, inv.amount_paid))
+r = webhook("ev-lost-2", row(LOST).invoice_number, 20700, "SQ-LOST")
 inv = row(LOST)
-ok("  the same payment delivered again changes nothing", inv.amount_paid == D("206.00") and inv.card_fee_amount == D("6.00") and ledger(LOST).count("card_processing_fee") == 1)
+ok("  the same payment delivered again changes nothing", inv.amount_paid == D("207.00") and inv.card_fee_amount == D("7.00") and ledger(LOST).count("card_processing_fee") == 1)
 
 print("\nWho may pay by card, and when not")
 current["who"] = "admin"
-ok("an Admin cannot (only a Super Admin or the facility)", preview(SERVICE).status_code == 403 and pay(MOVED, "pay-admin-0001-jjjj", "309.00").status_code == 403)
+ok("an Admin cannot (only a Super Admin or the facility)", preview(SERVICE).status_code == 403 and pay(MOVED, "pay-admin-0001-jjjj", "310.50").status_code == 403)
 current["who"] = "outsider"
-ok("another facility's user cannot", pay(SERVICE, "pay-outsider-001-kkkk", "309.00").status_code == 403)
-ok("  nor see the invoice by sending someone else's completed payment again", pay(SERVICE, "pay-service-0001-aaaa", "309.00").status_code == 403)
+ok("another facility's user cannot", pay(SERVICE, "pay-outsider-001-kkkk", "310.50").status_code == 403)
+ok("  nor see the invoice by sending someone else's completed payment again", pay(SERVICE, "pay-service-0001-aaaa", "310.50").status_code == 403)
 current["who"] = "facadmin"
-r = pay(FACILITY_OWN, "pay-facility-001-llll", "103.00")
+r = pay(FACILITY_OWN, "pay-facility-001-llll", "103.50")
 inv = row(FACILITY_OWN)
-ok("a facility's own billing user pays their invoice by card: charged at once, no claim to verify", r.status_code == 200 and inv.status == InvoiceStatus.PAID and inv.card_fee_amount == D("3.00"), (r.status_code, r.text[:120]))
+ok("a facility's own billing user pays their invoice by card: charged at once, no claim to verify", r.status_code == 200 and inv.status == InvoiceStatus.PAID and inv.card_fee_amount == D("3.50"), (r.status_code, r.text[:120]))
 current["who"] = "boss"
 ok("an invoice not approved for billing cannot be paid", preview(UNAPPROVED).status_code == 409)
 ok("nor a cancelled one", preview(CANCELLED).status_code == 409)
@@ -381,35 +383,35 @@ ok("a card payment can no longer be typed in", r.status_code == 409 and row(MOVE
 print("\nA service quotation paid by card")
 current["who"] = "facadmin"
 view = client.get(f"/api/v1/service-requests/quotations/{QUOTE}/card-payment").json()
-ok("$750 -> $22.50 fee, $772.50 charged", (view["balance_due"], view["card_fee"], view["charge_amount"]) == ("750.00", "22.50", "772.50"), view)
+ok("$750 -> $26.25 fee, $776.25 charged", (view["balance_due"], view["card_fee"], view["charge_amount"]) == ("750.00", "26.25", "776.25"), view)
 r = client.post(f"/api/v1/service-requests/quotations/{QUOTE}/square-payment",
-                json={"source_id": "cnon:card-ok", "idempotency_key": "pay-quote-0001-mmmm", "charge_amount": "772.50"})
+                json={"source_id": "cnon:card-ok", "idempotency_key": "pay-quote-0001-mmmm", "charge_amount": "776.25"})
 db = Session()
 payments = [(p.amount, p.card_fee_amount, p.payment_method) for p in db.query(QuotationPayment).filter(QuotationPayment.quotation_id == QUOTE)]
 quote_row = db.get(ServiceRequestQuotation, QUOTE)
 charged_entries = db.query(QuotationLedgerEntry).filter(QuotationLedgerEntry.quotation_id == QUOTE, QuotationLedgerEntry.event_type == "card_charged").all()
 db.close()
-ok("Square is charged $772.50", r.status_code == 200 and square.charges[-1] == ("pay-quote-0001-mmmm", D("772.50")), (r.status_code, r.text[:150]))
-ok("  the quotation is paid its $750, with the $22.50 fee on the payment", payments == [(D("750.00"), D("22.50"), "credit_card")], payments)
+ok("Square is charged $776.25", r.status_code == 200 and square.charges[-1] == ("pay-quote-0001-mmmm", D("776.25")), (r.status_code, r.text[:150]))
+ok("  the quotation is paid its $750, with the $26.25 fee on the payment", payments == [(D("750.00"), D("26.25"), "credit_card")], payments)
 ok("  and is paid", quote_row.status == "paid")
-ok("  its ledger records the charge with Square's id", len(charged_entries) == 1 and charged_entries[0].amount == D("772.50"))
+ok("  its ledger records the charge with Square's id", len(charged_entries) == 1 and charged_entries[0].amount == D("776.25"))
 before = len(square.charges)
 r = client.post(f"/api/v1/service-requests/quotations/{QUOTE}/square-payment",
-                json={"source_id": "cnon:card-ok", "idempotency_key": "pay-quote-0001-mmmm", "charge_amount": "772.50"})
+                json={"source_id": "cnon:card-ok", "idempotency_key": "pay-quote-0001-mmmm", "charge_amount": "776.25"})
 ok("  the same request again charges nothing", len(square.charges) == before and r.status_code == 200)
 r = client.post(f"/api/v1/service-requests/quotations/{QUOTE_LOST}/payments", json={"amount": "400", "payment_method": "credit_card"})
 ok("a quotation card payment can no longer be typed in", r.status_code == 409)
 
 square.answer = "lost"
 r = client.post(f"/api/v1/service-requests/quotations/{QUOTE_LOST}/square-payment",
-                json={"source_id": "cnon:card-ok", "idempotency_key": "pay-quote-lost-001", "charge_amount": "412.00"})
+                json={"source_id": "cnon:card-ok", "idempotency_key": "pay-quote-lost-001", "charge_amount": "414.00"})
 square.answer = "ok"
-r = webhook("ev-quote-lost", "SQ-FEE-2", 41200, "SQ-QUOTE-LOST")
+r = webhook("ev-quote-lost", "SQ-FEE-2", 41400, "SQ-QUOTE-LOST")
 db = Session()
 payments = [(p.amount, p.card_fee_amount) for p in db.query(QuotationPayment).filter(QuotationPayment.quotation_id == QUOTE_LOST)]
 db.close()
-ok("a quotation charge whose answer was lost is settled by the webhook, fee included", payments == [(D("400.00"), D("12.00"))], (r.text, payments))
-webhook("ev-quote-lost-2", "SQ-FEE-2", 41200, "SQ-QUOTE-LOST")
+ok("a quotation charge whose answer was lost is settled by the webhook, fee included", payments == [(D("400.00"), D("14.00"))], (r.text, payments))
+webhook("ev-quote-lost-2", "SQ-FEE-2", 41400, "SQ-QUOTE-LOST")
 db = Session()
 count = db.query(QuotationPayment).filter(QuotationPayment.quotation_id == QUOTE_LOST).count()
 db.close()
@@ -423,8 +425,8 @@ result = rental_billing._try_auto_charge(db, rental_row, rental_invoice)
 db.commit()
 db.close()
 inv = row(RENTAL_INV)
-ok("$200 charges $206.00 to the card on file", result == "charged" and square.charges[-1][1] == D("206.00"), (result, square.charges[-1]))
-ok("  the invoice carries the $6.00 fee and is paid", inv.card_fee_amount == D("6.00") and inv.total_amount == D("206.00") and inv.status == InvoiceStatus.PAID, (inv.card_fee_amount, inv.total_amount, inv.status))
+ok("$200 charges $207.00 to the card on file", result == "charged" and square.charges[-1][1] == D("207.00"), (result, square.charges[-1]))
+ok("  the invoice carries the $7.00 fee and is paid", inv.card_fee_amount == D("7.00") and inv.total_amount == D("207.00") and inv.status == InvoiceStatus.PAID, (inv.card_fee_amount, inv.total_amount, inv.status))
 
 print()
 if failures:

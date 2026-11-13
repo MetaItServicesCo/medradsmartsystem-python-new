@@ -171,7 +171,7 @@ class Settings(BaseSettings):
     SQUARE_WEBHOOK_NOTIFICATION_URL: str = ""
     # Every card payment adds this percentage of the amount paid to the invoice
     # as its "Card processing fee" line. ACH, MBMTS ACH and cheque add nothing.
-    CARD_PROCESSING_FEE_PERCENT: str = "3"
+    CARD_PROCESSING_FEE_PERCENT: str = "3.5"
 
     # Comma-separated Fernet keys. The first key encrypts new reusable payment
     # references; remaining keys decrypt older values during key rotation.

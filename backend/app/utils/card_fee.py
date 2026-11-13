@@ -3,7 +3,7 @@
 Whenever an invoice (or a service quotation) is paid by card, a percentage of
 the amount being paid is added on top and charged with it, in one Square
 payment. Each invoice carries its own fee on its own amount: a $300 invoice
-paid by card charges $309; a later $200 invoice charges $206.
+paid by card charges $310.50; a later $200 invoice charges $207.
 
 On an invoice the fee becomes part of the bill at the moment of payment: the
 card_fee_amount field and total_amount rise by the fee, the ledger records a
@@ -38,7 +38,7 @@ def _money(value: Any) -> Decimal:
 
 
 def card_fee_percent() -> Decimal:
-    """The configured percentage (3 means 3%). Never negative."""
+    """The configured percentage (3.5 means 3.5%). Never negative."""
     try:
         percent = Decimal(str(settings.CARD_PROCESSING_FEE_PERCENT).strip() or "0")
     except (InvalidOperation, ValueError):
