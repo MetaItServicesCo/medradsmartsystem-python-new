@@ -1367,7 +1367,7 @@ const Billing = () => {
       const customRows = normalizeCustomLineItems((invoice as any).line_items, item.number)
       if (customRows.length) return customRows
       if (invoice.inspection_batch_id && invoice.batch_items?.length) {
-        return invoice.batch_items.map(line => ({
+        const assetRows: PrintableLineItem[] = invoice.batch_items.map(line => ({
           item_number: line.inspection_number,
           description: line.asset_name || 'Inspection asset',
           quantity: 1,
@@ -1377,6 +1377,12 @@ const Billing = () => {
           condition: line.serial_number || line.asset_tag || null,
           total_amount: Number(line.subtotal || 0),
         }))
+        // The batch's travel cost, billed once. Its item number is how the server
+        // finds it again: editing this row in Billing changes the batch's travel cost.
+        const travel = Number(invoice.travel_cost || 0)
+        return travel > 0
+          ? [...assetRows, { item_number: 'TRAVEL', description: 'Travel Cost', quantity: 1, unit_price: travel, shipping_fee: 0, setup_fee: 0, condition: null, total_amount: travel }]
+          : assetRows
       }
       const baseAmount = Number((invoice as any).subtotal || item.amount || 0)
       const rows: PrintableLineItem[] = [{
@@ -2562,14 +2568,32 @@ const BillingDetailsV2 = memo(({
       price: line.unit_price,
       total: line.total,
     }))
-    : inspectionInvoice?.inspection_batch_id && inspectionInvoice.batch_items?.length
-    ? inspectionInvoice.batch_items.map(line => ({
-      label: line.asset_name || 'Inspection asset',
-      meta: `${line.inspection_number}${line.serial_number ? ` / ${line.serial_number}` : ''}`,
-      quantity: 1,
-      price: Number(line.subtotal || 0),
-      total: Number(line.subtotal || 0),
+    : inspectionInvoice?.line_items?.length
+    // An inspection invoice edited in Billing: its rows as saved, added ones included.
+    ? inspectionInvoice.line_items.map((line: any) => ({
+      label: line.description || 'Invoice item',
+      meta: [line.item_number, line.condition].filter(Boolean).join(' / ') || 'inspection invoice',
+      quantity: Number(line.quantity || 0),
+      price: Number(line.unit_price || 0),
+      total: Number(line.total_amount ?? line.total ?? 0),
     }))
+    : inspectionInvoice?.inspection_batch_id && inspectionInvoice.batch_items?.length
+    ? [
+      ...inspectionInvoice.batch_items.map(line => ({
+        label: line.asset_name || 'Inspection asset',
+        meta: `${line.inspection_number}${line.serial_number ? ` / ${line.serial_number}` : ''}`,
+        quantity: 1,
+        price: Number(line.subtotal || 0),
+        total: Number(line.subtotal || 0),
+      })),
+      ...(Number(inspectionInvoice.travel_cost || 0) > 0 ? [{
+        label: 'Travel Cost',
+        meta: 'TRAVEL',
+        quantity: 1,
+        price: Number(inspectionInvoice.travel_cost),
+        total: Number(inspectionInvoice.travel_cost),
+      }] : []),
+    ]
     : [{
       label: item.description,
       meta: `${SOURCE_LABEL[item.source]} - ${item.relatedNumber}`,

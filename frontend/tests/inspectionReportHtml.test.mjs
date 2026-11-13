@@ -11,7 +11,7 @@
  *   cd frontend
  *   node tests/run-inspectionReportHtml.mjs
  */
-import { buildInspectionFormHtml, buildInspectionSingleReportHtml } from './.build/inspectionReportHtml.mjs'
+import { buildInspectionBatchReportHtml, buildInspectionFormHtml, buildInspectionSingleReportHtml } from './.build/inspectionReportHtml.mjs'
 
 let failures = 0
 const ok = (label, condition, detail = '') => {
@@ -202,6 +202,44 @@ const noTier = charged({ parts: 0, inspection_charges: 0, others: 0 }, { tier_pm
 ok('no tier shows $0.00', noTier.every(a => a === '$0.00'), noTier.join(' '))
 const oldSaved = charged({ parts: 0, inspection_charges: 0, others: 0 }, { ...pm, invoice: { id: 9, total_amount: 250 } })
 ok('an old report saved with 0 agrees with its invoice', oldSaved.every(a => a === '$250.00'), oldSaved.join(' '))
+
+// ── A batch's Billing Page: travel cost, and what Billing added ─────────────
+const billingRows = html => [...billingPage(html).matchAll(/<tr>\s*<td class="center">\d+<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td class="right amount">([^<]*)<\/td>/g)].map(m => `${m[1] || '-'}|${m[2]}|${m[3]}`)
+const totalOf = html => (billingPage(html).match(/Total<\/td><td class="right amount">([^<]*)</) || [])[1]
+const assetA = { ...base, id: 7, inspection_number: 'INSP-9-001', asset_tag: 'A-1', asset_name: 'Pump', form_data: {} }
+const assetB = { ...base, id: 8, inspection_number: 'INSP-9-002', asset_tag: 'A-2', asset_name: 'Scale', form_data: {} }
+const batchInvoice = { id: 10, inspection_batch_id: 3, total_amount: 820, travel_cost: 120, batch_items: [{ inspection_id: 7, total_amount: 250 }, { inspection_id: 8, total_amount: 450 }] }
+const batchReport = (invoice, extra = {}) => buildInspectionBatchReportHtml({ batch_number: 'INSP-9', assets: [assetA, assetB], batch_invoice: invoice, ...extra }, null)
+
+const withTravel = batchReport(batchInvoice)
+ok('a batch report bills each asset and the travel cost once', billingRows(withTravel).join(' ; ') === 'A-1|Pump|$250.00 ; A-2|Scale|$450.00 ; -|Travel Cost|$120.00', billingRows(withTravel).join(' ; '))
+ok("  and its total is the invoice's", totalOf(withTravel) === '$820.00', totalOf(withTravel))
+const noTravel = batchReport({ ...batchInvoice, total_amount: 700, travel_cost: null })
+ok('no travel cost: no travel row, as before', billingRows(noTravel).length === 2 && !billingPage(noTravel).includes('Travel Cost') && totalOf(noTravel) === '$700.00')
+const notInvoiced = batchReport(null, { travel_cost: 90 })
+ok("not yet invoiced: the batch's travel cost is shown and added", billingRows(notInvoiced).at(-1) === '-|Travel Cost|$90.00' && totalOf(notInvoiced) === '$90.00', `${billingRows(notInvoiced).join(' ; ')} total ${totalOf(notInvoiced)}`)
+
+const edited = batchReport({
+  ...batchInvoice, total_amount: 900, tax_amount: 0, discount_amount: 20,
+  line_items: [
+    { item_number: 'INSP-9-001', description: 'Pump', total_amount: 300 },
+    { item_number: 'INSP-9-002', description: 'Scale', total_amount: 450 },
+    { item_number: 'TRAVEL', description: 'Travel Cost', total_amount: 120 },
+    { item_number: 'ITEM-4', description: 'Parking', total_amount: 25 },
+  ],
+  summary_rows: [{ label: 'Fuel surcharge', value: 25 }],
+})
+ok('edited in Billing: every row as Billing saved it, added ones included',
+  billingRows(edited).join(' ; ') === 'A-1|Pump|$300.00 ; A-2|Scale|$450.00 ; -|Travel Cost|$120.00 ; -|Parking|$25.00', billingRows(edited).join(' ; '))
+ok("  with Billing's extra total line and the discount", billingPage(edited).includes('Fuel surcharge') && billingPage(edited).includes('Discount') && billingPage(edited).includes('-$20.00'))
+ok('  adding up to the invoice total', totalOf(edited) === '$900.00', totalOf(edited))
+
+const oneOfBatch = buildInspectionSingleReportHtml(assetA, null, { ...batchInvoice, line_items: [{ item_number: 'INSP-9-001', total_amount: 300 }, { item_number: 'ITEM-4', description: 'Parking', total_amount: 25 }] })
+ok("one asset of an edited batch invoice: its own line at Billing's price, nothing else", billingRows(oneOfBatch).join(' ; ') === 'A-1|Pump|$300.00', billingRows(oneOfBatch).join(' ; '))
+
+const ownEdited = buildInspectionSingleReportHtml({ ...base, id: 5, inspection_number: 'INSP-5', asset_tag: 'A-5', form_data: {} }, null,
+  { id: 11, total_amount: 280, line_items: [{ item_number: 'INSP-5', description: 'Pump', total_amount: 250 }, { item_number: 'ITEM-2', description: 'Shipping', total_amount: 30 }] })
+ok("an asset with its own edited invoice: the invoice's rows", billingRows(ownEdited).join(' ; ') === 'A-5|Pump|$250.00 ; -|Shipping|$30.00' && totalOf(ownEdited) === '$280.00', billingRows(ownEdited).join(' ; '))
 
 console.log()
 if (failures) {

@@ -4,7 +4,7 @@ import { NumericField } from '../../components/NumericField'
 import { AnimatedNumber } from '@/components/motion'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Autocomplete,
+  Alert, Autocomplete, InputAdornment,
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, FormControlLabel, IconButton, InputLabel, Menu, MenuItem, Radio, RadioGroup,
   Select, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
@@ -29,6 +29,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined'
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
 import PersonIcon from '@mui/icons-material/Person'
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import RemoveIcon from '@mui/icons-material/Remove'
 import SaveIcon from '@mui/icons-material/Save'
@@ -47,6 +48,7 @@ import {
   addInspectionBatchExistingAssets,
   closeInspection as closeScheduledInspection,
   changeInspectionBatchTechnician,
+  setInspectionBatchTravelCost,
   closeInspectionBatch,
   deleteInspectionBatch,
   createInspectionForm,
@@ -1139,6 +1141,8 @@ const Inspections = () => {
   // The technician a new inspection is given: the person creating it, unless another is chosen.
   const [createTechnicianId, setCreateTechnicianId] = useState<number | ''>('')
   const [batchTechOpen, setBatchTechOpen] = useState(false)
+  const [travelCostOpen, setTravelCostOpen] = useState(false)
+  const [travelCostValue, setTravelCostValue] = useState('')
   const [batchTechId, setBatchTechId] = useState<number | ''>('')
   const [deleteBatchTarget, setDeleteBatchTarget] = useState<InspectionBatch | null>(null)
   const [upcomingBatchItem, setUpcomingBatchItem] = useState<InspectionBatch | null>(null)
@@ -1759,6 +1763,21 @@ const Inspections = () => {
       refreshInspectionQueries()
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not change the technician'),
+  })
+
+  const travelCostMut = useMutation({
+    mutationFn: ({ id, amount }: { id: number; amount: number | null }) => setInspectionBatchTravelCost(id, amount),
+    onSuccess: (result) => {
+      const invoice = result.batch_invoice
+      toast.success(invoice ? `Travel cost saved · ${invoice.invoice_number} updated` : 'Travel cost saved')
+      setTravelCostOpen(false)
+      refreshInspectionQueries()
+      // The batch invoice may have been recalculated: Billing shows the new total.
+      queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-quotation-detail'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save the travel cost'),
   })
 
   const deleteBatchMut = useMutation({
@@ -4545,6 +4564,14 @@ const Inspections = () => {
 
   // The batch window's buttons: beside the title on a wide screen; on a phone, at
   // the top of the list, so they scroll away instead of taking the height.
+  // The travel cost is billed on the batch invoice: fixed once that is approved or paid.
+  const travelCostLockedReason = !selectedBatch?.batch_invoice
+    ? ''
+    : selectedBatch.batch_invoice.billing_approval_status === 'approved'
+      ? 'The batch invoice is approved for billing, so its travel cost is fixed.'
+      : Number(selectedBatch.batch_invoice.amount_paid || 0) > 0 || selectedBatch.batch_invoice.status === 'paid'
+        ? 'A payment has been recorded on the batch invoice, so its travel cost is fixed.'
+        : ''
   const batchToolbar = selectedBatch && canInitiateInspections ? (
     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end', ...(batchOnPhone ? { justifyContent: 'stretch', mb: 1.5, '& > span, & > .MuiButton-root': { flex: '1 1 auto' }, '& > span > .MuiButton-root': { width: '100%' }, '& > .MuiChip-root': { flexBasis: '100%', justifyContent: 'flex-start', width: 'fit-content', maxWidth: '100%' } } : {}) }}>
       {selectedBatchBillingApproved && (
@@ -4560,6 +4587,26 @@ const Inspections = () => {
           label={`${selectedBatch.batch_invoice.invoice_number} will be updated`}
           sx={{ alignSelf: 'center', bgcolor: '#F5F3FF', color: '#6D28D9', fontWeight: 900 }}
         />
+      )}
+      {canEditInspections && (
+        <Tooltip title={travelCostLockedReason}>
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DirectionsCarIcon />}
+              onClick={() => {
+                const current = Number(selectedBatch.travel_cost || 0)
+                setTravelCostValue(current > 0 ? current.toFixed(2) : '')
+                setTravelCostOpen(true)
+              }}
+              disabled={Boolean(travelCostLockedReason)}
+              sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+            >
+              {Number(selectedBatch.travel_cost || 0) > 0 ? `Travel Cost · ${money(selectedBatch.travel_cost)}` : 'Travel Cost'}
+            </Button>
+          </span>
+        </Tooltip>
       )}
       {canEditInspections && (selectedBatch.status === 'upcoming' || selectedBatch.status === 'in_progress') && (
         <Button
@@ -7081,6 +7128,45 @@ const Inspections = () => {
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
           >
             Close Inspection
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={travelCostOpen} onClose={() => !travelCostMut.isPending && setTravelCostOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Travel Cost
+          <Typography sx={{ mt: 0.5, color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            {selectedBatch?.batch_number}{selectedBatch?.facility_name ? ` · ${selectedBatch.facility_name}` : ''}
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
+          <TextField
+            label="Travel Cost"
+            type="number"
+            value={travelCostValue}
+            onChange={event => setTravelCostValue(event.target.value)}
+            inputProps={{ min: 0, step: '0.01', inputMode: 'decimal' }}
+            InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+            error={travelCostValue !== '' && !(Number(travelCostValue) >= 0 && Number(travelCostValue) <= 1000000)}
+            helperText="The trip to the facility, billed once on the batch invoice as its own line. Leave empty for none."
+            autoFocus
+          />
+          {selectedBatch?.batch_invoice && (
+            <Alert severity="info" sx={{ borderRadius: '12px' }}>
+              {selectedBatch.batch_invoice.invoice_number} will be updated with the new travel cost.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setTravelCostOpen(false)} disabled={travelCostMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => selectedBatch && travelCostMut.mutate({ id: selectedBatch.id, amount: travelCostValue === '' ? null : Number(travelCostValue) })}
+            disabled={!canEditInspections || travelCostMut.isPending || (travelCostValue !== '' && !(Number(travelCostValue) >= 0 && Number(travelCostValue) <= 1000000))}
+            startIcon={travelCostMut.isPending ? <CircularProgress size={18} color="inherit" /> : <DirectionsCarIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Save
           </Button>
         </DialogActions>
       </Dialog>

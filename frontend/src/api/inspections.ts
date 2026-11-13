@@ -82,6 +82,8 @@ export interface InspectionInvoice {
   transactions?: InvoiceTransaction[]
   travel_charges?: number | null
   service_charges?: number | null
+  /** A batch invoice: the batch's travel cost, billed once as its "Travel Cost" line. */
+  travel_cost?: number | string | null
   line_items?: any[]
   labels?: Record<string, any> | null
   summary_rows?: Array<{ id?: string; label: string; value: number }>
@@ -186,6 +188,8 @@ export interface InspectionBatch {
   inspection_scope: string | null
   notes: string | null
   is_instant: boolean
+  /** The trip to the facility: billed once on the batch invoice. */
+  travel_cost?: number | string | null
   created_at: string
   updated_at: string
   facility_name: string | null
@@ -482,6 +486,12 @@ export const fetchInspectionBatch = async (id: number): Promise<InspectionBatch>
 /** Give a whole batch to a technician: the batch and every asset not yet completed or closed. */
 export const changeInspectionBatchTechnician = async (id: number, inspectorId: number | null): Promise<InspectionBatch> => {
   const res = await apiClient.patch(`/inspections/batches/${id}/technician`, { inspector_id: inspectorId })
+  return res.data
+}
+
+/** Set the batch's travel cost (null or 0 clears it); a batch invoice not yet approved or paid is recalculated. */
+export const setInspectionBatchTravelCost = async (id: number, travelCost: number | null): Promise<{ id: number; travel_cost: number | string | null; batch_invoice: InspectionInvoice | null }> => {
+  const res = await apiClient.patch(`/inspections/batches/${id}/travel-cost`, { travel_cost: travelCost })
   return res.data
 }
 

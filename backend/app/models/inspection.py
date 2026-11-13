@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Boolean, Index, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Boolean, Index, JSON, Numeric
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -37,6 +37,9 @@ class InspectionBatch(Base):
     inspection_scope = Column(String, nullable=True, default="facility_assets")
     notes = Column(Text, nullable=True)
     is_instant = Column(Boolean, default=False)
+    # The cost of the trip to the facility: one per batch, billed once on the
+    # batch invoice as its own "Travel Cost" line. Empty when there is none.
+    travel_cost = Column(Numeric(12, 2), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

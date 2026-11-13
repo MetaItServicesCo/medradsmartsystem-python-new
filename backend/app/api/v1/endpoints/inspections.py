@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, case, false, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -209,6 +209,10 @@ class BatchAssetCreate(BaseModel):
 
 class BatchExistingAssetsCreate(BaseModel):
     equipment_ids: list[int]
+
+
+class BatchTravelCostUpdate(BaseModel):
+    travel_cost: Optional[Decimal] = Field(None, ge=0, le=Decimal("1000000"))
 
 
 class InspectionInvoiceUpdate(BaseModel):
@@ -484,6 +488,7 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
         else None
     )
     data["batch_items"] = getattr(invoice, "_batch_items", _stored_batch_invoice_items(invoice.notes))
+    data["travel_cost"] = _stored_batch_travel_cost(invoice.notes) if invoice.inspection_batch_id else None
     data["line_items"] = editable_line_items(invoice.notes)
     data["labels"] = editable_labels(invoice.notes)
     data["summary_rows"] = editable_summary_rows(invoice.notes)
@@ -513,17 +518,131 @@ def _batch_invoice_items_for_listing(invoice: Invoice) -> list[dict[str, Any]]:
         return []
 
 
+def _stored_batch_travel_cost(notes: Optional[str]) -> Optional[Decimal]:
+    value = parse_invoice_edit_metadata(notes).get("travel_cost")
+    try:
+        amount = _money(value)
+    except (ArithmeticError, TypeError, ValueError):
+        return None
+    return amount if amount > 0 else None
+
+
 def _batch_invoice_notes(
     current_notes: Optional[str],
     visible_notes: str,
     line_items: list[dict[str, Any]],
+    travel_cost: Decimal = Decimal("0"),
+    edited_rows: Optional[list[dict[str, Any]]] = None,
 ) -> Optional[str]:
-    """Persist the generated batch breakdown so list requests stay lightweight."""
-    return compose_invoice_edit_notes(
-        current_notes,
-        visible_notes,
-        {"batch_items": line_items},
-    )
+    """Persist the generated batch breakdown so list requests stay lightweight.
+
+    What Billing edited (its rows, labels and summary rows) is kept: only the
+    batch's own figures, the per-asset breakdown and the travel cost, change."""
+    metadata = parse_invoice_edit_metadata(current_notes)
+    metadata["batch_items"] = line_items
+    if travel_cost > 0:
+        metadata["travel_cost"] = float(travel_cost)
+    else:
+        metadata.pop("travel_cost", None)
+    if edited_rows is not None:
+        metadata["line_items"] = edited_rows
+    return compose_invoice_edit_notes(current_notes, visible_notes, metadata)
+
+
+# The batch invoice's travel line. Billing shows it as a row like any other;
+# its item number is how it is found again.
+TRAVEL_LINE_NUMBER = "TRAVEL"
+TRAVEL_LINE_DESCRIPTION = "Travel Cost"
+
+
+def _batch_travel_cost(batch: InspectionBatch) -> Decimal:
+    return _money(getattr(batch, "travel_cost", None)).quantize(Decimal("0.01"))
+
+
+def _is_travel_line(row: Any) -> bool:
+    return isinstance(row, dict) and str(row.get("item_number") or "").strip().upper() == TRAVEL_LINE_NUMBER
+
+
+def _travel_cost_from_rows(rows: list[Any]) -> Decimal:
+    total = Decimal("0")
+    for row in rows:
+        if _is_travel_line(row):
+            try:
+                total += _money(row.get("total_amount"))
+            except (ArithmeticError, TypeError, ValueError):
+                continue
+    return max(total, Decimal("0")).quantize(Decimal("0.01"))
+
+
+def _amount_row(row: dict[str, Any], amount: Decimal) -> dict[str, Any]:
+    return {**row, "quantity": 1, "unit_price": float(amount), "shipping_fee": 0, "setup_fee": 0, "total_amount": float(amount)}
+
+
+def _refreshed_edited_rows(
+    edited: list[Any],
+    asset_items: list[dict[str, Any]],
+    previous_items: list[dict[str, Any]],
+    travel_cost: Decimal,
+    batch_number: str,
+) -> list[dict[str, Any]]:
+    """Billing's edited rows, brought up to date with the batch.
+
+    An asset's row keeps what Billing set unless its report's amount changed;
+    an asset added gets a row and an asset removed loses its row; the travel
+    row follows the batch's travel cost; every row Billing added is kept."""
+    current = {str(item["inspection_number"]): item for item in asset_items}
+    before = {str(item.get("inspection_number")): _money(item.get("subtotal")) for item in previous_items if isinstance(item, dict)}
+    own_prefix = f"{batch_number}-"
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    last_asset_at = -1
+    travel_at = -1
+    for row in edited:
+        if not isinstance(row, dict):
+            continue
+        number = str(row.get("item_number") or "")
+        if number in current:
+            if number in seen:
+                continue
+            seen.add(number)
+            amount = _money(current[number]["subtotal"])
+            rows.append(row if before.get(number) == amount else _amount_row(row, amount))
+            last_asset_at = len(rows) - 1
+        elif number.startswith(own_prefix):
+            continue  # an asset no longer in the batch
+        elif _is_travel_line(row):
+            if travel_at >= 0 or travel_cost <= 0:
+                continue
+            rows.append(_amount_row(row, travel_cost))
+            travel_at = len(rows) - 1
+        else:
+            rows.append(row)
+    added = [
+        _amount_row({"item_number": item["inspection_number"], "description": item.get("asset_name") or "Inspection asset",
+                     "condition": item.get("serial_number") or item.get("asset_tag"), "custom_cells": []}, _money(item["subtotal"]))
+        for item in asset_items if str(item["inspection_number"]) not in seen
+    ]
+    if added:
+        at = last_asset_at + 1
+        rows[at:at] = added
+        if travel_at >= at:
+            travel_at += len(added)
+        last_asset_at += len(added)
+    if travel_cost > 0 and travel_at < 0:
+        at = last_asset_at + 1
+        rows[at:at] = [_amount_row({"item_number": TRAVEL_LINE_NUMBER, "description": TRAVEL_LINE_DESCRIPTION, "condition": None, "custom_cells": []}, travel_cost)]
+    return rows
+
+
+def _summary_rows_total(notes: Optional[str]) -> Decimal:
+    total = Decimal("0")
+    for row in editable_summary_rows(notes):
+        if isinstance(row, dict):
+            try:
+                total += _money(row.get("value"))
+            except (ArithmeticError, TypeError, ValueError):
+                continue
+    return total
 
 
 def _inspection_invoice_line_item(inspection: Inspection, invoice: Optional[Invoice]) -> dict[str, Any]:
@@ -953,10 +1072,12 @@ def _create_inspection_batch_invoice(
 
     existing_batch_invoice = _lock_active_batch_invoice(db, batch.id)
     line_items = _batch_invoice_line_items(batch)
-    subtotal = sum(_money(item["subtotal"]) for item in line_items)
+    travel_cost = _batch_travel_cost(batch)
+    subtotal = sum(_money(item["subtotal"]) for item in line_items) + travel_cost
     tax = sum(_money(item["tax_amount"]) for item in line_items)
     discount = sum(_money(item["discount_amount"]) for item in line_items)
     total = subtotal + tax - discount
+    edited_rows: Optional[list[dict[str, Any]]] = None
     facility = batch.facility
     visible_notes = (
         f"Inspection batch invoice for {batch.batch_number}. "
@@ -969,6 +1090,17 @@ def _create_inspection_batch_invoice(
             return existing_batch_invoice
         _require_batch_invoice_allows_asset_changes(existing_batch_invoice)
         previous_total = _money(existing_batch_invoice.total_amount)
+        edited = editable_line_items(existing_batch_invoice.notes)
+        if edited:
+            # Billing edited this invoice: its rows, tax and discount stand, brought
+            # up to date with the batch, and the total is what those rows add up to.
+            edited_rows = _refreshed_edited_rows(
+                edited, line_items, _stored_batch_invoice_items(existing_batch_invoice.notes), travel_cost, batch.batch_number,
+            )
+            subtotal = sum((_money(row.get("total_amount")) for row in edited_rows), Decimal("0"))
+            tax = _money(existing_batch_invoice.tax_amount)
+            discount = _money(existing_batch_invoice.discount_amount)
+        total = subtotal + _summary_rows_total(existing_batch_invoice.notes) + tax - discount
         previous_notes = strip_invoice_edit_metadata(existing_batch_invoice.notes) or ""
         needs_refresh = previous_total != total or previous_notes != visible_notes
 
@@ -992,6 +1124,8 @@ def _create_inspection_batch_invoice(
             existing_batch_invoice.notes,
             visible_notes,
             line_items,
+            travel_cost,
+            edited_rows,
         )
         existing_batch_invoice.updated_at = datetime.utcnow()
         existing_batch_invoice._batch_items = line_items
@@ -1045,7 +1179,7 @@ def _create_inspection_batch_invoice(
         issue_date=date.today(),
         due_date=date.today() + timedelta(days=30),
         payment_terms="Net 30",
-        notes=_batch_invoice_notes(None, visible_notes, line_items),
+        notes=_batch_invoice_notes(None, visible_notes, line_items, travel_cost),
     )
     db.add(invoice)
     db.flush()
@@ -3180,15 +3314,8 @@ def generate_inspection_invoice(
     }
 
 
-@router.post("/batches/{batch_id}/invoice")
-def generate_inspection_batch_invoice(
-    batch_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Any:
-    require_module_permission(current_user, "inspections", "edit")
-
-    batch = (
+def _load_batch_for_invoicing(db: Session, batch_id: int) -> Optional[InspectionBatch]:
+    return (
         db.query(InspectionBatch)
         .options(
             joinedload(InspectionBatch.facility).joinedload(Facility.tier),
@@ -3202,6 +3329,51 @@ def generate_inspection_batch_invoice(
         .filter(InspectionBatch.id == batch_id)
         .first()
     )
+
+
+@router.patch("/batches/{batch_id}/travel-cost")
+def set_inspection_batch_travel_cost(
+    batch_id: int,
+    payload: BatchTravelCostUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """The trip's cost, billed once on the batch invoice. Changeable until the
+    batch invoice is approved for billing or paid; an invoice already made is
+    recalculated with it."""
+    require_module_permission(current_user, "inspections", "edit")
+    batch = _load_batch_for_invoicing(db, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Inspection batch not found")
+    require_facility_access(db, current_user, batch.facility_id)
+    invoice = _lock_active_batch_invoice(db, batch.id)
+    _require_batch_invoice_mutable(invoice, action="The travel cost cannot be changed")
+
+    before = _batch_travel_cost(batch)
+    amount = _money(payload.travel_cost).quantize(Decimal("0.01"))
+    batch.travel_cost = amount if amount > 0 else None
+    db.flush()
+    refreshed = _refresh_existing_batch_invoice_if_complete(db, batch, current_user) if invoice else None
+    log_activity(db, "inspections", batch.id, "SET_TRAVEL_COST", current_user, {"before": str(before), "after": str(amount)})
+    db.commit()
+    if refreshed:
+        db.refresh(refreshed)
+    return {
+        "id": batch.id,
+        "travel_cost": batch.travel_cost,
+        "batch_invoice": _invoice_response(refreshed) if refreshed else None,
+    }
+
+
+@router.post("/batches/{batch_id}/invoice")
+def generate_inspection_batch_invoice(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    require_module_permission(current_user, "inspections", "edit")
+
+    batch = _load_batch_for_invoicing(db, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Inspection batch not found")
     require_facility_access(db, current_user, batch.facility_id)
@@ -3491,6 +3663,17 @@ def update_inspection_invoice(
     existing_metadata = parse_invoice_edit_metadata(invoice.notes)
     if "line_items" in update_data:
         existing_metadata["line_items"] = update_data.pop("line_items") or []
+        if invoice.inspection_batch_id:
+            # The Travel Cost row is the batch's travel cost: editing it here
+            # changes the batch, so the batch window and the invoice agree.
+            edited_travel = _travel_cost_from_rows(existing_metadata["line_items"])
+            batch = db.get(InspectionBatch, invoice.inspection_batch_id)
+            if batch is not None:
+                batch.travel_cost = edited_travel if edited_travel > 0 else None
+            if edited_travel > 0:
+                existing_metadata["travel_cost"] = float(edited_travel)
+            else:
+                existing_metadata.pop("travel_cost", None)
     if "labels" in update_data:
         existing_metadata["labels"] = update_data.pop("labels") or {}
     if "summary_rows" in update_data:

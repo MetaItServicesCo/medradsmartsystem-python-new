@@ -50,10 +50,24 @@ export type InspectionReportLike = {
   tier_pm_fee?: number | string | null
 }
 
+// A row of the invoice as Billing saved it (when it was edited there).
+type ReportInvoiceLine = {
+  item_number?: string | null
+  description?: string | null
+  total_amount?: number | string | null
+  total?: number | string | null
+}
+
 type ReportInvoiceLike = {
   invoice_number?: string | null
+  inspection_batch_id?: number | null
   total_amount?: number | string | null
+  tax_amount?: number | string | null
+  discount_amount?: number | string | null
+  travel_cost?: number | string | null
   batch_items?: Array<{ inspection_id: number; total_amount: number | string | null }>
+  line_items?: ReportInvoiceLine[] | null
+  summary_rows?: Array<{ label?: string | null; value?: number | string | null }> | null
 } | null | undefined
 
 export type ReportBatchLike = {
@@ -64,6 +78,8 @@ export type ReportBatchLike = {
   completed_at?: string | null
   assets?: InspectionReportLike[]
   batch_invoice?: ReportInvoiceLike
+  /** The trip to the facility, shown before the batch is invoiced. */
+  travel_cost?: number | string | null
 }
 
 const LEFT_CHECKS: Array<[string, string]> = [
@@ -190,8 +206,16 @@ export const inspectionCost = (charge: unknown, tierPmFee: unknown): number => {
   return entered > 0 ? entered : Number(tierPmFee || 0)
 }
 
-const amountFromInvoice = (invoice: ReportInvoiceLike, inspectionId?: number | null): number => {
+const editedLines = (invoice: ReportInvoiceLike): ReportInvoiceLine[] =>
+  (invoice?.line_items || []).filter((line): line is ReportInvoiceLine => Boolean(line) && typeof line === 'object')
+
+const lineAmount = (line: ReportInvoiceLine) => Number(line.total_amount ?? line.total ?? 0)
+
+const amountFromInvoice = (invoice: ReportInvoiceLike, inspectionId?: number | null, inspectionNumber?: string | null): number => {
   if (!invoice) return 0
+  // Billing's price for this asset, when the invoice was edited there.
+  const edited = inspectionNumber ? editedLines(invoice).find(line => String(line.item_number || '') === inspectionNumber) : undefined
+  if (edited) return lineAmount(edited)
   if (invoice.batch_items?.length && inspectionId != null) {
     const item = invoice.batch_items.find(entry => entry.inspection_id === inspectionId)
     if (item) return Number(item.total_amount || 0)
@@ -202,9 +226,9 @@ const amountFromInvoice = (invoice: ReportInvoiceLike, inspectionId?: number | n
 
 const assetAmount = (inspection: InspectionReportLike, contextInvoice?: ReportInvoiceLike): number => {
   const id = inspection.id
-  const fromContext = amountFromInvoice(contextInvoice, id)
+  const fromContext = amountFromInvoice(contextInvoice, id, inspection.inspection_number)
   if (fromContext > 0) return fromContext
-  const fromOwn = amountFromInvoice(inspection.invoice, id)
+  const fromOwn = amountFromInvoice(inspection.invoice, id, inspection.inspection_number)
   if (fromOwn > 0) return fromOwn
   const data = reportData(inspection)
   const billed = Number(data.billing?.parts || 0) + inspectionCost(data.billing?.inspection_charges, inspection.tier_pm_fee) + Number(data.billing?.others || 0)
@@ -596,18 +620,63 @@ const cePageHtml = (inspection: InspectionReportLike, facility: Facility | null 
   `, opts)
 }
 
-const billingPageHtml = (assets: InspectionReportLike[], facilityName: string, invoice?: ReportInvoiceLike) => {
-  const lineTotal = assets.reduce((sum, asset) => sum + assetAmount(asset, invoice), 0)
+const billingRow = (number: number, tag: string, description: string, amount: number) => `
+    <tr>
+      <td class="center">${number}</td>
+      <td>${esc(tag)}</td>
+      <td>${esc(description)}</td>
+      <td class="right amount">${esc(money(amount))}</td>
+    </tr>`
+
+const adjustmentRow = (label: string, amount: number) => `
+    <tr><td></td><td></td><td class="right">${esc(label)}</td><td class="right amount">${amount < 0 ? '-' : ''}${esc(money(Math.abs(amount)))}</td></tr>`
+
+// The Billing Page. When it covers a whole invoice (a batch's report, or an asset
+// with its own invoice) it shows what that invoice bills: every row Billing saved,
+// added ones included, or else each asset and the batch's travel cost.
+const billingPageHtml = (
+  assets: InspectionReportLike[],
+  facilityName: string,
+  invoice?: ReportInvoiceLike,
+  opts: { whole?: boolean; travelCost?: number | string | null } = {},
+) => {
+  const lines = opts.whole ? editedLines(invoice) : []
+  let rows: string
+  let lineTotal: number
+  let adjustments = ''
+  if (lines.length) {
+    const byNumber = new Map(assets.map(asset => [asset.inspection_number, asset]))
+    rows = lines.map((line, index) => {
+      const asset = byNumber.get(String(line.item_number || ''))
+      return asset
+        ? billingRow(index + 1, assetTag(asset), assetLabel(asset), lineAmount(line))
+        : billingRow(index + 1, '', line.description || 'Invoice item', lineAmount(line))
+    }).join('')
+    lineTotal = lines.reduce((sum, line) => sum + lineAmount(line), 0)
+    for (const row of invoice?.summary_rows || []) {
+      const value = Number(row?.value || 0)
+      if (value) {
+        adjustments += adjustmentRow(row?.label || 'Additional', value)
+        lineTotal += value
+      }
+    }
+    const tax = Number(invoice?.tax_amount || 0)
+    const discount = Number(invoice?.discount_amount || 0)
+    if (tax > 0) { adjustments += adjustmentRow('Tax', tax); lineTotal += tax }
+    if (discount > 0) { adjustments += adjustmentRow('Discount', -discount); lineTotal -= discount }
+  } else {
+    rows = assets.map((asset, index) => billingRow(index + 1, assetTag(asset), assetLabel(asset), assetAmount(asset, invoice))).join('')
+    lineTotal = assets.reduce((sum, asset) => sum + assetAmount(asset, invoice), 0)
+    // The batch's travel cost: the invoice's once it is invoiced, else the batch's own.
+    const travel = opts.whole ? Number((invoice ? invoice.travel_cost : opts.travelCost) || 0) : 0
+    if (travel > 0) {
+      rows += billingRow(assets.length + 1, '', 'Travel Cost', travel)
+      lineTotal += travel
+    }
+  }
   // Prefer the invoice's own total (it already includes tax/discount); else sum the lines.
   const invoiceTotal = Number(invoice?.total_amount || 0)
   const total = invoiceTotal > 0 ? invoiceTotal : lineTotal
-  const rows = assets.map((asset, index) => `
-    <tr>
-      <td class="center">${index + 1}</td>
-      <td>${esc(assetTag(asset))}</td>
-      <td>${esc(assetLabel(asset))}</td>
-      <td class="right amount">${esc(money(assetAmount(asset, invoice)))}</td>
-    </tr>`).join('')
   return page(`
     <h2 class="sec" style="text-align:center;font-size:22px;color:#1E3A8A">Billing Page</h2>
     ${facilityName ? `<div class="subtitle" style="margin-bottom:12px">${esc(facilityName)}</div>` : ''}
@@ -615,6 +684,7 @@ const billingPageHtml = (assets: InspectionReportLike[], facilityName: string, i
       <thead><tr><th class="center">S.No.</th><th>Asset #</th><th>Equipment description</th><th class="right">Amount $</th></tr></thead>
       <tbody>
         ${rows}
+        ${adjustments}
         <tr class="total"><td></td><td></td><td class="right">Total</td><td class="right amount">${esc(money(total))}</td></tr>
       </tbody>
     </table>
@@ -630,7 +700,7 @@ export const buildInspectionBatchReportHtml = (batch: ReportBatchLike, facility:
     listTableHtml(assets, 'Table of Contents', facilityName, 'No assets in this batch.'),
     ...assets.map(asset => cePageHtml(asset, facility, { break: true })),
     listTableHtml(failed, 'Inspection Failed Equipment Sheet', facilityName, 'No failed equipment in this batch.'),
-    billingPageHtml(assets, facilityName, batch.batch_invoice),
+    billingPageHtml(assets, facilityName, batch.batch_invoice, { whole: true, travelCost: batch.travel_cost }),
   ].join('')
 }
 
@@ -643,9 +713,12 @@ export const buildInspectionSingleReportHtml = (
   contextInvoice?: ReportInvoiceLike,
 ): string => {
   const facilityName = facility?.name || inspection.facility_name || ''
+  const invoice = contextInvoice ?? inspection.invoice
+  // A batch invoice bills the whole batch: this page shows only this asset's line.
+  const batchInvoice = Boolean(invoice && (invoice.inspection_batch_id || invoice.batch_items?.length))
   return [
     cePageHtml(inspection, facility, { break: true }),
-    billingPageHtml([inspection], facilityName, contextInvoice ?? inspection.invoice),
+    billingPageHtml([inspection], facilityName, invoice, { whole: !batchInvoice }),
   ].join('')
 }
 
