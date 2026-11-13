@@ -117,8 +117,47 @@ const STAT_CARDS = [
   },
 ]
 
-// Request, Facility, Equipment, Asset, Serial, Description, Priority, Status, Created By, Created, Actions.
-const COLUMN_WIDTHS = ['8.5%', '13%', '11%', '7%', '8%', '12%', '7.5%', '10%', '8.5%', '7.5%', '7%']
+// Request, Facility, Equipment, Asset, Serial, Description, Priority, Status, Technician, Created By,
+// Created, Actions. The shares leave room for the fixed Actions column, so the table fits its
+// width from tablets up; anything longer is clipped, with the whole of it on hover.
+const COLUMN_WIDTHS = ['9.5%', '10%', '8.5%', '7%', '7%', '7.5%', '7.5%', '9%', '10%', '9%', '7%', '52px']
+const COLUMN_TITLES = ['Request #', 'Facility', 'Equipment', 'Asset #', 'Serial #', 'Description', 'Priority', 'Status', 'Technician', 'Created By', 'Created', 'Actions']
+
+// A value in a capsule, as Billing shows its numbers and customers.
+const CAPSULE_SX = { height: 34, px: 0.85, borderRadius: '10px', '& .MuiTypography-root': { fontSize: '0.8rem' } }
+const capsuleSx = (bgcolor: string, borderColor: string) => ({ ...CAPSULE_SX, bgcolor, borderColor })
+
+// A person in a capsule: their initial and name, clipped, with the whole name on hover.
+const PersonCapsule = ({ name, emptyLabel, gradient }: { name?: string | null; emptyLabel: string; gradient: string }) => {
+  const assigned = Boolean(name && name.trim())
+  return (
+    <Box
+      title={assigned ? name! : emptyLabel}
+      data-person-capsule={assigned ? 'assigned' : 'empty'}
+      sx={{
+        display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, maxWidth: '100%',
+        height: 34, pl: assigned ? 0.5 : 1, pr: 1, borderRadius: '999px', boxSizing: 'border-box',
+        border: `1px solid ${assigned ? '#E4E7EC' : '#E5E7EB'}`, bgcolor: assigned ? '#F8FAFC' : '#F3F4F6',
+      }}
+    >
+      {assigned && (
+        <Avatar sx={{ width: 24, height: 24, fontSize: '0.7rem', fontWeight: 700, flexShrink: 0, background: gradient }}>
+          {name!.trim()[0].toUpperCase()}
+        </Avatar>
+      )}
+      <Typography
+        variant="body2"
+        noWrap
+        sx={{
+          minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontWeight: assigned ? 600 : 700, color: assigned ? '#1E1B4B' : '#9CA3AF', fontSize: '0.8rem',
+        }}
+      >
+        {assigned ? name : emptyLabel}
+      </Typography>
+    </Box>
+  )
+}
 
 const ServiceRequestList = () => {
   const queryClient = useQueryClient()
@@ -475,11 +514,18 @@ const ServiceRequestList = () => {
               // with the whole of it on hover, instead of pushing the table wider.
               tableLayout: 'fixed',
               width: '100%',
-              minWidth: { xs: 980, lg: 0 },
+              // From tablets up the columns share the width: no sideways scroll. A phone
+              // scrolls a little rather than squeezing every column unreadable.
+              minWidth: { xs: 1040, md: 0 },
               '& .MuiTableCell-root': { px: 0.75, overflow: 'hidden' },
-              '& .MuiTableCell-root:first-of-type': { pl: 2 },
+              '& .MuiTableCell-root:first-of-type': { pl: 1.5 },
               '& .MuiTableCell-root:last-of-type': { pr: 1.5 },
-              '& .MuiTableCell-head': { whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
+              // One line per heading, a little smaller on narrower screens; the full heading on hover.
+              // (Doubled class: outranks the shared list style that lets columns 2-4 wrap.)
+              '& .MuiTableCell-head.MuiTableCell-root': {
+                whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                fontSize: { xs: '0.75rem', md: '0.68rem', xl: '0.75rem' }, letterSpacing: { md: '0.02em', xl: undefined },
+              },
             }}
           >
             <colgroup>
@@ -487,17 +533,9 @@ const ServiceRequestList = () => {
             </colgroup>
             <TableHead>
               <TableRow>
-                <TableCell>Request #</TableCell>
-                <TableCell>Facility</TableCell>
-                <TableCell>Equipment</TableCell>
-                <TableCell>Asset #</TableCell>
-                <TableCell>Serial #</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Priority</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Created By</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                {COLUMN_TITLES.map((title, index) => (
+                  <TableCell key={title} title={title} align={index === COLUMN_TITLES.length - 1 ? 'right' : undefined}>{title}</TableCell>
+                ))}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -551,19 +589,19 @@ const ServiceRequestList = () => {
                           onClick={() => navigate(`/service-requests/${sr.id}`)}
                         >
                           <TableCell>
-                            <ClippedTooltipText value={sr.request_number} monospace color="#6757D8" fontWeight={800} />
+                            <ClippedTooltipText value={sr.request_number} field monospace color="#5B21B6" fontWeight={800} sx={capsuleSx('#F7F0FF', '#E9D5FF')} />
                           </TableCell>
                           <TableCell>
-                            <ClippedTooltipText value={sr.facility_name} fallback="—" fontWeight={500} />
+                            <ClippedTooltipText value={sr.facility_name} fallback="—" field fontWeight={600} sx={capsuleSx('#F8FAFC', '#E5E7EB')} />
                           </TableCell>
                           <TableCell>
-                            <ClippedTooltipText value={sr.equipment_name} fallback="—" fontWeight={500} />
+                            <ClippedTooltipText value={sr.equipment_name} fallback="—" field fontWeight={600} sx={capsuleSx('#F8FAFC', '#E5E7EB')} />
                           </TableCell>
                           <TableCell>
-                            <ClippedTooltipText value={sr.equipment_asset_tag} fallback="—" fontWeight={500} />
+                            <ClippedTooltipText value={sr.equipment_asset_tag} fallback="—" field monospace fontWeight={700} sx={capsuleSx('#F5F7FF', '#D8E1FF')} />
                           </TableCell>
                           <TableCell>
-                            <ClippedTooltipText value={sr.equipment_serial_number} fallback="—" fontWeight={500} />
+                            <ClippedTooltipText value={sr.equipment_serial_number} fallback="—" field monospace fontWeight={700} sx={capsuleSx('#F5F7FF', '#D8E1FF')} />
                           </TableCell>
                           <TableCell>
                             <ClippedTooltipText value={sr.equipment_description} fallback="—" fontWeight={500} color="#475569" />
@@ -572,7 +610,9 @@ const ServiceRequestList = () => {
                             <Chip
                               label={sr.priority.charAt(0).toUpperCase() + sr.priority.slice(1)}
                               size="small"
+                              title={sr.priority.charAt(0).toUpperCase() + sr.priority.slice(1)}
                               sx={{
+                                maxWidth: '100%',
                                 backgroundColor: pColor.bg,
                                 color: pColor.color,
                                 fontWeight: 700,
@@ -597,20 +637,13 @@ const ServiceRequestList = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Avatar
-                                sx={{
-                                  width: 26, height: 26, fontSize: '0.7rem', fontWeight: 700, flexShrink: 0,
-                                  background: 'linear-gradient(135deg, #7161D8, #F05D92)',
-                                }}
-                              >
-                                {sr.requester_name?.[0] || '?'}
-                              </Avatar>
-                              <ClippedTooltipText value={sr.requester_name} fallback="—" fontWeight={500} />
-                            </Box>
+                            <PersonCapsule name={sr.technician_name} emptyLabel="Unassigned" gradient="linear-gradient(135deg, #0EA5E9, #6366F1)" />
                           </TableCell>
                           <TableCell>
-                            <ClippedTooltipText value={formatDate(sr.created_at)} fontWeight={400} color="#6B7280" textSx={{ fontSize: '0.8rem' }} />
+                            <PersonCapsule name={sr.requester_name} emptyLabel="—" gradient="linear-gradient(135deg, #7161D8, #F05D92)" />
+                          </TableCell>
+                          <TableCell>
+                            <ClippedTooltipText value={formatDate(sr.created_at)} fontWeight={400} color="#6B7280" textSx={{ fontSize: '0.78rem' }} />
                           </TableCell>
                           <TableCell align="right">
                             <Tooltip title="Actions">
@@ -623,8 +656,8 @@ const ServiceRequestList = () => {
                                 sx={{
                                   color: '#7161D8',
                                   backgroundColor: '#F0EDFF',
-                                  borderRadius: '14px',
-                                  width: 36, height: 36,
+                                  borderRadius: '12px',
+                                  width: 32, height: 32,
                                   transition: 'all 0.2s ease',
                                   '&:hover': {
                                     backgroundColor: '#E8E2FF',
