@@ -2,7 +2,7 @@ import json
 import hashlib
 import secrets
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -898,7 +898,8 @@ def _quotation_pricing(
         + max(_money(taxable_fees), Decimal("0"))
     )
     taxable_base = _money(taxable_base)
-    tax_amount = (taxable_base * SALES_TAX_FACTOR).quantize(Decimal("0.01"))
+    # Half a cent rounds up, as the screens show it: 8.25% of $450 is $37.13.
+    tax_amount = (taxable_base * SALES_TAX_FACTOR).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     total_amount = subtotal + tax_amount - _money(discount_amount)
     return subtotal, taxable_base, tax_amount, _money(total_amount)
 

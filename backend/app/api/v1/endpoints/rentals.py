@@ -1,5 +1,5 @@
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional, Literal
 from math import ceil
 import secrets
@@ -2738,7 +2738,8 @@ def convert_to_invoice(
     # Same tax rule as Sales: 8.25% on rent + shipping & packing + delivery & setup +
     # removal/pickup (all logistics). Labor and other service fees are non-taxable.
     taxable_base = base_rental_amount + shipping_fee + setup_fee + removal_fee
-    tax_amount = (taxable_base * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
+    # Half a cent rounds up, as the screens show it: 8.25% of $450 is $37.13.
+    tax_amount = (taxable_base * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     subtotal = base_rental_amount + worked_hours + setup_fee + service_fee + shipping_fee + removal_fee + application_fee + items_labor
     discount_amount = (subtotal * raw_discount / Decimal("100")).quantize(Decimal("0.01")) if payload.discount_type == "percent" else raw_discount

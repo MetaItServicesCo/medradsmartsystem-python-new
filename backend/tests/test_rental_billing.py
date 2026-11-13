@@ -167,10 +167,11 @@ def test_initial_invoice_discount_is_applied_after_tax():
 
     # Taxable base is the full $100 rent + $10 shipping + $20 setup. Deposit
     # and labor stay non-taxable; the $20 discount is subtracted afterward.
+    # 8.25% of $130 is exactly $10.725: half a cent rounds up, as every screen shows it.
     assert amounts["discount"] == Decimal("20")
-    assert amounts["tax"] == Decimal("10.72")
+    assert amounts["tax"] == Decimal("10.73")
     assert amounts["subtotal"] == Decimal("210")
-    assert amounts["total"] == Decimal("200.72")
+    assert amounts["total"] == Decimal("200.73")
 
 
 def test_flat_discount_uses_full_initial_invoice_balance_not_only_rent():
@@ -466,7 +467,8 @@ def test_projected_schedule_contains_first_invoice_and_remaining_periods():
     assert [period["billing_date"] for period in schedule] == [
         date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31), date(2026, 4, 30),
     ]
-    assert schedule[0]["total"] == Decimal("220.72")
+    # Tax of exactly $10.725 rounds half a cent up: $10.73.
+    assert schedule[0]["total"] == Decimal("220.73")
     assert schedule[1]["total"] == Decimal("108.25")
 
 

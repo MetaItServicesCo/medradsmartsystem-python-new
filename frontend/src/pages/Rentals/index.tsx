@@ -40,7 +40,7 @@ import SearchFieldSelect from '@/components/SearchFieldSelect'
 import DebouncedSearchField from '@/components/DebouncedSearchField'
 import ContextTableRow from '@/components/ContextTableRow'
 import { useListContext } from '@/contexts/ListContext'
-import { SALES_TAX_RATE, SALES_TAX_FACTOR, roundSalesMoney } from '@/utils/salesPricing'
+import { SALES_TAX_RATE, roundSalesMoney, salesTaxOn } from '@/utils/salesPricing'
 import {
   fetchRentalParts,
   fetchRentals,
@@ -520,7 +520,8 @@ const calculateInitialRentalPricing = (
   // and logistics amounts first, then subtract the discount from the total.
   const taxableRental = Math.max(0, rental)
   const taxableTotal = taxableRental + shipping + setup + removal
-  const tax = roundRentalMoney(taxableTotal * SALES_TAX_FACTOR)
+  // Half a cent rounds up, as the server charges it: 8.25% of $450 is $37.13.
+  const tax = salesTaxOn(taxableTotal)
   const rentalTax = taxableTotal > 0 ? roundRentalMoney(tax * taxableRental / taxableTotal) : 0
   const shippingTax = taxableTotal > 0 ? roundRentalMoney(tax * shipping / taxableTotal) : 0
   const removalTax = taxableTotal > 0 ? roundRentalMoney(tax * removal / taxableTotal) : 0
@@ -1759,7 +1760,7 @@ const Rentals = () => {
   // Same tax rule as Sales: 8.25% on rent + shipping & packing + delivery & setup + removal.
   // Labor is non-taxable.
   const convertTaxableBase = calculatedBaseRental + convertShippingTotal + convertSetupTotal + itemsRemovalTotal
-  const convertTaxAmount = roundSalesMoney(convertTaxableBase * SALES_TAX_FACTOR)
+  const convertTaxAmount = salesTaxOn(convertTaxableBase)
   const convertSubtotal =
     calculatedBaseRental +
     Number(invoiceDetails.worked_hours || 0) +

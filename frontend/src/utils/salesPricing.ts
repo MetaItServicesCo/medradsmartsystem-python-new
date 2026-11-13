@@ -13,6 +13,21 @@ export interface SalesPricingLine {
 export const roundSalesMoney = (value: number) =>
   Math.round((value + Number.EPSILON) * 100) / 100
 
+/**
+ * 8.25% tax to the cent, half a cent rounded up, exactly as the server charges it
+ * (Sales and Rentals): 8.25% of $450 is $37.125, charged as $37.13. A half cent is
+ * recognised through floating-point noise, so $37.12499999 still rounds up.
+ */
+export const salesTaxOn = (taxableBase: number) => {
+  const value = Number(taxableBase || 0) * SALES_TAX_FACTOR
+  const sign = value < 0 ? -1 : 1
+  const scaled = Math.abs(value) * 100
+  const lower = Math.floor(scaled)
+  const fraction = scaled - lower
+  const cents = Math.abs(fraction - 0.5) < 1e-9 ? lower + 1 : Math.round(scaled)
+  return sign * (cents / 100)
+}
+
 export const salesLineTotal = (line: SalesPricingLine) => {
   const unsignedTotal =
     Number(line.quantity || 0) * Number(line.unit_price || 0)
@@ -60,7 +75,7 @@ export const calculateSalesPricing = (
   // value must not reduce taxable Shipping & Packing or Delivery & Setup.
   const taxableMerchandise = Math.max(0, merchandise - tradeInCredit)
   const taxableBase = taxableMerchandise + shippingPacking + deliverySetup
-  const taxAmount = roundSalesMoney(taxableBase * SALES_TAX_FACTOR)
+  const taxAmount = salesTaxOn(taxableBase)
   const total = roundSalesMoney(subtotal + taxAmount - Number(discountAmount || 0))
 
   return {

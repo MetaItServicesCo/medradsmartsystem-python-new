@@ -16,7 +16,7 @@ import calendar
 import hashlib
 import secrets
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session, selectinload
@@ -51,6 +51,7 @@ MAX_CHARGE_ATTEMPTS = 3
 # Same tax rule and ordering as Sales: 8.25% on rent, shipping & packing,
 # delivery & setup, and removal & pickup. Labor and the refundable deposit are
 # non-taxable, and any rental discount is subtracted only after tax is computed.
+# Tax rounds half a cent up, as the screens show it: 8.25% of $450 is $37.13.
 RENTAL_TAX_RATE = Decimal("8.25")
 RENTAL_TAX_FACTOR = RENTAL_TAX_RATE / Decimal("100")
 
@@ -230,7 +231,7 @@ def _recurring_invoice_amounts(rental: Rental, period_index: int, *, include_con
     """
     rental_total, discount, conditional = _period_amounts(rental, period_index, include_conditional=include_conditional)
     taxable_rental = max(Decimal("0"), rental_total)
-    tax = (taxable_rental * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
+    tax = (taxable_rental * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     pre_discount_total = max(Decimal("0"), rental_total + tax)
     discount = min(max(Decimal("0"), discount), pre_discount_total)
     total = pre_discount_total - discount
@@ -325,7 +326,7 @@ def _initial_invoice_amounts(rental: Rental, *, include_conditional: bool = Fals
     taxable_rental = max(Decimal("0"), rental_total)
     # Removal/pickup is a logistics charge and is taxed like shipping & delivery/setup.
     taxable_total = taxable_rental + shipping_total + setup_total + removal_total
-    tax = (taxable_total * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
+    tax = (taxable_total * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     subtotal = rental_total + deposit + shipping_total + setup_total + labor_total + removal_total
     pre_discount_total = max(Decimal("0"), subtotal + tax)
     discount = min(max(Decimal("0"), discount), pre_discount_total)
