@@ -332,12 +332,23 @@ const identityHtml = (inspection: InspectionReportLike) => {
     ['SN#', inspection.serial_number || id.serial_number],
     ['PM Schedule', id.pm_schedule || inspection.inspection_frequency],
   ]
+  // Any other identity field a report carries (older reports can have more).
+  const known = new Set(['asset_number', 'description', 'make', 'location', 'model', 'risk_ranking', 'serial_number', 'pm_schedule'])
+  Object.entries(id).forEach(([key, value]) => {
+    if (!known.has(key) && isPlainValue(value)) fields.push([labelFromKey(key), value])
+  })
   const boxes = fields
     .filter(([, value]) => hasVal(value))
     .map(([label, value]) => `<div class="idbox"><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`)
     .join('')
   return `<div class="identity">${boxes}</div>`
 }
+
+// "next_inspection_due_date" -> "Next Inspection Due Date"
+const labelFromKey = (key: string) =>
+  key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+
+const isPlainValue = (value: unknown) => typeof value === 'string' || typeof value === 'number'
 
 const PFN_RE = /^(pass|fail|n\/?a)$/i
 const isPassFailNa = (options: any): boolean =>
@@ -418,17 +429,28 @@ const customGridHtml = (inspection: InspectionReportLike): string => {
   return checkTable + fieldTable
 }
 
+// With a custom (grid or canvas) form, the screen shows the built-in table
+// whose Set/Read, Battery and PM Kit boxes are measurements rows 0, 1 and 2.
+// In the standard report layout those rows are ordinary named measurements.
+const usesBuiltInTable = (inspection: InspectionReportLike) => {
+  const data = reportData(inspection)
+  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  return Boolean(schema?.custom_grid || schema?.canvas_form?.elements?.length || data.custom_grid || data.formio_form)
+}
+
+// The measurement printed as the table's Set / Read.
+const setReadMeasurement = (inspection: InspectionReportLike) => {
+  const measurements: any[] = reportData(inspection).measurements || []
+  return measurements.find(m => /elec|leak|safety/i.test(String(m?.name || ''))) || (usesBuiltInTable(inspection) ? measurements[0] : undefined)
+}
+
 // The standard nine-check table, filled from the report's own checks.
 const standardGridHtml = (inspection: InspectionReportLike) => {
   const data = reportData(inspection)
   const checks = data.checks || {}
   const measurements: any[] = data.measurements || []
-  // With a custom (grid or canvas) form, the screen shows the built-in table
-  // whose Set/Read, Battery and PM Kit boxes are measurements rows 0, 1 and 2.
-  // In the standard report layout those rows are ordinary named measurements.
-  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
-  const builtInTable = Boolean(schema?.custom_grid || schema?.canvas_form?.elements?.length || data.custom_grid || data.formio_form)
-  const elec = measurements.find(m => /elec|leak|safety/i.test(String(m?.name || ''))) || (builtInTable ? measurements[0] : undefined)
+  const builtInTable = usesBuiltInTable(inspection)
+  const elec = setReadMeasurement(inspection)
   const read = elec ? [elec.read_value, elec.unit].filter(hasVal).join(' ') : ''
   const set = elec ? elec.set_value : ''
   const fromRow = (row: any) => (builtInTable && row ? { replaced_on: row.set_value, due: row.read_value } : {})
@@ -547,6 +569,10 @@ const biomedNotesHtml = (inspection: InspectionReportLike) => {
     ['Corrective action taken', inspection.corrective_actions || d.corrective_action_taken],
     ['Summary', d.summary],
   ]
+  const known = new Set(['reported_problem', 'problem_found', 'corrective_action_taken', 'summary'])
+  Object.entries(d).forEach(([key, value]) => {
+    if (!known.has(key) && isPlainValue(value)) rows.push([labelFromKey(key), value])
+  })
   const visible = rows.filter(([, value]) => hasVal(value))
   if (!visible.length) return ''
   return `
@@ -585,12 +611,82 @@ const inspectedByHtml = (inspection: InspectionReportLike) => {
   const dates = data.dates || {}
   const by = dates.inspected_by || inspection.technician_name || inspection.inspector_name
   const on = fmtDate(dates.inspection_date || inspection.completed_at)
-  const due = fmtDate(dates.next_inspection_due_date || dates.inspection_due_date)
-  if (!hasVal(by) && !hasVal(on) && !hasVal(due)) return ''
+  const due = fmtDate(dates.inspection_due_date)
+  const next = fmtDate(dates.next_inspection_due_date)
+  if (!hasVal(by) && !hasVal(on) && !hasVal(due) && !hasVal(next)) return ''
+  // Both due dates when the report has both; one column when it has one, as before.
+  const both = hasVal(due) && hasVal(next) && due !== next
   return `
     <table class="doc" style="margin-top:16px">
-      <thead><tr><th>Inspected By</th><th>Inspection Date</th><th>Inspection Due Date</th></tr></thead>
-      <tbody><tr><td>${esc(by || '-')}</td><td>${esc(on || '-')}</td><td>${esc(due || '-')}</td></tr></tbody>
+      <thead><tr><th>Inspected By</th><th>Inspection Date</th><th>Inspection Due Date</th>${both ? '<th>Next Inspection Due Date</th>' : ''}</tr></thead>
+      <tbody><tr><td>${esc(by || '-')}</td><td>${esc(on || '-')}</td><td>${esc((both ? due : next || due) || '-')}</td>${both ? `<td>${esc(next)}</td>` : ''}</tr></tbody>
+    </table>`
+}
+
+// Measurements: every reading taken, except the rows the check table above
+// already prints (its Set / Read, and with a custom form its Battery and PM Kit).
+const measurementsHtml = (inspection: InspectionReportLike) => {
+  const measurements: any[] = reportData(inspection).measurements || []
+  const shown = new Set<any>([setReadMeasurement(inspection)])
+  if (usesBuiltInTable(inspection)) measurements.slice(0, 3).forEach(row => shown.add(row))
+  const rows = measurements.filter(row => row && !shown.has(row) && (hasVal(row.set_value) || hasVal(row.read_value)))
+  if (!rows.length) return ''
+  return `
+    <h2 class="sec">Measurements</h2>
+    <table class="doc">
+      <thead><tr><th>Measurement</th><th>Set</th><th>Read</th><th>Unit</th><th class="center">Status</th></tr></thead>
+      <tbody>${rows.map(row => `<tr><td>${esc(row.name || '-')}</td><td>${esc(row.set_value || '-')}</td><td>${esc(row.read_value || '-')}</td><td>${esc(row.unit || '-')}</td><td class="center">${hasVal(row.status) ? `<span class="status ${statusClass(row.status)}">${esc(row.status)}</span>` : '-'}</td></tr>`).join('')}</tbody>
+    </table>`
+}
+
+// Photo Documentation: each photo's label and reference; a link to a picture prints the picture.
+const IMAGE_LINK = /^(https?:\/\/|\/)[^\s"'<>]+\.(jpe?g|png|gif|webp)(\?[^\s"'<>]*)?$/i
+const photosHtml = (inspection: InspectionReportLike) => {
+  const photos: any[] = (reportData(inspection).photo_documentation || []).filter((photo: any) => photo && hasVal(photo.url))
+  if (!photos.length) return ''
+  return `
+    <h2 class="sec">Photo Documentation</h2>
+    <table class="doc notes"><tbody>
+      ${photos.map((photo: any) => {
+        const ref = String(photo.url).trim()
+        const picture = IMAGE_LINK.test(ref) ? `<div style="margin-top:6px"><img src="${esc(ref)}" alt="${esc(photo.label || 'Photo')}" style="max-width:100%;max-height:220px;border-radius:8px;border:1px solid #E2E8F0" /></div>` : ''
+        return `<tr><td class="k">${esc(photo.label || 'Photo')}</td><td>${esc(ref)}${picture}${hasVal(photo.notes) ? `<div class="muted" style="margin-top:4px">${esc(photo.notes)}</div>` : ''}</td></tr>`
+      }).join('')}
+    </tbody></table>`
+}
+
+// Compliance: certified or not, against which standard, and what is recommended.
+const complianceHtml = (inspection: InspectionReportLike) => {
+  const c = reportData(inspection).compliance || {}
+  const certified: Record<string, string> = { yes: 'Yes', conditional: 'Conditional', no: 'No' }
+  const rows: Array<[string, unknown]> = [
+    ['Certified', certified[String(c.certified || '').toLowerCase()] || c.certified],
+    ['Compliance Standard', c.standard],
+    ['Recommendations', c.recommendations],
+    ['Certificate Notes', c.certificate_notes],
+  ]
+  const visible = rows.filter(([, value]) => hasVal(value))
+  if (!visible.length) return ''
+  return `
+    <h2 class="sec">Compliance</h2>
+    <table class="doc notes"><tbody>
+      ${visible.map(([label, value]) => `<tr><td class="k">${esc(label)}</td><td>${esc(value)}</td></tr>`).join('')}
+    </tbody></table>`
+}
+
+// Charges: the Parts, Inspection Charges and Others entered on the report.
+const chargesHtml = (inspection: InspectionReportLike) => {
+  const billing = reportData(inspection).billing
+  if (!billing) return ''
+  const parts = Number(billing.parts || 0)
+  const charge = inspectionCost(billing.inspection_charges, inspection.tier_pm_fee)
+  const others = Number(billing.others || 0)
+  if (!(parts > 0 || charge > 0 || others > 0)) return ''
+  return `
+    <h2 class="sec">Charges</h2>
+    <table class="doc">
+      <thead><tr><th>Parts</th><th>Inspection Charges</th><th>Others</th><th class="right">Total</th></tr></thead>
+      <tbody><tr><td class="amount">${esc(money(parts))}</td><td class="amount">${esc(money(charge))}</td><td class="amount">${esc(money(others))}</td><td class="right amount">${esc(money(parts + charge + others))}</td></tr></tbody>
     </table>`
 }
 
@@ -614,8 +710,12 @@ const cePageHtml = (inspection: InspectionReportLike, facility: Facility | null 
     ${gridHtml(inspection)}
     <h2 class="sec">Functional Test</h2>
     ${biomedNotesHtml(inspection)}
+    ${measurementsHtml(inspection)}
+    ${photosHtml(inspection)}
+    ${complianceHtml(inspection)}
     ${partsHtml(inspection)}
     ${testEquipmentHtml(inspection)}
+    ${chargesHtml(inspection)}
     ${inspectedByHtml(inspection)}
   `, opts)
 }

@@ -241,6 +241,55 @@ const ownEdited = buildInspectionSingleReportHtml({ ...base, id: 5, inspection_n
   { id: 11, total_amount: 280, line_items: [{ item_number: 'INSP-5', description: 'Pump', total_amount: 250 }, { item_number: 'ITEM-2', description: 'Shipping', total_amount: 30 }] })
 ok("an asset with its own edited invoice: the invoice's rows", billingRows(ownEdited).join(' ; ') === 'A-5|Pump|$250.00 ; -|Shipping|$30.00' && totalOf(ownEdited) === '$280.00', billingRows(ownEdited).join(' ; '))
 
+// ── Everything entered on Report Activity is printed ───────────────────────
+const cePage = html => html.slice(0, html.indexOf('Billing Page'))
+const full = cePage(print({
+  form_data: {
+    identity: { asset_number: 'A-9', location: 'ICU', room_number: 'R-12' },
+    checks: { physical_inspection: 'pass' },
+    diagnostics: { reported_problem: 'Noise', summary: 'All good', technician_remark: 'Fan replaced' },
+    measurements: [
+      { name: 'Electrical leakage', set_value: '100', read_value: '12', unit: 'uA', status: 'pass' },
+      { name: 'Functional test', set_value: '', read_value: '', unit: '', status: 'pass' },
+      { name: 'Ground resistance', set_value: '0.5', read_value: '0.2', unit: 'Ohms', status: 'fail' },
+    ],
+    photo_documentation: [
+      { label: 'Equipment condition', url: '', notes: '' },
+      { label: 'Front panel', url: 'https://files.example.com/p/front.jpg', notes: 'Scratch on the door' },
+      { label: 'Ticket', url: 'WO-55 photo in binder', notes: '' },
+    ],
+    compliance: { certified: 'conditional', standard: 'NFPA 99', recommendations: 'Replace door gasket', certificate_notes: '' },
+    parts: [{ description: 'Gasket', part_number: 'G-1', price: 40, condition: 'new' }],
+    test_equipment: [{ description: 'Safety Analyzer', make: 'Fluke', serial_number: 'F-1' }],
+    billing: { parts: 40, inspection_charges: 175, others: 15 },
+    dates: { inspected_by: 'Sam', inspection_date: '2026-11-10', inspection_due_date: '2026-11-15', next_inspection_due_date: '2027-11-10' },
+  },
+}))
+ok('an extra identity field is printed', full.includes('Room Number') && full.includes('R-12'))
+ok('an extra Biomed note is printed', full.includes('Technician Remark') && full.includes('Fan replaced'))
+ok('Measurements: a reading beyond Set / Read is printed', full.includes('Ground resistance') && full.includes('0.2') && full.includes('Ohms'))
+ok('  with its status', /Ground resistance[\s\S]*status fail/.test(full))
+ok('  the Set / Read one is not printed twice', (full.match(/Electrical leakage/g) || []).length === 0)
+ok('  an empty default row is left out', !full.includes('Functional test<'))
+ok('Photo Documentation: each photo with its reference', full.includes('Front panel') && full.includes('https://files.example.com/p/front.jpg') && full.includes('WO-55 photo in binder'))
+ok('  a picture link prints the picture', full.includes('<img src="https://files.example.com/p/front.jpg"'))
+ok('  a plain reference prints as text only', !full.includes('<img src="WO-55'))
+ok('  with its notes', full.includes('Scratch on the door'))
+ok('  a photo row with nothing in it is left out', !full.includes('Equipment condition'))
+ok('Compliance: certified, standard and recommendations', full.includes('Conditional') && full.includes('NFPA 99') && full.includes('Replace door gasket'))
+ok('  an empty one is left out', !full.includes('Certificate Notes'))
+ok('Charges: parts, inspection charges and others, with their total', full.includes('Charges') && full.includes('$40.00') && full.includes('$175.00') && full.includes('$15.00') && full.includes('$230.00'))
+ok('Dates: both due dates when both are set', full.includes('Next Inspection Due Date') && /Nov 1[45], 2026/.test(full) && /Nov (9|10), 2027/.test(full), (full.match(/[A-Z][a-z]{2} \d{1,2}, \d{4}/g) || []).join(' | '))
+
+const sameDue = cePage(print({ form_data: { dates: { inspected_by: 'Sam', inspection_date: '2026-11-10', next_inspection_due_date: '2027-11-10' } } }))
+ok('  one due date: one column, as before', !sameDue.includes('Next Inspection Due Date') && /Nov (9|10), 2027/.test(sameDue))
+
+const bare = cePage(print({ form_data: {} }))
+ok('a report with none of it adds no empty sections', !['Measurements', 'Photo Documentation', 'Compliance', 'Charges'].some(name => bare.includes(`>${name}<`)))
+
+const hostile = cePage(print({ form_data: { photo_documentation: [{ label: '<b>x</b>', url: 'javascript:alert(1)//.png' }, { label: 'q', url: 'https://x.test/a.png" onerror="alert(1)' }] } }))
+ok('a hostile photo link is printed as text, never run', !hostile.includes('<img src="javascript') && !hostile.includes('onerror="alert') && !hostile.includes('<b>x</b>'))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)
