@@ -159,7 +159,9 @@ inv = a.installments[0].invoice
 ok("on the due date it is charged", len(square.charges) == 1 and result["charged"] == 1, str(result))
 # No down payment here: 10,000 / 12 = 833.33 principal + 125.00 markup =
 # 958.33, plus 79.06 tax at 8.25% = 1,037.39.
-ok("  for exactly the installment", square.charges[0]["amount"] == D("1037.39"), str(square.charges[0]["amount"]))
+# A card payment adds the 3% card processing fee: 1,037.39 + 31.12 = 1,068.51.
+ok("  for the installment plus the 3% card fee", square.charges[0]["amount"] == D("1068.51"), str(square.charges[0]["amount"]))
+ok("  the fee is on the invoice", inv.card_fee_amount == D("31.12") and inv.total_amount == D("1068.51"), "{} {}".format(inv.card_fee_amount, inv.total_amount))
 ok("  against the saved card", square.charges[0]["card"] == "CARD-1")
 ok("the invoice is paid", inv.status == InvoiceStatus.PAID and inv.balance_due == D("0.00"))
 ok("the installment follows", a.installments[0].status == "paid")
@@ -283,7 +285,7 @@ lid = make_lease(db, staff, part, down=D("1000"))
 run(db, date.today())
 a = agreement(db, lid)
 ok("an authorized card pays the down payment", a.down_payment_invoice.status == InvoiceStatus.PAID)
-ok("  for the down payment plus tax", square.charges and square.charges[0]["amount"] == D("1082.50"))
+ok("  for the down payment plus tax, plus the 3% card fee", square.charges and square.charges[0]["amount"] == D("1114.98"))
 ok("  which puts the agreement in force", a.status == "active")
 
 db, staff, part = fresh()
@@ -351,7 +353,7 @@ finally:
     billing.bill_agreement = real
 ok("the failure is counted", result["errors"] == 1, str(result))
 ok("  and the healthy agreement was still charged",
-   any(c["amount"] == D("1037.39") for c in square.charges) and result["charged"] == 1)
+   any(c["amount"] == D("1068.51") for c in square.charges) and result["charged"] == 1)
 
 print()
 print("=" * 72)

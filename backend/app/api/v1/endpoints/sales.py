@@ -495,6 +495,8 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "tax_amount": invoice.tax_amount,
         "discount_amount": invoice.discount_amount,
         "total_amount": invoice.total_amount,
+        # Added when paid by card; part of the total.
+        "card_fee_amount": invoice.card_fee_amount,
         "amount_paid": invoice.amount_paid,
         "refunded_amount": refunded_amount,
         "net_paid": max(_money(invoice.amount_paid) - refunded_amount, Decimal("0")),

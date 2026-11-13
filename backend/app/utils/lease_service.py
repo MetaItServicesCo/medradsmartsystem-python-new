@@ -38,6 +38,7 @@ from app.models.user import User
 from app.utils.email import send_html_email
 from app.utils.invoice_editing import compose_invoice_edit_notes
 from app.utils.invoice_ledger import record_invoice_created, record_status_change
+from app.utils.card_fee import paid_toward_charges
 from app.utils.lease_math import (
     BuyoutQuote, InstallmentState, LeaseQuote, LeaseTerms, ZERO, all_paid, build_schedule,
     buyout_quote, money, should_default, validate_terms,
@@ -665,7 +666,7 @@ def installment_states(agreement: LeaseAgreement) -> list[InstallmentState]:
             principal=money(installment.principal),
             markup=money(installment.markup),
             total=money(installment.total),
-            amount_paid=money(invoice.amount_paid) if invoice else ZERO,
+            amount_paid=paid_toward_charges(invoice) if invoice else ZERO,
             invoiced=invoice is not None,
             cancelled=installment.status == "cancelled",
         ))
@@ -745,7 +746,7 @@ def reconcile(db: Session, agreement: LeaseAgreement, today: Optional[date] = No
             if installment.status == "paid" and installment.paid_at and installment.paid_at >= started:
                 # Settled while a buyout covering it was outstanding: the
                 # customer has paid for this slice twice.
-                overpaid += money(installment.invoice.amount_paid) if installment.invoice else ZERO
+                overpaid += paid_toward_charges(installment.invoice) if installment.invoice else ZERO
             elif installment.status in ("scheduled", "invoiced"):
                 if installment.invoice:
                     _cancel_invoice(db, installment.invoice,

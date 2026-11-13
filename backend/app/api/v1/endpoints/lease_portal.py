@@ -36,6 +36,7 @@ from app.utils.payment_idempotency import (
 )
 from app.utils.payment_receipts import queue_payment_receipt
 from app.utils.rate_limit import enforce_rate_limit, public_payment_identity, request_ip
+from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
 from app.utils.square_payments import (
     SquareRequestError, create_square_card_on_file, create_square_payment, minor_units_to_amount,
     square_is_configured, square_public_config,
@@ -80,6 +81,8 @@ class PayIn(BaseModel):
     invoice_id: int
     source_id: str = Field(min_length=1, max_length=512)
     idempotency_key: Optional[str] = Field(None, max_length=120)
+    # What the payer was shown. When given, charged only if it is still what is owed.
+    charge_amount: Optional[Decimal] = None
 
 
 @router.get("/lease-portal/{token}")
@@ -184,9 +187,14 @@ def pay_invoice(token: str, payload: PayIn, request: Request, db: Session = Depe
     invoice = _owned_invoice(db, agreement, payload.invoice_id)
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="This invoice has been cancelled")
-    amount = money(invoice.balance_due)
-    if invoice.status == InvoiceStatus.PAID or amount <= 0:
+    if invoice.status == InvoiceStatus.PAID or money(invoice.balance_due) <= 0:
         return _view(db, agreement)
+    # The balance plus the card processing fee, as with every card payment.
+    charge = card_charge(invoice.balance_due)
+    amount = charge.total
+    if payload.charge_amount is not None and money(payload.charge_amount) != amount:
+        raise HTTPException(status_code=409,
+                            detail="The amount due has changed to ${:.2f}. Review it and pay again.".format(amount))
 
     payer = agreement.signed_by_name or agreement.customer_name
     key = payload.idempotency_key or "lease-payment-{}-{}".format(agreement.id, invoice.id)
@@ -194,13 +202,15 @@ def pay_invoice(token: str, payload: PayIn, request: Request, db: Session = Depe
         db,
         idempotency_key=key,
         fingerprint=payment_fingerprint("lease_invoice_payment", invoice_id=invoice.id, amount=amount,
-                                        currency=settings.SQUARE_CURRENCY, attributes={}),
+                                        currency=settings.SQUARE_CURRENCY,
+                                        attributes={"card_fee": "{:.2f}".format(charge.fee)}),
         operation_type="lease_invoice_payment",
         invoice_id=invoice.id, amount=amount, currency=settings.SQUARE_CURRENCY, provider="square",
     )
     if replay:
         replay_or_raise(operation)
         return _view(db, _agreement(db, token))
+    remember_card_charge(operation, charge)
     attempt = int(invoice.payment_attempt_count or 0) + 1
     invoice.payment_attempt_count = attempt
     invoice.last_payment_attempt_at = datetime.utcnow()
@@ -241,6 +251,7 @@ def pay_invoice(token: str, payload: PayIn, request: Request, db: Session = Depe
         db.commit()
         raise HTTPException(status_code=502, detail="The payment could not be confirmed. We will check it and be in touch.")
 
+    apply_card_fee(db, invoice, charge.fee, None, base=charge.base)
     previous = invoice.amount_paid
     invoice.amount_paid = min(money(invoice.total_amount), money(previous) + amount)
     invoice.balance_due = max(money(invoice.total_amount) - money(invoice.amount_paid), Decimal("0"))
@@ -256,7 +267,7 @@ def pay_invoice(token: str, payload: PayIn, request: Request, db: Session = Depe
                           payment_method="square_card", recipients=[agreement.customer_email],
                           card_brand=card.get("card_brand"), card_last4=card.get("last_4"))
     mark_operation_succeeded(operation, provider_reference=payment.get("id"),
-                             response_data={"invoice_id": invoice.id, "payment_id": payment.get("id")})
+                             response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment.get("id")}))
     svc.append_history(agreement, "paid_online", by=payer,
                        details={"invoice": invoice.invoice_number, "amount": str(amount)})
     svc.reconcile(db, agreement)

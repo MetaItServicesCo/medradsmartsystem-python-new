@@ -30,6 +30,7 @@ from app.utils.email import send_html_email
 from app.utils.invoice_editing import compose_invoice_edit_notes
 from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta
 from app.utils.logging import log_activity
+from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
 from app.utils.square_payments import (
     SquareRequestError,
     create_square_payment,
@@ -572,9 +573,11 @@ def _email_charge_declined(rental: Rental, invoice: Invoice, attempt: int, next_
 
 def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     """Attempt to charge the saved card. Returns 'charged', 'declined', or 'exhausted'."""
-    charge_amount = _money(invoice.balance_due)
-    if charge_amount <= 0:
+    if _money(invoice.balance_due) <= 0:
         return "charged"
+    # The balance plus the card processing fee, as with every card payment.
+    charge = card_charge(invoice.balance_due)
+    charge_amount = charge.total
     attempt = int(invoice.payment_attempt_count or 0) + 1
     invoice.payment_attempt_count = attempt
     invoice.last_payment_attempt_at = datetime.utcnow()
@@ -592,7 +595,7 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
             invoice_id=invoice.id,
             amount=charge_amount,
             currency=settings.SQUARE_CURRENCY,
-            attributes={"attempt": attempt, "rental_id": rental.id},
+            attributes={"attempt": attempt, "rental_id": rental.id, "card_fee": f"{charge.fee:.2f}"},
         ),
         operation_type="rental_auto_charge",
         invoice_id=invoice.id,
@@ -602,6 +605,7 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     )
     if replay:
         replay_or_raise(operation)
+    remember_card_charge(operation, charge)
     rental_id = rental.id
     invoice_id = invoice.id
     operation_id = operation.id
@@ -685,6 +689,7 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
         )
         return "declined"
 
+    apply_card_fee(db, invoice, charge.fee, None, base=charge.base)
     previous_paid = invoice.amount_paid
     invoice.amount_paid = min(_money(invoice.total_amount), _money(previous_paid) + charge_amount)
     invoice.balance_due = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
@@ -711,7 +716,7 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     mark_operation_succeeded(
         operation,
         provider_reference=payment.get("id"),
-        response_data={"invoice_id": invoice.id, "payment_id": payment.get("id")},
+        response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment.get("id")}),
     )
     rental.failed_charge_count = 0
     _append_history(rental, "auto_charged", {"invoice": invoice.invoice_number, "amount": str(charge_amount)})

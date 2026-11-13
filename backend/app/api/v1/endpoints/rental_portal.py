@@ -36,6 +36,7 @@ from app.utils.rental_billing import (
 )
 from app.utils.rental_extensions import OPEN_EXTENSION_STATUSES, current_extension, extension_response
 from app.utils.notifications import notify_admins
+from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
 from app.utils.square_payments import (
     square_public_config,
     square_is_configured,
@@ -181,6 +182,8 @@ def _invoice_view(invoice: Invoice) -> dict[str, Any]:
         "total_amount": invoice.total_amount,
         "amount_paid": invoice.amount_paid,
         "balance_due": invoice.balance_due,
+        "card_fee_amount": invoice.card_fee_amount,
+        "card_charge": card_charge(invoice.balance_due).as_dict(),
         "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
         "issue_date": invoice.issue_date,
         "due_date": invoice.due_date,
@@ -874,6 +877,8 @@ class PayInvoiceIn(BaseModel):
     idempotency_key: Optional[str] = Field(default=None, min_length=8, max_length=255)
     save_card: bool = False
     authorize_auto_charge: bool = False
+    # What the payer was shown. When given, charged only if it is still what is owed.
+    charge_amount: Optional[Decimal] = None
 
 
 class AcceptRentalIn(BaseModel):
@@ -978,6 +983,12 @@ def _pay_rental_invoice(
             Decimal("0"),
             Decimal(str(projected_amounts["total"])) - Decimal(str(invoice.amount_paid or 0)),
         )
+    charge = card_charge(payment_amount)
+    if payload.charge_amount is not None and Decimal(str(payload.charge_amount)).quantize(Decimal("0.01")) != charge.total:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The amount due has changed to ${charge.total:.2f}. Review it and pay again.",
+        )
     operation_key = payload.idempotency_key or f"rental-payment-{rental.id}-{invoice.id}"
     operation, replay = get_or_create_operation(
         db,
@@ -985,16 +996,17 @@ def _pay_rental_invoice(
         fingerprint=payment_fingerprint(
             "square_invoice_payment",
             invoice_id=invoice.id,
-            amount=payment_amount,
+            amount=charge.total,
             currency=settings.SQUARE_CURRENCY,
             attributes={
                 "save_card": payload.save_card,
                 "authorize_auto_charge": payload.authorize_auto_charge,
+                "card_fee": f"{charge.fee:.2f}",
             },
         ),
         operation_type="square_invoice_payment",
         invoice_id=invoice.id,
-        amount=payment_amount,
+        amount=charge.total,
         currency=settings.SQUARE_CURRENCY,
         provider="square",
         created_by_id=current_user.id if current_user else None,
@@ -1003,6 +1015,7 @@ def _pay_rental_invoice(
         replay_or_raise(operation)
         db.refresh(rental)
         return _portal_response(db, rental)
+    remember_card_charge(operation, charge)
     attempt = int(invoice.payment_attempt_count or 0) + 1
     invoice.payment_attempt_count = attempt
     invoice.last_payment_attempt_at = datetime.utcnow()
@@ -1037,7 +1050,7 @@ def _pay_rental_invoice(
             create_square_payment(
                 source_id=payment_source,
                 idempotency_key=operation_key,
-                amount=payment_amount,
+                amount=charge.total,
                 invoice_number=invoice_number,
                 customer_email=customer_email,
                 customer_id=saved_card.get("customer_id") if saved_card else None,
@@ -1095,7 +1108,7 @@ def _pay_rental_invoice(
         paid_amount = minor_units_to_amount((payment.get("amount_money") or {}).get("amount"))
         paid_currency = str((payment.get("amount_money") or {}).get("currency") or "").upper()
         expected_currency = settings.SQUARE_CURRENCY.strip().upper() or "USD"
-        if payment_status != "COMPLETED" or paid_amount != payment_amount or paid_currency != expected_currency:
+        if payment_status != "COMPLETED" or paid_amount != charge.total or paid_currency != expected_currency:
             mark_operation_failed(operation, "Square returned an incomplete or mismatched rental payment", unknown=True)
             db.commit()
             raise HTTPException(
@@ -1122,6 +1135,7 @@ def _pay_rental_invoice(
         )
         if payload.authorize_auto_charge:
             apply_projected_discount_to_unpaid_invoice(invoice, rental)
+    apply_card_fee(db, invoice, charge.fee, current_user, base=charge.base)
     invoice.amount_paid = invoice.total_amount
     invoice.balance_due = Decimal("0")
     invoice.status = InvoiceStatus.PAID

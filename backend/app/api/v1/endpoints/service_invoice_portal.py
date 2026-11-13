@@ -19,6 +19,7 @@ import html
 import re
 import secrets
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, Callable, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -65,6 +66,7 @@ from app.utils.payment_receipts import deliver_payment_receipt, queue_payment_re
 from app.utils.permissions import has_module_permission
 from app.utils.rate_limit import enforce_rate_limit, public_payment_identity
 from app.utils.service_invoice_document import build_service_invoice_document, service_work_entries
+from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
 from app.utils.square_payments import (
     SquareConfigurationError,
     SquareRequestError,
@@ -375,6 +377,8 @@ def _public_response(invoice: Invoice) -> dict[str, Any]:
         "pending_reports": pending,
         "can_pay": balance > 0 and bool(square.get("enabled")) and not pending,
         "square_payment": square,
+        "card_fee_amount": f"{_money(invoice.card_fee_amount):.2f}",
+        **card_charge(balance).as_dict(),
     }
 
 
@@ -387,6 +391,8 @@ class PublicSquarePaymentIn(BaseModel):
     source_id: str = Field(min_length=8, max_length=500)
     idempotency_key: str = Field(min_length=16, max_length=45)
     payer_name: str = Field(min_length=2, max_length=200)
+    # What the payer was shown. When given, charged only if it is still what is owed.
+    charge_amount: Optional[Decimal] = None
 
 
 @router.post("/public/service-invoices/{token}/square-payment")
@@ -430,6 +436,12 @@ def _take_square_payment(
     if balance <= 0:
         raise HTTPException(status_code=409, detail="This invoice has no payable balance")
     payer = payload.payer_name.strip()
+    charge = card_charge(balance)
+    if payload.charge_amount is not None and _money(payload.charge_amount).quantize(Decimal("0.01")) != charge.total:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The amount due has changed to ${charge.total:.2f}. Review it and pay again.",
+        )
 
     operation, replay = get_or_create_operation(
         db,
@@ -437,13 +449,13 @@ def _take_square_payment(
         fingerprint=payment_fingerprint(
             "square_invoice_payment",
             invoice_id=invoice.id,
-            amount=balance,
+            amount=charge.total,
             currency=settings.SQUARE_CURRENCY,
-            attributes={"payer_name": payer},
+            attributes={"payer_name": payer, "card_fee": f"{charge.fee:.2f}"},
         ),
         operation_type="square_invoice_payment",
         invoice_id=invoice.id,
-        amount=balance,
+        amount=charge.total,
         currency=settings.SQUARE_CURRENCY,
         provider="square",
         created_by_id=actor.id if actor else None,
@@ -452,6 +464,7 @@ def _take_square_payment(
         replay_or_raise(operation)
         db.refresh(invoice)
         return respond(invoice)
+    remember_card_charge(operation, charge)
 
     # Persist the processing marker before contacting Square. This makes an
     # uncertain network response recoverable across worker/process restarts.
@@ -464,7 +477,7 @@ def _take_square_payment(
         square_payment = create_square_payment(
             source_id=payload.source_id,
             idempotency_key=payload.idempotency_key,
-            amount=balance,
+            amount=charge.total,
             invoice_number=invoice_number,
             customer_email=customer_email,
         )
@@ -491,18 +504,20 @@ def _take_square_payment(
         mark_operation_failed(operation, f"Square payment status was {payment_status or 'unknown'}", unknown=True)
         db.commit()
         raise HTTPException(status_code=409, detail=f"Square payment is {payment_status.lower() or 'not completed'}")
-    if square_amount != balance or square_currency != expected_currency:
+    if square_amount != charge.total or square_currency != expected_currency:
         mark_operation_failed(operation, "Square returned an unexpected amount or currency", unknown=True)
         db.commit()
         raise HTTPException(status_code=409, detail="Square completed an unexpected amount or currency; the invoice was not changed")
     already_recorded = db.query(InvoiceTransaction.id).filter(InvoiceTransaction.reference_number == payment_id).first()
     if already_recorded:
         mark_operation_succeeded(
-            operation, provider_reference=payment_id, response_data={"invoice_id": invoice.id, "payment_id": payment_id},
+            operation, provider_reference=payment_id,
+            response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment_id}),
         )
         db.commit()
         return respond(invoice)
 
+    apply_card_fee(db, invoice, charge.fee, actor, base=charge.base)
     previous_paid = _money(invoice.amount_paid)
     previous_status = invoice.status
     invoice.amount_paid = previous_paid + square_amount
@@ -553,7 +568,8 @@ def _take_square_payment(
         actor_id=actor.id if actor else None,
     )
     mark_operation_succeeded(
-        operation, provider_reference=payment_id, response_data={"invoice_id": invoice.id, "payment_id": payment_id},
+        operation, provider_reference=payment_id,
+        response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment_id}),
     )
     card = (square_payment.get("card_details") or {}).get("card") or {}
     receipt = queue_payment_receipt(
@@ -607,6 +623,8 @@ def _facility_payment_response(db: Session, invoice: Invoice, user: User) -> dic
         "can_pay": balance > 0 and bool(square.get("enabled")) and not pending,
         "square_payment": square,
         "pending_reports": pending,
+        "card_fee_amount": f"{_money(invoice.card_fee_amount):.2f}",
+        **card_charge(balance).as_dict(),
     }
 
 
@@ -622,6 +640,8 @@ def read_card_payment(
 class AccountSquarePaymentIn(BaseModel):
     source_id: str = Field(min_length=8, max_length=500)
     idempotency_key: str = Field(min_length=16, max_length=45)
+    # What the payer was shown. When given, charged only if it is still what is owed.
+    charge_amount: Optional[Decimal] = None
 
 
 @router.post("/service-invoices/{invoice_id}/square-payment")
@@ -650,6 +670,7 @@ def pay_service_invoice_signed_in(
         source_id=payload.source_id,
         idempotency_key=payload.idempotency_key,
         payer_name=(current_user.full_name or current_user.username or "Facility user")[:200].ljust(2, "."),
+        charge_amount=payload.charge_amount,
     )
     user_id = current_user.id
     return _take_square_payment(

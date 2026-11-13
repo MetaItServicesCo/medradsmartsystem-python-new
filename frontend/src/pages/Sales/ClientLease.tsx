@@ -27,6 +27,7 @@ import {
   fetchLeasePortal, payLeaseInvoice, removeLeaseCard, requestLeaseBuyout, saveLeaseCard, signLease,
   type LeaseDetail, type LeaseInvoiceBrief,
 } from '@/api/leases'
+import CardChargeBreakdown from '@/components/Billing/CardChargeBreakdown'
 import SquareCardCheckout, { clearSquarePaymentKey } from '@/components/Billing/SquareCardCheckout'
 import {
   CustomerDetailsCard,
@@ -102,9 +103,9 @@ export default function ClientLease() {
   })
   const pay = useMutation({
     mutationFn: (v: { invoice: LeaseInvoiceBrief; sourceId: string; key: string }) =>
-      payLeaseInvoice(token, v.invoice.id, v.sourceId, v.key),
+      payLeaseInvoice(token, v.invoice.id, v.sourceId, v.key, v.invoice.card_charge?.charge_amount),
     onSuccess: (next, v) => {
-      clearSquarePaymentKey(`lease-invoice-${v.invoice.id}-${Number(v.invoice.balance_due).toFixed(2)}`)
+      clearSquarePaymentKey(`lease-invoice-${v.invoice.id}-${Number(v.invoice.card_charge?.charge_amount || v.invoice.balance_due).toFixed(2)}`)
       update(next)
       setPayTarget(null)
       toast.success('Payment received. A receipt is on its way.')
@@ -411,12 +412,14 @@ export default function ClientLease() {
                       {canPayByCard && square && (
                         payTarget?.id === invoice.id ? (
                           <Box sx={{ mt: 2 }}>
+                            <CardChargeBreakdown charge={invoice.card_charge} />
                             <SquareCardCheckout
                               applicationId={square.application_id!} locationId={square.location_id!}
-                              sdkUrl={square.sdk_url} amount={Number(invoice.balance_due)} currency={square.currency}
+                              sdkUrl={square.sdk_url} amount={Number(invoice.card_charge?.charge_amount || invoice.balance_due)} currency={square.currency}
+                              submitLabel={`Pay ${money(invoice.card_charge?.charge_amount || invoice.balance_due)} by card`}
                               payerName={lease.customer_name} payerEmail={lease.customer_email}
                               processing={pay.isPending}
-                              idempotencyScope={`lease-invoice-${invoice.id}-${Number(invoice.balance_due).toFixed(2)}`}
+                              idempotencyScope={`lease-invoice-${invoice.id}-${Number(invoice.card_charge?.charge_amount || invoice.balance_due).toFixed(2)}`}
                               onPaymentToken={(sourceId, key) => pay.mutate({ invoice, sourceId, key })}
                             />
                             <Button onClick={() => setPayTarget(null)} sx={{ mt: 1, fontWeight: 800 }}>Cancel</Button>

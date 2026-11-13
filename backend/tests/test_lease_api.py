@@ -286,7 +286,7 @@ r = client.post("/api/v1/lease-portal/{}/pay".format(TOKEN),
                 json={"invoice_id": down["id"], "source_id": "cnon:ok", "idempotency_key": "k-1"})
 ok("the down payment can be paid", r.status_code == 200, r.text[:160])
 ok("  which puts the agreement in force", r.json()["stage"] == "active", r.json().get("stage"))
-ok("  charging exactly the down payment", square.charges[-1][1] == D("1082.50"))
+ok("  charging the down payment plus the 3% card fee", square.charges[-1][1] == D("1114.98"), str(square.charges[-1][1]))
 r = client.post("/api/v1/lease-portal/{}/pay".format(TOKEN),
                 json={"invoice_id": down["id"], "source_id": "cnon:ok", "idempotency_key": "k-1"})
 ok("paying it again does not charge twice", len(square.charges) == 1 and r.status_code == 200,

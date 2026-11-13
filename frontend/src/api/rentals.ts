@@ -1,4 +1,5 @@
 import apiClient from './client'
+import type { CardCharge } from './cardPayments'
 
 export type RentalStatus = 'draft' | 'active' | 'completed' | 'cancelled'
 export type BillingFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom'
@@ -573,6 +574,9 @@ export interface RentalPortalInvoice {
   total_amount: number
   amount_paid: number
   balance_due: number
+  card_fee_amount?: number | string
+  /** What a card payment charges now: the balance, the card processing fee, and both. */
+  card_charge?: CardCharge
   status: RentalInvoiceStatus
   issue_date: string
   due_date: string
@@ -840,6 +844,7 @@ export const payPublicRentalInvoice = async (
   idempotencyKey: string,
   saveCard = false,
   authorizeAutoCharge = false,
+  chargeAmount?: string,
 ): Promise<RentalPortal> => {
   const res = await apiClient.post(`/rentals/public/${token}/pay-invoice`, {
     invoice_id: invoiceId,
@@ -847,6 +852,7 @@ export const payPublicRentalInvoice = async (
     idempotency_key: idempotencyKey,
     save_card: saveCard,
     authorize_auto_charge: authorizeAutoCharge,
+    ...(chargeAmount ? { charge_amount: chargeAmount } : {}),
   })
   return res.data
 }
@@ -871,6 +877,7 @@ export const payAccountRentalInvoice = async (
   idempotencyKey: string,
   saveCard = false,
   authorizeAutoCharge = false,
+  chargeAmount?: string,
 ): Promise<RentalPortal> => {
   const res = await apiClient.post(`/rentals/account/${rentalId}/pay-invoice`, {
     invoice_id: invoiceId,
@@ -878,6 +885,7 @@ export const payAccountRentalInvoice = async (
     idempotency_key: idempotencyKey,
     save_card: saveCard,
     authorize_auto_charge: authorizeAutoCharge,
+    ...(chargeAmount ? { charge_amount: chargeAmount } : {}),
   })
   return res.data
 }

@@ -13,6 +13,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 
+import CardChargeBreakdown from '@/components/Billing/CardChargeBreakdown'
 import SquareCardCheckout, { clearSquarePaymentKey } from '@/components/Billing/SquareCardCheckout'
 import {
   CustomerDetailsCard,
@@ -86,6 +87,9 @@ const InvoiceBreakdown = ({ invoice }: { invoice: RentalPortalInvoice }) => (
           <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800, color: '#DC2626' }}>Discount</TableCell><TableCell align="right" sx={{ color: '#DC2626' }}>-{money(invoice.discount_amount)}</TableCell></TableRow>
         )}
         <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800 }}>Tax (8.25%)</TableCell><TableCell align="right">{money(invoice.tax_amount)}</TableCell></TableRow>
+        {Number(invoice.card_fee_amount || 0) > 0 && (
+          <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800 }}>Card processing fee</TableCell><TableCell align="right">{money(invoice.card_fee_amount)}</TableCell></TableRow>
+        )}
         <TableRow sx={{ bgcolor: '#F8FAFC' }}><TableCell colSpan={3} sx={{ fontWeight: 950 }}>Invoice Total</TableCell><TableCell align="right" sx={{ fontWeight: 950 }}>{money(invoice.total_amount)}</TableCell></TableRow>
         {Number(invoice.amount_paid || 0) > 0 && (
           <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800, color: '#059669' }}>Paid</TableCell><TableCell align="right" sx={{ color: '#059669' }}>{money(invoice.amount_paid)}</TableCell></TableRow>
@@ -216,9 +220,12 @@ const ClientRental = () => {
 
   const payMut = useMutation({
     mutationFn: ({ invoiceId, sourceId, idempotencyKey }: { invoiceId: number; sourceId: string; idempotencyKey: string }) =>
+      // A one-time payment is charged only if it is still the total shown. With
+      // automatic payments authorized, a card-on-file discount may lower it,
+      // and the server works out the amount and its fee.
       isAccountView
-        ? payAccountRentalInvoice(accountRentalId, invoiceId, sourceId, idempotencyKey, authorizeFuturePayments, authorizeFuturePayments)
-        : payPublicRentalInvoice(token, invoiceId, sourceId, idempotencyKey, authorizeFuturePayments, authorizeFuturePayments),
+        ? payAccountRentalInvoice(accountRentalId, invoiceId, sourceId, idempotencyKey, authorizeFuturePayments, authorizeFuturePayments, authorizeFuturePayments ? undefined : payTarget?.card_charge?.charge_amount)
+        : payPublicRentalInvoice(token, invoiceId, sourceId, idempotencyKey, authorizeFuturePayments, authorizeFuturePayments, authorizeFuturePayments ? undefined : payTarget?.card_charge?.charge_amount),
     onSuccess: (data) => {
       queryClient.setQueryData(
         isAccountView ? ['rental-account', accountRentalId] : ['rental-portal', token],
@@ -236,7 +243,7 @@ const ClientRental = () => {
       const detail = e.response?.data?.detail || 'Payment could not be completed'
       const verificationPending = e.response?.status === 409 || /pending|verif/i.test(String(detail))
       if (!verificationPending && payTarget) {
-        clearSquarePaymentKey(`rental-invoice-${variables.invoiceId}-${Number(payTarget.balance_due || 0).toFixed(2)}`)
+        clearSquarePaymentKey(`rental-invoice-${variables.invoiceId}-${Number(payTarget.card_charge?.charge_amount || payTarget.balance_due || 0).toFixed(2)}`)
       }
       toast.error(detail)
     },
@@ -693,7 +700,8 @@ const ClientRental = () => {
                         <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1 }}>
                           Leave the option unchecked for a one-time payment. MedRad never stores the full card number or security code.
                         </Typography>
-                        <SquareCardCheckout applicationId={square.application_id!} locationId={square.location_id!} sdkUrl={square.sdk_url} amount={Number(invoice.balance_due || 0)} currency={square.currency} payerName={agreement.customer_name} payerEmail={agreement.customer_email} processing={payMut.isPending} idempotencyScope={`rental-invoice-${invoice.id}-${Number(invoice.balance_due || 0).toFixed(2)}`} onPaymentToken={(sourceId, idempotencyKey) => payMut.mutate({ invoiceId: invoice.id, sourceId, idempotencyKey })} />
+                        <CardChargeBreakdown charge={invoice.card_charge} />
+                        <SquareCardCheckout applicationId={square.application_id!} locationId={square.location_id!} sdkUrl={square.sdk_url} amount={Number(invoice.card_charge?.charge_amount || invoice.balance_due || 0)} currency={square.currency} submitLabel={`Pay ${money(invoice.card_charge?.charge_amount || invoice.balance_due)} by card`} payerName={agreement.customer_name} payerEmail={agreement.customer_email} processing={payMut.isPending} idempotencyScope={`rental-invoice-${invoice.id}-${Number(invoice.card_charge?.charge_amount || invoice.balance_due || 0).toFixed(2)}`} onPaymentToken={(sourceId, idempotencyKey) => payMut.mutate({ invoiceId: invoice.id, sourceId, idempotencyKey })} />
                         <Button onClick={() => { setPayTarget(null); setAuthorizeFuturePayments(false) }} sx={{ mt: 1, fontWeight: 800 }}>Cancel</Button>
                       </Box>
                     ) : (

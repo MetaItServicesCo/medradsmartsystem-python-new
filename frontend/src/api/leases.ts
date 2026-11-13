@@ -1,4 +1,5 @@
 import apiClient from './client'
+import type { CardCharge } from './cardPayments'
 
 // Lease-to-own. Every money figure here arrives as a string from the server,
 // already rounded to the cent by the backend's money module; the UI displays
@@ -21,6 +22,9 @@ export interface LeaseInvoiceBrief {
   balance_due: string
   due_date: string | null
   payable: boolean
+  card_fee_amount?: string
+  /** What a card payment charges now: the balance, the card processing fee, and both. */
+  card_charge?: CardCharge
 }
 
 export interface LeaseInstallment {
@@ -261,10 +265,11 @@ export const removeLeaseCard = async (token: string): Promise<LeaseDetail> =>
   (await apiClient.post(`/lease-portal/${encodeURIComponent(token)}/remove-card`, { confirm: true })).data
 
 export const payLeaseInvoice = async (
-  token: string, invoiceId: number, sourceId: string, idempotencyKey: string,
+  token: string, invoiceId: number, sourceId: string, idempotencyKey: string, chargeAmount?: string,
 ): Promise<LeaseDetail> =>
   (await apiClient.post(`/lease-portal/${encodeURIComponent(token)}/pay`, {
     invoice_id: invoiceId, source_id: sourceId, idempotency_key: idempotencyKey,
+    ...(chargeAmount ? { charge_amount: chargeAmount } : {}),
   })).data
 
 export const requestLeaseBuyout = async (token: string): Promise<LeaseDetail> =>

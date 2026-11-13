@@ -49,7 +49,8 @@ from app.main import app  # noqa: E402
 from app.models.equipment import Equipment  # noqa: E402
 from app.models.facility import Facility  # noqa: E402
 from app.models.modality import Modality, ModalityCategory  # noqa: E402
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType  # noqa: E402
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType, PaymentProof  # noqa: E402
+from app.utils.payment_proofs import new_card_claim  # noqa: E402
 from app.models.payment_operation import PaymentOperation  # noqa: E402
 from app.models.rental import BillingFrequency, Rental, RentalAgreementAcceptance  # noqa: E402
 from app.models.sales import SalesQuotation, SalesQuotationAcceptance, SalesQuotationRecipient  # noqa: E402
@@ -363,34 +364,47 @@ r = client.post("/api/v1/billing/invoices/{}/payments".format(INV[InvoiceType.SE
                 json={"amount": "1.00", "payment_method": "credit_card"})
 ok("a user from another clinic cannot touch this clinic's invoice", r.status_code in (403, 404))
 
-# --- 1b. staff verifying a customer's card payment -----------------------------------------------
-section("1b. A customer's card payment counts only once staff verify it")
+# --- 1b. a typed-in card payment, and claims made before card went through Square ---------------
+section("1b. A typed-in card payment is refused; claims made before still get reviewed")
 as_user("client")
 target = SELF[("billing", "client", InvoiceType.SERVICE)]
 claim_body = {"amount": "500.00", "payment_method": "credit_card", "card_brand": "Visa", "card_last4": "4242"}
 r = client.post("/api/v1/billing/invoices/{}/payments".format(target), json=claim_body)
-ok("reporting the same payment twice queues one claim, not two",
-   r.status_code == 202 and r.json()["id"] == CLAIMS.get(("client", InvoiceType.SERVICE)), r.text[:120])
-r = client.post("/api/v1/billing/invoices/{}/payments".format(target), json={**claim_body, "card_last4": "4111111111111111"})
-ok("a full card number in a claim is refused", r.status_code == 422)
-r = client.post("/api/v1/billing/invoices/{}/payments".format(target), json={**claim_body, "amount": "500.01"})
-ok("a claim for more than the balance is refused", r.status_code == 400)
+ok("a customer's typed-in card payment is refused: card goes through the secure card form",
+   r.status_code == 409 and "secure card form" in r.text and money_on(target)[0] == 0, r.text[:120])
+db = Session()
+queued = db.query(PaymentProof).filter(PaymentProof.invoice_id == target).count()
+db.close()
+ok("  and nothing is queued for review", queued == 0, str(queued))
 r = client.post("/api/v1/billing/invoices/{}/payments".format(target), json={**claim_body, "payment_method": "ach"})
 ok("an ACH 'claim' still needs uploaded proof", r.status_code == 409)
 r = client.post("/api/v1/billing/invoices/{}/payments".format(target), json={**claim_body, "payment_method": "cash"})
-ok("an unknown payment method is refused", r.status_code == 400)
-claim_id = CLAIMS.get(("client", InvoiceType.SERVICE))
+ok("a customer cannot record cash either", r.status_code == 409 and money_on(target)[0] == 0)
+
+# Card claims customers made before this change may still be waiting in the
+# review queue: they are reviewed exactly as before.
+reject_target = SELF[("billing", "facility_admin", InvoiceType.SERVICE)]
+db = Session()
+legacy = new_card_claim(submitted_by_id=people["client"].id, amount=D("500.00"), notes=None,
+                        card_brand="Visa", card_last4="4242", invoice_id=target)
+legacy_reject = new_card_claim(submitted_by_id=people["facility_admin"].id, amount=D("500.00"), notes=None,
+                               card_brand="Visa", card_last4="4242", invoice_id=reject_target)
+legacy_quote = new_card_claim(submitted_by_id=people["client"].id, amount=D("750.00"), notes=None,
+                              card_brand=None, card_last4="4242", service_quotation_id=SERVICE_QUOTES["client"])
+db.add_all([legacy, legacy_reject, legacy_quote])
+db.commit()
+claim_id, reject_id, quote_claim = legacy.id, legacy_reject.id, legacy_quote.id
+db.close()
+
 r = client.post("/api/v1/billing/payment-proofs/{}/approve".format(claim_id), json={})
 ok("a customer cannot approve their own claim", r.status_code == 403 and money_on(target)[0] == 0)
 r = client.get("/api/v1/billing/payment-proofs/{}/file".format(claim_id))
 ok("a claim has no document to download", r.status_code == 404)
-ok("every card claim is rate limited", limited.count("authenticated-payment-proof-upload") >= 15,
-   str(limited.count("authenticated-payment-proof-upload")))
 
 as_user("superadmin")
 queue = client.get("/api/v1/billing/payment-proofs", params={"status": "pending_verification"})
 listed = {item["id"]: item for item in (queue.json() if queue.status_code == 200 else [])}
-ok("staff see the claim in the payment-proof review queue, with the card it named",
+ok("staff see an earlier claim in the payment-proof review queue, with the card it named",
    claim_id in listed and listed[claim_id]["card_last4"] == "4242" and listed[claim_id]["file_url"] is None,
    "{} {}".format(queue.status_code, queue.text[:120]))
 r = client.post("/api/v1/billing/payment-proofs/{}/approve".format(claim_id), json={"notes": "Found in Square"})
@@ -404,8 +418,6 @@ ok("  with the card's brand and last four on the ledger", card_rows == [("Visa",
 r = client.post("/api/v1/billing/payment-proofs/{}/approve".format(claim_id), json={})
 ok("approving it again records nothing more", r.status_code == 200 and money_on(target)[0] == D("500.00"))
 
-reject_id = CLAIMS.get(("facility_admin", InvoiceType.SERVICE))
-reject_target = SELF[("billing", "facility_admin", InvoiceType.SERVICE)]
 r = client.post("/api/v1/billing/payment-proofs/{}/reject".format(reject_id), json={})
 ok("rejecting needs a reason", r.status_code == 400)
 r = client.post("/api/v1/billing/payment-proofs/{}/reject".format(reject_id), json={"notes": "Not found in Square"})
@@ -413,51 +425,51 @@ ok("a rejected claim records nothing", r.status_code == 200 and money_on(reject_
 r = client.post("/api/v1/billing/payment-proofs/{}/approve".format(reject_id), json={})
 ok("  and can no longer be approved", r.status_code == 409 and money_on(reject_target)[0] == 0)
 
-quote_claim = CLAIMS.get(("client", "quote"))
 r = client.post("/api/v1/service-requests/payment-proofs/{}/approve".format(quote_claim), json={})
 db = Session()
 quote_payments = [(p.amount, p.account_last_four) for p in db.query(QuotationPayment)
                   .filter(QuotationPayment.quotation_id == SERVICE_QUOTES["client"])]
 db.close()
-ok("approving a service-quotation claim records that payment once",
+ok("approving an earlier service-quotation claim records that payment once",
    r.status_code == 200 and quote_payments == [(D("750.00"), "4242")], "{} {}".format(r.status_code, quote_payments))
 
-# --- 2. staff recording a card payment -----------------------------------------------------------
-section("2. Staff recording a card payment taken on a terminal")
+# --- 2. staff cannot type in a card payment ------------------------------------------------------
+section("2. Staff cannot type in a card payment either")
 as_user("employee")
 r = client.post("/api/v1/billing/invoices/{}/payments".format(INV_STAFF), json={"amount": "10", "payment_method": "credit_card"})
 ok("an employee without billing rights is refused", r.status_code == 403, str(r.status_code))
 
 as_user("superadmin")
 pay = lambda body, invoice_id=INV_STAFF: client.post("/api/v1/billing/invoices/{}/payments".format(invoice_id), json=body)  # noqa: E731
-r = pay({"amount": "100", "payment_method": "credit_card", "card_last4": "4111111111111111"})
-ok("a full card number in the last-four field is refused", r.status_code == 422 and money_on(INV_STAFF)[0] == 0)
-r = pay({"amount": "100", "payment_method": "credit_card", "card_last4": "12a"})
-ok("a malformed last four is refused", r.status_code == 422)
+for method in ("credit_card", "Credit Card", "card", "square_card"):
+    r = pay({"amount": "100", "payment_method": method, "card_brand": "Visa", "card_last4": "4242",
+             "idempotency_key": "staff-card-{}".format(method.replace(" ", "-"))})
+    ok("a Super Admin typing in '{}' is refused: card goes through Square".format(method),
+       r.status_code == 409 and "secure card form" in r.text and money_on(INV_STAFF)[0] == 0, r.text[:90])
 for amount in ("0", "-50", "-0.01"):
-    r = pay({"amount": amount, "payment_method": "credit_card"})
+    r = pay({"amount": amount, "payment_method": "cash"})
     ok("an amount of {} is refused".format(amount), r.status_code in (400, 422) and money_on(INV_STAFF)[0] == 0)
-r = pay({"amount": "500.01", "payment_method": "credit_card"})
+r = pay({"amount": "500.01", "payment_method": "cash"})
 ok("more than the balance is refused", r.status_code == 400 and money_on(INV_STAFF)[0] == 0)
 for method in ("ach", "check", "cheque", "bank_transfer", "ACH", " Check "):
     r = pay({"amount": "100", "payment_method": method})
     ok("'{}' cannot be marked paid without proof and approval".format(method), r.status_code == 409)
-r = pay({"amount": "100", "payment_method": "credit_card"}, INV_CANCELLED)
+r = pay({"amount": "100", "payment_method": "cash"}, INV_CANCELLED)
 ok("a cancelled invoice cannot be paid", r.status_code == 409)
-r = pay({"amount": "100", "payment_method": "credit_card"}, INV_UNAPPROVED)
+r = pay({"amount": "100", "payment_method": "cash"}, INV_UNAPPROVED)
 ok("an invoice not yet approved for billing cannot be paid", r.status_code == 409)
 
-r = pay({"amount": "100", "payment_method": "credit_card", "card_brand": "Visa", "card_last4": "4242",
-         "idempotency_key": "staff-pay-0001", "card_number": "4111111111111111", "cvv": "123"})
-ok("a valid terminal payment is recorded", r.status_code == 200 and money_on(INV_STAFF)[0] == D("100"), r.text[:120])
+r = pay({"amount": "100", "payment_method": "cash", "idempotency_key": "staff-pay-0001",
+         "card_number": "4111111111111111", "cvv": "123"})
+ok("a cash payment is recorded", r.status_code == 200 and money_on(INV_STAFF)[0] == D("100"), r.text[:120])
 db = Session()
 stored = json.dumps([[t.card_last4, t.card_brand, t.description] for t in db.query(InvoiceTransaction)
                      .filter(InvoiceTransaction.invoice_id == INV_STAFF)], default=str)
 db.close()
 ok("  and a card number or CVV sent alongside is never stored", "4111111111111111" not in stored and "123\"" not in stored, stored)
-r = pay({"amount": "100", "payment_method": "credit_card", "idempotency_key": "staff-pay-0001"})
+r = pay({"amount": "100", "payment_method": "cash", "idempotency_key": "staff-pay-0001"})
 ok("replaying the same request records nothing twice", money_on(INV_STAFF)[0] == D("100"), str(money_on(INV_STAFF)))
-r = pay({"amount": "400", "payment_method": "credit_card", "idempotency_key": "staff-pay-0001"})
+r = pay({"amount": "400", "payment_method": "cash", "idempotency_key": "staff-pay-0001"})
 ok("reusing its key for a different amount is refused", r.status_code == 409 and money_on(INV_STAFF)[0] == D("100"))
 
 # --- 3. the rental card portal -------------------------------------------------------------------
@@ -499,9 +511,9 @@ db.close()
 
 square.answer, square.charges = "ok", []
 r = rpay(RENTAL_TOKEN, {**card, "idempotency_key": "rent-good-00001", "amount": "0.01", "amount_paid": "300"})
-ok("a payment charges the server's balance, whatever amount the browser sends",
-   r.status_code == 200 and square.charges == [("rent-good-00001", D("300.00"))], str(square.charges))
-ok("  and the invoice is paid", money_on(RENTAL_INV) == (D("300.00"), InvoiceStatus.PAID))
+ok("a payment charges the server's balance plus the 3% card fee, whatever amount the browser sends",
+   r.status_code == 200 and square.charges == [("rent-good-00001", D("309.00"))], str(square.charges))
+ok("  and the invoice is paid, the fee on it", money_on(RENTAL_INV) == (D("309.00"), InvoiceStatus.PAID))
 r = rpay(RENTAL_TOKEN, {**card, "idempotency_key": "rent-good-00001"})
 ok("replaying it charges nothing more", len(square.charges) == 1 and r.status_code == 200)
 r = rpay(RENTAL_TOKEN, {**card, "idempotency_key": "rent-good-00002"})

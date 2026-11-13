@@ -21,6 +21,7 @@ from app.utils.invoice_ledger import (
 )
 from app.utils.payment_receipts import queue_rental_payment_receipt, queue_sales_payment_receipt
 from app.utils.square_payments import minor_units_to_amount, verify_square_webhook_signature
+from app.utils.card_fee import apply_card_fee, remembered_card_fee, succeeded_response
 from app.utils.sales_inventory import fulfill_sales_invoice_inventory
 from app.utils.payment_idempotency import (
     get_or_create_operation,
@@ -97,7 +98,10 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
         .with_for_update()
         .first()
     )
-    if not invoice or invoice.status == InvoiceStatus.CANCELLED:
+    if not invoice:
+        # Not an invoice: perhaps a service quotation's card payment.
+        return _sync_completed_quotation_payment(db, payment, reference_id, payment_id)
+    if invoice.status == InvoiceStatus.CANCELLED:
         return "ignored"
     amount = minor_units_to_amount((payment.get("amount_money") or {}).get("amount"))
     currency = str((payment.get("amount_money") or {}).get("currency") or "").upper()
@@ -139,6 +143,11 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
             provider="square",
         )
 
+    # A card payment's processing fee, remembered when it was charged: added to
+    # the invoice first, exactly as the payment request itself would have.
+    card_fee = remembered_card_fee(operation)
+    if card_fee and card_fee > 0 and amount > card_fee:
+        apply_card_fee(db, invoice, card_fee, None, base=amount - card_fee)
     previous_paid = _money(invoice.amount_paid)
     previous_status = invoice.status
     remaining = max(_money(invoice.total_amount) - previous_paid, Decimal("0"))
@@ -201,10 +210,69 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
     mark_operation_succeeded(
         operation,
         provider_reference=payment_id,
-        response_data={"invoice_id": invoice.id, "payment_id": payment_id},
+        response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment_id}),
     )
     db.commit()
     return "processed"
+
+
+def _sync_completed_quotation_payment(db: Session, payment: dict[str, Any], reference_id: str, payment_id: str) -> str:
+    """A service quotation's card payment whose result its request never saw.
+
+    Recorded only when it matches a card charge of that quotation still
+    awaiting its result, for the same amount; that charge says who made it and
+    what fee was in it.
+    """
+    from app.api.v1.endpoints.service_requests import record_quotation_card_payment
+    from app.models.service_request import ServiceRequestQuotation
+
+    quotation = (
+        db.query(ServiceRequestQuotation)
+        .filter(ServiceRequestQuotation.quotation_number == reference_id)
+        # Only the quotation's own row: PostgreSQL cannot lock the outer joins
+        # its line items and payments are loaded with.
+        .with_for_update(of=ServiceRequestQuotation)
+        .first()
+    )
+    if not quotation:
+        return "ignored"
+    amount = minor_units_to_amount((payment.get("amount_money") or {}).get("amount"))
+    currency = str((payment.get("amount_money") or {}).get("currency") or "").upper()
+    if amount <= 0 or currency != (settings.SQUARE_CURRENCY.strip().upper() or "USD"):
+        return "ignored"
+    operation = (
+        db.query(PaymentOperation)
+        .filter(PaymentOperation.provider_reference == payment_id)
+        .with_for_update()
+        .first()
+    ) or (
+        db.query(PaymentOperation)
+        .filter(
+            PaymentOperation.quotation_id == quotation.id,
+            PaymentOperation.operation_type == "square_quotation_payment",
+            PaymentOperation.status.in_(["processing", "unknown"]),
+            PaymentOperation.amount == amount,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not operation or operation.status == "succeeded" or not operation.created_by:
+        return "ignored"
+    recorded = record_quotation_card_payment(
+        db, quotation,
+        payment_id=payment_id,
+        charged=amount,
+        fee=remembered_card_fee(operation) or Decimal("0"),
+        user=operation.created_by,
+        card=(payment.get("card_details") or {}).get("card") or {},
+    )
+    mark_operation_succeeded(
+        operation,
+        provider_reference=payment_id,
+        response_data=succeeded_response(operation, {"quotation_id": quotation.id, "payment_id": payment_id}),
+    )
+    db.commit()
+    return "processed" if recorded else "duplicate"
 
 
 def _sync_completed_refund(db: Session, refund: dict[str, Any]) -> str:

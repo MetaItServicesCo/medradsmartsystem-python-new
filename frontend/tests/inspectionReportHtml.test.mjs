@@ -290,6 +290,15 @@ ok('a report with none of it adds no empty sections', !['Measurements', 'Photo D
 const hostile = cePage(print({ form_data: { photo_documentation: [{ label: '<b>x</b>', url: 'javascript:alert(1)//.png' }, { label: 'q', url: 'https://x.test/a.png" onerror="alert(1)' }] } }))
 ok('a hostile photo link is printed as text, never run', !hostile.includes('<img src="javascript') && !hostile.includes('onerror="alert') && !hostile.includes('<b>x</b>'))
 
+// ── Paid by card: the card processing fee ───────────────────────────────────
+const cardBatch = batchReport({ ...batchInvoice, total_amount: 844.6, card_fee_amount: 24.6 })
+ok("a batch invoice paid by card: its card processing fee is shown, and it all adds up",
+  billingPage(cardBatch).includes('Card processing fee') && billingPage(cardBatch).includes('$24.60') && totalOf(cardBatch) === '$844.60', totalOf(cardBatch))
+const cardOwn = buildInspectionSingleReportHtml({ ...base, id: 6, inspection_number: 'INSP-6', asset_tag: 'A-6', form_data: {} }, null,
+  { id: 12, total_amount: 309, card_fee_amount: 9 })
+ok("an asset's own invoice paid by card: its line is the $300 charge, the $9 fee below it, total $309",
+  billingRows(cardOwn).join(' ; ') === 'A-6|Pump|$300.00' && billingPage(cardOwn).includes('Card processing fee') && totalOf(cardOwn) === '$309.00', billingRows(cardOwn).join(' ; '))
+
 // ── Test equipment ─────────────────────────────────────────────────────────
 const picked = cePage(print({ form_data: { test_equipment: [
   { id: 4, description: 'Safety Analyzer', make: 'Fluke', model: 'ESA615', serial_number: 'F-1', asset: 'TE-0007' },

@@ -744,6 +744,9 @@ export interface ServiceInvoiceDocument {
   subtotal: string
   tax_amount: string
   discount_amount: string
+  /** The card processing fee, when the invoice was paid by card; part of the total. */
+  card_fee_amount?: string
+  card_fee_label?: string
   total_amount: string
   amount_paid: string
   balance_due: string
@@ -768,6 +771,12 @@ export interface PublicServiceInvoice {
   state: 'payable' | 'paid' | 'under_review'
   invoice_number: string
   balance_due?: string
+  /** What a card payment charges now: the balance, the card processing fee, and both. */
+  base_amount?: string
+  card_fee?: string
+  card_fee_percent?: string
+  card_fee_label?: string
+  charge_amount?: string
   payer_name?: string | null
   payer_email?: string | null
   document: ServiceInvoiceDocument | null
@@ -810,6 +819,10 @@ export interface ServiceInvoiceCardPayment {
   invoice_number: string
   status: string
   balance_due: string
+  /** The card processing fee on the balance, and the total a card payment charges. */
+  card_fee?: string
+  card_fee_label?: string
+  charge_amount?: string
   payer_name: string
   payer_email: string | null
   can_pay: boolean
@@ -824,7 +837,7 @@ export const fetchServiceInvoiceCardPayment = async (invoiceId: number): Promise
 
 export const payServiceInvoiceSignedIn = async (
   invoiceId: number,
-  data: { source_id: string; idempotency_key: string },
+  data: { source_id: string; idempotency_key: string; charge_amount?: string },
 ): Promise<ServiceInvoiceCardPayment> => {
   const res = await apiClient.post(`/service-invoices/${invoiceId}/square-payment`, data)
   return res.data
@@ -837,7 +850,7 @@ export const fetchPublicServiceInvoice = async (token: string): Promise<PublicSe
 
 export const payPublicServiceInvoice = async (
   token: string,
-  data: { source_id: string; idempotency_key: string; payer_name: string },
+  data: { source_id: string; idempotency_key: string; payer_name: string; charge_amount?: string },
 ): Promise<PublicServiceInvoice> => {
   const res = await apiClient.post(`/public/service-invoices/${token}/square-payment`, data)
   return res.data

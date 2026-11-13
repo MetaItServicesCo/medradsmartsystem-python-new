@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -19,6 +20,7 @@ from app.models.sales import (
 )
 from app.models.user import User
 from app.utils.notifications import create_notifications, notify_admins
+from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
 from app.utils.square_payments import (
     SquareConfigurationError,
     SquareRequestError,
@@ -94,6 +96,8 @@ class PortalSquarePaymentIn(BaseModel):
     source_id: str = Field(min_length=8, max_length=500)
     idempotency_key: str = Field(min_length=16, max_length=45)
     payer_name: str = Field(min_length=2, max_length=200)
+    # What the payer was shown. When given, charged only if it is still what is owed.
+    charge_amount: Optional[Decimal] = None
 
 
 def _recipient_options():
@@ -195,6 +199,8 @@ def _portal_response(recipient: SalesQuotationRecipient) -> dict[str, Any]:
                 "amount_paid": invoice.amount_paid,
                 "balance_due": invoice.balance_due,
                 "payment_method": invoice.payment_method,
+                "card_fee_amount": invoice.card_fee_amount,
+                "card_charge": card_charge(invoice.balance_due).as_dict(),
             }
             if invoice
             else None
@@ -341,6 +347,12 @@ def _record_square_payment(
     balance = max(_money(invoice.balance_due), _money(0))
     if balance <= 0:
         raise HTTPException(status_code=409, detail="This invoice has no payable balance")
+    charge = card_charge(balance)
+    if payload.charge_amount is not None and _money(payload.charge_amount).quantize(Decimal("0.01")) != charge.total:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The amount due has changed to ${charge.total:.2f}. Review it and pay again.",
+        )
     # Lock and validate the exact selected products before Square charges the
     # customer. The locks remain in this transaction through fulfillment.
     ensure_sales_inventory_available(db, invoice)
@@ -351,13 +363,13 @@ def _record_square_payment(
         fingerprint=payment_fingerprint(
             "square_invoice_payment",
             invoice_id=invoice.id,
-            amount=balance,
+            amount=charge.total,
             currency=settings.SQUARE_CURRENCY,
-            attributes={"payer_name": payload.payer_name.strip()},
+            attributes={"payer_name": payload.payer_name.strip(), "card_fee": f"{charge.fee:.2f}"},
         ),
         operation_type="square_invoice_payment",
         invoice_id=invoice.id,
-        amount=balance,
+        amount=charge.total,
         currency=settings.SQUARE_CURRENCY,
         provider="square",
         created_by_id=actor.id if actor else recipient.user_id,
@@ -366,6 +378,7 @@ def _record_square_payment(
         replay_or_raise(operation)
         db.refresh(recipient)
         return _portal_response(recipient)
+    remember_card_charge(operation, charge)
 
     # Persist the processing marker before contacting Square. This makes an
     # uncertain network response recoverable across worker/process restarts.
@@ -378,7 +391,7 @@ def _record_square_payment(
         square_payment = create_square_payment(
             source_id=payload.source_id,
             idempotency_key=payload.idempotency_key,
-            amount=balance,
+            amount=charge.total,
             invoice_number=invoice_number,
             customer_email=customer_email,
         )
@@ -414,7 +427,7 @@ def _record_square_payment(
             status_code=409,
             detail=f"Square payment is {payment_status.lower() or 'not completed'}",
         )
-    if square_amount != balance or square_currency != expected_currency:
+    if square_amount != charge.total or square_currency != expected_currency:
         mark_operation_failed(operation, "Square returned an unexpected amount or currency", unknown=True)
         db.commit()
         raise HTTPException(
@@ -430,11 +443,12 @@ def _record_square_payment(
         mark_operation_succeeded(
             operation,
             provider_reference=payment_id,
-            response_data={"invoice_id": invoice.id, "payment_id": payment_id},
+            response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment_id}),
         )
         db.commit()
         return _portal_response(recipient)
 
+    apply_card_fee(db, invoice, charge.fee, actor, base=charge.base)
     previous_paid = _money(invoice.amount_paid)
     previous_status = invoice.status
     invoice.amount_paid = previous_paid + square_amount
@@ -515,7 +529,7 @@ def _record_square_payment(
     mark_operation_succeeded(
         operation,
         provider_reference=payment_id,
-        response_data={"invoice_id": invoice.id, "payment_id": payment_id},
+        response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment_id}),
     )
     payment_card = (square_payment.get("card_details") or {}).get("card") or {}
     receipt_delivery = queue_sales_payment_receipt(

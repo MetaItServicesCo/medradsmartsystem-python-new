@@ -103,6 +103,7 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
   const charge = (label: string, value: unknown, breakdown?: string | null) => `<div><span>${esc(label)}${breakdown ? ` <span class="si-breakdown">(${esc(breakdown)})</span>` : ''}</span><strong>${esc(money(value))}</strong></div>`
   const tax = Number(doc.tax_amount || 0)
   const discount = Number(doc.discount_amount || 0)
+  const cardFee = Number(doc.card_fee_amount || 0)
   const paid = Number(doc.amount_paid || 0)
 
   return `${printStyles}${EXTRA_STYLES}
@@ -193,6 +194,7 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
           ${charge('Total', doc.subtotal)}
           ${tax ? charge('Tax', tax) : ''}
           ${discount ? charge('Discount', -discount) : ''}
+          ${cardFee ? charge(doc.card_fee_label || 'Card processing fee', cardFee) : ''}
           <div class="grand"><span>Grand Total</span><span>${esc(money(doc.total_amount))}</span></div>
           ${paid ? charge('Paid', paid) : ''}
           <div><span>Balance</span><strong class="balance">${esc(money(doc.balance_due))}</strong></div>

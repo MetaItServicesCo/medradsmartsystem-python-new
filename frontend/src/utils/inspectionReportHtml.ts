@@ -65,6 +65,8 @@ type ReportInvoiceLike = {
   tax_amount?: number | string | null
   discount_amount?: number | string | null
   travel_cost?: number | string | null
+  /** Added when the invoice was paid by card; part of its total. */
+  card_fee_amount?: number | string | null
   batch_items?: Array<{ inspection_id: number; total_amount: number | string | null }>
   line_items?: ReportInvoiceLine[] | null
   summary_rows?: Array<{ label?: string | null; value?: number | string | null }> | null
@@ -221,7 +223,8 @@ const amountFromInvoice = (invoice: ReportInvoiceLike, inspectionId?: number | n
     if (item) return Number(item.total_amount || 0)
     return 0
   }
-  return Number(invoice.total_amount || 0)
+  // The invoice's own charge for the asset: its total, less any card processing fee on top.
+  return Number(invoice.total_amount || 0) - Number(invoice.card_fee_amount || 0)
 }
 
 const assetAmount = (inspection: InspectionReportLike, contextInvoice?: ReportInvoiceLike): number => {
@@ -777,6 +780,12 @@ const billingPageHtml = (
       rows += billingRow(assets.length + 1, '', 'Travel Cost', travel)
       lineTotal += travel
     }
+  }
+  // Paid by card: the card processing fee is part of the invoice's total.
+  const cardFee = opts.whole ? Number(invoice?.card_fee_amount || 0) : 0
+  if (cardFee > 0) {
+    adjustments += adjustmentRow('Card processing fee', cardFee)
+    lineTotal += cardFee
   }
   // Prefer the invoice's own total (it already includes tax/discount); else sum the lines.
   const invoiceTotal = Number(invoice?.total_amount || 0)

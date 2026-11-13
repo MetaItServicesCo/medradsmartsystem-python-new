@@ -5,15 +5,17 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType, PaymentProof
+from app.models.payment_operation import PaymentOperation
 from app.models.sales import SalesPaymentAuthorization
 from app.models.service_request import ServiceRequest, ServiceRequestQuotation
 from app.models.user import User, UserRole
@@ -35,12 +37,21 @@ from app.utils.invoice_ledger import (
     transaction_response,
 )
 from app.utils.invoice_payment_evidence import invoice_payment_evidence_response
-from app.utils.payment_receipts import deliver_payment_receipt, queue_rental_payment_receipt
+from app.utils.payment_receipts import deliver_payment_receipt, queue_payment_receipt, queue_rental_payment_receipt
+from app.utils.card_fee import apply_card_fee, card_charge, card_fee_label, remember_card_charge, succeeded_response
+from app.utils.square_payments import (
+    SquareConfigurationError,
+    SquareRequestError,
+    create_square_payment,
+    minor_units_to_amount,
+    square_public_config,
+)
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.permission_deps import require_module_access
 from app.utils.permissions import has_module_permission
 from app.utils.payment_idempotency import (
     get_or_create_operation,
+    mark_operation_failed,
     mark_operation_succeeded,
     payment_fingerprint,
     replay_or_raise,
@@ -105,6 +116,14 @@ def _money(value: Any) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
     return Decimal(str(value))
+
+
+CARD_THROUGH_SQUARE = "Card payments are taken through the secure card form, with the card processing fee"
+
+
+def _is_card_method(method: Optional[str]) -> bool:
+    normalized = (method or "").strip().lower().replace(" ", "_")
+    return "card" in normalized or "square" in normalized
 
 
 def _require_invoice_facility_access(db: Session, user: User, invoice: Invoice) -> None:
@@ -180,6 +199,8 @@ def _invoice_payment_response(invoice: Invoice) -> dict[str, Any]:
     return {
         "id": invoice.id,
         "invoice_number": invoice.invoice_number,
+        "total_amount": invoice.total_amount,
+        "card_fee_amount": invoice.card_fee_amount,
         "amount_paid": invoice.amount_paid,
         "balance_due": invoice.balance_due,
         "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
@@ -476,69 +497,6 @@ def _lock_service_invoice_for_proof(db: Session, invoice_id: int, amount: Decima
     return invoice
 
 
-def _submit_invoice_card_claim(db: Session, invoice: Invoice, payload: InvoicePaymentCreate, user: User) -> Any:
-    method = (payload.payment_method or "").strip().lower().replace(" ", "_")
-    if method in NON_CARD_METHODS:
-        raise HTTPException(
-            status_code=409,
-            detail="Upload payment proof for non-card payments; the invoice will update after Admin or Super Admin approval",
-        )
-    if "card" not in method and "square" not in method:
-        raise HTTPException(status_code=400, detail="Pay by card, or upload proof of an ACH, cheque or bank transfer payment")
-    enforce_rate_limit(
-        bucket="authenticated-payment-proof-upload",
-        identity=f"user:{user.id}",
-        limit=10,
-        window_seconds=60,
-        message="Too many payment submissions. Please wait before trying again.",
-    )
-    amount = _money(payload.amount).quantize(Decimal("0.01"))
-    balance = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
-    if amount > balance:
-        raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice balance")
-    card_brand, card_last4 = card_claim_details(payload.card_brand, payload.card_last4)
-    duplicate = (
-        db.query(PaymentProof)
-        .filter(
-            PaymentProof.invoice_id == invoice.id,
-            PaymentProof.submitted_by_id == user.id,
-            PaymentProof.stored_filename.is_(None),
-            PaymentProof.claimed_amount == amount,
-            PaymentProof.status == "pending_verification",
-        )
-        .first()
-    )
-    if duplicate:
-        return payment_proof_response(duplicate)
-    require_no_other_service_payment(db, invoice)
-    claim = new_card_claim(submitted_by_id=user.id, amount=amount, notes=payload.notes,
-                           card_brand=card_brand, card_last4=card_last4, invoice_id=invoice.id)
-    db.add(claim)
-    db.flush()
-    card = f"{card_brand or 'Card'} ending {card_last4}" if card_last4 else "Card"
-    add_invoice_transaction(
-        db,
-        invoice,
-        "card_payment_claim_submitted",
-        0,
-        "credit_card",
-        f"{card} payment of ${amount} reported (claim #{claim.id}); pending verification",
-        user,
-        "CLM",
-    )
-    notify_admins(
-        db,
-        title="Card payment awaiting verification",
-        message=f"{invoice.invoice_number}: card payment of ${amount} reported; confirm it in Square before approving",
-        notification_type="billing",
-        link_url=f"/billing?search={invoice.invoice_number}",
-        actor_id=user.id,
-    )
-    db.commit()
-    db.refresh(claim)
-    return payment_proof_response(claim)
-
-
 @router.post("/invoices/{invoice_id}/payments")
 def record_invoice_payment(
     invoice_id: int,
@@ -565,11 +523,15 @@ def record_invoice_payment(
     require_invoice_approved(invoice)
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    if _is_card_method(payload.payment_method):
+        # A card payment is taken through Square, never typed in: no card
+        # payment is recorded without a completed charge.
+        raise HTTPException(status_code=409, detail=CARD_THROUGH_SQUARE)
     if is_facility_billing_user(current_user):
-        # A customer saying they paid moves no money: the claim waits for staff
-        # to confirm the charge, and the invoice changes only on approval.
-        response.status_code = 202
-        return _submit_invoice_card_claim(db, invoice, payload, current_user)
+        raise HTTPException(
+            status_code=409,
+            detail="Pay by card, or upload proof of an ACH, cheque or bank transfer payment",
+        )
     require_no_other_service_payment(db, invoice)
     operation_key = payload.idempotency_key or f"legacy-manual-invoice-{invoice.id}-{uuid4()}"
     fingerprint = payment_fingerprint(
@@ -636,6 +598,267 @@ def record_invoice_payment(
         provider_reference=payment_transaction.reference_number if payment_transaction else None,
         response_data={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
     )
+    db.commit()
+    if receipt_delivery:
+        deliver_payment_receipt(db, receipt_delivery.id)
+    db.refresh(invoice)
+    return _invoice_payment_response(invoice)
+
+
+# ── Card payments through Square ────────────────────────────────────────────
+# Any invoice, paid by card in full: its balance plus the card processing fee,
+# in one Square charge. A Super Admin, or a facility's billing user for their
+# own facility's invoices. Exactly-once: the charge is registered before Square
+# is called, a retry with the same key never charges again, nothing is
+# recorded unless Square completes that exact amount, and an uncertain result
+# blocks any new charge until the webhook settles it.
+
+
+class InvoiceSquarePayment(BaseModel):
+    source_id: str = Field(min_length=8, max_length=500)
+    idempotency_key: str = Field(min_length=16, max_length=64)
+    # What the payer was shown. Charged only if it is still what is owed.
+    charge_amount: Decimal
+
+
+def _require_card_payer(user: User) -> None:
+    if not has_module_permission(user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
+    if user.role != UserRole.SUPERADMIN and not is_facility_billing_user(user):
+        raise HTTPException(status_code=403, detail="This role cannot pay invoices by card")
+
+
+def _card_payable_invoice(db: Session, invoice_id: int, user: User, *, for_update: bool = False) -> Invoice:
+    """The invoice, if it can be paid by card now; else why not."""
+    query = db.query(Invoice).filter(Invoice.id == invoice_id)
+    if for_update:
+        query = query.with_for_update()
+    invoice = query.first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    _require_invoice_facility_access(db, user, invoice)
+    require_invoice_approved(invoice)
+    if invoice.status == InvoiceStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    if invoice.status == InvoiceStatus.PAID or _money(invoice.balance_due) <= 0:
+        raise HTTPException(status_code=409, detail="This invoice has no payable balance")
+    if (
+        db.query(PaymentProof.id)
+        .filter(PaymentProof.invoice_id == invoice.id, PaymentProof.status == "pending_verification")
+        .first()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="A payment for this invoice is waiting for review. It must be approved or rejected first.",
+        )
+    require_no_other_service_payment(db, invoice)
+    return invoice
+
+
+def _card_payment_view(invoice: Invoice, user: User) -> dict[str, Any]:
+    square = square_public_config()
+    balance = max(_money(invoice.balance_due), Decimal("0"))
+    return {
+        "invoice_id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "balance_due": f"{balance:.2f}",
+        **card_charge(balance).as_dict(),
+        "payer_name": user.full_name or user.username,
+        "payer_email": user.email,
+        "square_payment": square,
+        "can_pay": balance > 0 and bool(square.get("enabled")),
+    }
+
+
+@router.get("/invoices/{invoice_id}/card-payment")
+def read_invoice_card_payment(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """What a card payment of this invoice charges, and the secure card form's settings."""
+    _require_card_payer(current_user)
+    return _card_payment_view(_card_payable_invoice(db, invoice_id, current_user), current_user)
+
+
+@router.post("/invoices/{invoice_id}/square-payment")
+def pay_invoice_by_card(
+    invoice_id: int,
+    payload: InvoiceSquarePayment,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_card_payer(current_user)
+    enforce_rate_limit(
+        bucket="billing-card-payment",
+        identity=f"user:{current_user.id}:invoice:{invoice_id}",
+        limit=8,
+        window_seconds=600,
+    )
+    enforce_rate_limit(
+        bucket="billing-card-payment-all",
+        identity=f"user:{current_user.id}",
+        limit=30,
+        window_seconds=600,
+    )
+    # The same payment sent again (a browser retrying after a dropped
+    # connection): once it has succeeded, answer as it did, never charge again.
+    completed = (
+        db.query(PaymentOperation)
+        .filter(PaymentOperation.idempotency_key == payload.idempotency_key)
+        .first()
+    )
+    if completed is not None and completed.status == "succeeded":
+        if completed.invoice_id != invoice_id:
+            raise HTTPException(status_code=409, detail="This payment retry key was already used for different payment details")
+        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+        _require_invoice_facility_access(db, current_user, invoice)
+        return _invoice_payment_response(invoice)
+    invoice = _card_payable_invoice(db, invoice_id, current_user, for_update=True)
+    charge = card_charge(invoice.balance_due)
+    if _money(payload.charge_amount).quantize(Decimal("0.01")) != charge.total:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The amount due has changed to ${charge.total:.2f}. Review it and pay again.",
+        )
+    if invoice.invoice_type == InvoiceType.SALES:
+        ensure_sales_inventory_available(db, invoice)
+    payer = current_user.full_name or current_user.username
+
+    operation, replay = get_or_create_operation(
+        db,
+        idempotency_key=payload.idempotency_key,
+        fingerprint=payment_fingerprint(
+            "square_invoice_payment",
+            invoice_id=invoice.id,
+            amount=charge.total,
+            currency=settings.SQUARE_CURRENCY,
+            attributes={"card_fee": f"{charge.fee:.2f}", "payer_id": current_user.id},
+        ),
+        operation_type="square_invoice_payment",
+        invoice_id=invoice.id,
+        amount=charge.total,
+        currency=settings.SQUARE_CURRENCY,
+        provider="square",
+        created_by_id=current_user.id,
+    )
+    if replay:
+        replay_or_raise(operation)
+        db.refresh(invoice)
+        return _invoice_payment_response(invoice)
+    remember_card_charge(operation, charge)
+
+    # The charge is on record before Square is contacted, so an uncertain
+    # answer can be settled later and never charged twice.
+    invoice_number = invoice.invoice_number
+    customer_email = invoice.customer_email
+    operation_id = operation.id
+    db.commit()
+    try:
+        square_payment = create_square_payment(
+            source_id=payload.source_id,
+            idempotency_key=payload.idempotency_key,
+            amount=charge.total,
+            invoice_number=invoice_number,
+            customer_email=customer_email,
+        )
+    except SquareConfigurationError as exc:
+        operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        mark_operation_failed(operation, str(exc))
+        db.commit()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SquareRequestError as exc:
+        operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        mark_operation_failed(operation, str(exc), unknown=exc.indeterminate)
+        db.commit()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).populate_existing().with_for_update().first()
+    operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+    payment_id = str(square_payment.get("id") or "").strip()
+    payment_status = str(square_payment.get("status") or "").upper()
+    money_block = square_payment.get("amount_money") or {}
+    square_amount = minor_units_to_amount(money_block.get("amount"))
+    square_currency = str(money_block.get("currency") or "").upper()
+    if payment_status != "COMPLETED":
+        mark_operation_failed(operation, f"Square payment status was {payment_status or 'unknown'}", unknown=True)
+        db.commit()
+        raise HTTPException(status_code=409, detail=f"Square payment is {payment_status.lower() or 'not completed'}")
+    if square_amount != charge.total or square_currency != (settings.SQUARE_CURRENCY.strip().upper() or "USD"):
+        mark_operation_failed(operation, "Square returned an unexpected amount or currency", unknown=True)
+        db.commit()
+        raise HTTPException(status_code=409, detail="Square completed an unexpected amount or currency; the invoice was not changed")
+    if db.query(InvoiceTransaction.id).filter(InvoiceTransaction.reference_number == payment_id).first():
+        # Already recorded (the webhook got there first).
+        mark_operation_succeeded(operation, provider_reference=payment_id,
+                                 response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment_id}))
+        db.commit()
+        db.refresh(invoice)
+        return _invoice_payment_response(invoice)
+
+    card = (square_payment.get("card_details") or {}).get("card") or {}
+    apply_card_fee(db, invoice, charge.fee, current_user, base=charge.base)
+    # The invoice can change while the card is charged; the money is taken and
+    # recorded, and anything beyond the new balance is flagged for a refund.
+    remaining = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
+    recorded = min(square_amount, remaining)
+    excess = square_amount - recorded
+    payment_transaction = None
+    receipt_delivery = None
+    if recorded > 0:
+        payment_transaction, receipt_delivery = _apply_invoice_payment_locked(
+            db,
+            invoice,
+            amount=recorded,
+            payment_method="square_card",
+            notes=(
+                f"Card payment by {payer} through Square ({payment_id}): "
+                f"${charge.base:.2f} + {card_fee_label()} ${charge.fee:.2f}"
+            ),
+            user=current_user,
+            card_brand=card.get("card_brand"),
+            card_last4=card.get("last_4"),
+        )
+        if payment_transaction is not None:
+            payment_transaction.reference_number = payment_id
+    if excess > 0:
+        add_invoice_transaction(
+            db, invoice, "overpayment_review", excess, "square_card",
+            f"Square payment {payment_id} exceeded the balance by ${excess:.2f}; review for a refund",
+            current_user, "OVR",
+        )
+    if is_facility_billing_user(current_user) or excess > 0:
+        notify_admins(
+            db,
+            title="Card payment needs attention" if excess > 0 else "Card payment completed",
+            message=(
+                f"{payer} paid ${square_amount:.2f} by card through Square for {invoice.invoice_number}"
+                + (f"; ${excess:.2f} is more than the balance and needs a refund review." if excess > 0 else ".")
+            ),
+            notification_type="billing",
+            link_url=f"/billing?search={invoice.invoice_number}",
+            actor_id=current_user.id,
+        )
+    if invoice.invoice_type != InvoiceType.RENTAL:
+        receipt = queue_payment_receipt(
+            db, invoice,
+            payment_reference=payment_id,
+            amount=square_amount,
+            payment_method="square_card",
+            recipients=[invoice.customer_email] if invoice.customer_email else None,
+            card_brand=card.get("card_brand"),
+            card_last4=card.get("last_4"),
+        )
+        receipt_delivery = receipt_delivery or receipt
+    mark_operation_succeeded(operation, provider_reference=payment_id,
+                             response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment_id}))
+    log_activity(db, "invoices", invoice.id, "CARD_PAYMENT", current_user, {
+        "invoice_number": invoice.invoice_number,
+        "amount": str(charge.base),
+        "card_fee": str(charge.fee),
+        "charged": str(square_amount),
+        "square_payment_id": payment_id,
+    })
     db.commit()
     if receipt_delivery:
         deliver_payment_receipt(db, receipt_delivery.id)

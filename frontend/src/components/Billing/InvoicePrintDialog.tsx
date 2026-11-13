@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   Box,
   Button,
@@ -96,6 +96,9 @@ export interface PrintableInvoice {
   labor_fees?: number | null
   travel_charges?: number | null
   service_charges?: number | null
+  /** Added when the invoice was paid by card; already part of total_amount. */
+  card_fee_amount?: number | null
+  card_fee_label?: string | null
   labels?: PrintableInvoiceLabels | null
   summary_rows?: PrintableInvoiceSummaryRow[] | null
 }
@@ -551,6 +554,7 @@ const buildPrintableHtml = (
           <div><span>${escapeHtml(labels.subtotal)}</span><strong>${escapeHtml(money(invoice.subtotal))}</strong></div>
           <div><span>${escapeHtml(labels.tax)}</span><strong>${escapeHtml(money(invoice.tax_amount))}</strong></div>
           <div><span>${escapeHtml(labels.discount)}</span><strong>${escapeHtml(money(invoice.discount_amount))}</strong></div>
+          ${Number(invoice.card_fee_amount || 0) > 0 ? `<div><span>${escapeHtml(invoice.card_fee_label || 'Card processing fee')}</span><strong>${escapeHtml(money(invoice.card_fee_amount))}</strong></div>` : ''}
           <div class="grand"><span>${escapeHtml(labels.total)}</span><span>${escapeHtml(money(invoice.total_amount))}</span></div>
           <div><span>${escapeHtml(labels.paid)}</span><strong>${escapeHtml(money(invoice.amount_paid))}</strong></div>
           <div><span>${escapeHtml(labels.balanceDue)}</span><strong class="balance">${escapeHtml(money(invoice.balance_due))}</strong></div>
@@ -1059,8 +1063,18 @@ const InvoicePrintDialog = ({
                     const value = config.valueKey === 'balance_due'
                       ? displayInvoice.balance_due
                       : Number((editForm as any)[config.valueKey] || 0)
+                    // The card processing fee, when paid by card: shown above the total it is part of.
+                    const cardFeeRow = config.valueKey === 'total_amount' && Number(displayInvoice.card_fee_amount || 0) > 0 ? (
+                      <Box data-card-fee-row sx={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 1, minHeight: 38, px: 1.2, borderRadius: '10px', fontWeight: 800 }}>
+                        <span>{displayInvoice.card_fee_label || 'Card processing fee'}</span>
+                        <span>{money(displayInvoice.card_fee_amount)}</span>
+                        {isEditMode && <span />}
+                      </Box>
+                    ) : null
                     return (
-                      <Box key={config.valueKey} sx={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 1, minHeight: 38, px: 1.2, borderRadius: '10px', bgcolor: config.valueKey === 'total_amount' ? `${accent}0F` : 'transparent', fontWeight: config.valueKey === 'total_amount' ? 950 : 800 }}>
+                      <Fragment key={config.valueKey}>
+                      {cardFeeRow}
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 1, minHeight: 38, px: 1.2, borderRadius: '10px', bgcolor: config.valueKey === 'total_amount' ? `${accent}0F` : 'transparent', fontWeight: config.valueKey === 'total_amount' ? 950 : 800 }}>
                         <span>{displayLabels[config.labelKey]}</span>
                         <span>{money(value)}</span>
                         {isEditMode && (
@@ -1081,6 +1095,7 @@ const InvoicePrintDialog = ({
                           </Tooltip>
                         )}
                       </Box>
+                      </Fragment>
                     )
                   })}
                   {editSummaryRows.map((row, index) => (

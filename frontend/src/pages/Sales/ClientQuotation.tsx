@@ -43,6 +43,7 @@ import {
   payPublicSalesQuotationWithSquare,
   type SalesQuotationLineItem,
 } from '@/api/sales'
+import CardChargeBreakdown from '@/components/Billing/CardChargeBreakdown'
 import SquareCardCheckout, { clearSquarePaymentKey } from '@/components/Billing/SquareCardCheckout'
 import {
   CustomerSignaturePreview,
@@ -219,6 +220,7 @@ const ClientQuotation = () => {
         source_id: sourceId,
         idempotency_key: idempotencyKey,
         payer_name: data?.acceptance?.accepted_by_name || data?.recipient.name || 'Customer',
+        charge_amount: data?.invoice?.card_charge?.charge_amount,
       }
       return accountMode
         ? payClientSalesQuotationWithSquare(id, payload)
@@ -232,9 +234,10 @@ const ClientQuotation = () => {
     onError: (error: any) => {
       const detail = error.response?.data?.detail || error.message || 'Square could not complete the payment'
       const verificationPending = error.response?.status === 409 || /pending|verif/i.test(String(detail))
-      if (!verificationPending && data?.invoice) {
-        clearSquarePaymentKey(`sales-invoice-${data.invoice.id}-${Number(data.invoice.balance_due).toFixed(2)}`)
+      if ((!verificationPending || /has changed/i.test(String(detail))) && data?.invoice) {
+        clearSquarePaymentKey(`sales-invoice-${data.invoice.id}-${Number(data.invoice.card_charge?.charge_amount || data.invoice.balance_due).toFixed(2)}`)
       }
+      if (/has changed/i.test(String(detail))) void queryClient.invalidateQueries({ queryKey })
       toast.error(detail)
     },
   })
@@ -540,17 +543,19 @@ const ClientQuotation = () => {
           <Typography sx={{ mb: 2, color: '#475569', fontWeight: 800 }}>
             Invoice {data.invoice?.invoice_number} · {money(data.invoice?.balance_due)}
           </Typography>
+          <CardChargeBreakdown charge={data.invoice?.card_charge} />
           {data.square_payment.application_id && data.square_payment.location_id && data.invoice && (
             <SquareCardCheckout
               applicationId={data.square_payment.application_id}
               locationId={data.square_payment.location_id}
               sdkUrl={data.square_payment.sdk_url}
-              amount={Number(data.invoice.balance_due)}
+              amount={Number(data.invoice.card_charge?.charge_amount || data.invoice.balance_due)}
               currency={data.square_payment.currency}
+              submitLabel={`Pay ${money(data.invoice.card_charge?.charge_amount || data.invoice.balance_due)} by card`}
               payerName={data.acceptance?.accepted_by_name || data.recipient.name}
               payerEmail={data.recipient.email}
               processing={squarePaymentMut.isPending}
-              idempotencyScope={`sales-invoice-${data.invoice.id}-${Number(data.invoice.balance_due).toFixed(2)}`}
+              idempotencyScope={`sales-invoice-${data.invoice.id}-${Number(data.invoice.card_charge?.charge_amount || data.invoice.balance_due).toFixed(2)}`}
               onPaymentToken={(sourceId, idempotencyKey) => {
                 squarePaymentMut.mutate({ sourceId, idempotencyKey })
               }}

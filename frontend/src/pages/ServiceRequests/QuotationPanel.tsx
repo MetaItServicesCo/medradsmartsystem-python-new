@@ -26,16 +26,14 @@ import {
   createServiceRequestQuotation,
   updateServiceRequestQuotation,
   deleteServiceRequestQuotation,
-  createQuotationPayment,
   submitQuotationPaymentProof,
   requestQuotationAuthorization,
   decideQuotationAuthorization,
   fetchQuotationAuthorizationCandidates,
   type ServiceRequestQuotation,
   type LineItemCreate,
-  type QuotationPaymentCreate,
 } from '@/api/serviceRequests'
-import { isPendingCardClaim } from '@/api/billing'
+import CardPaymentPanel from '@/components/Billing/CardPaymentPanel'
 import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
@@ -88,7 +86,6 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   const queryClient = useQueryClient()
   const user = useAuthStore(state => state.user)
   // Staff record a card payment taken on a terminal; a customer's is verified first.
-  const isInternalCardRecorder = user?.role === 'superadmin' || (user?.role === 'admin' && !user.facility_id)
   const [createOpen, setCreateOpen] = useState(false)
   const [editQuotationId, setEditQuotationId] = useState<number | null>(null)
   const [payOpen, setPayOpen] = useState<number | null>(null)
@@ -116,9 +113,6 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   const [payBankName, setPayBankName] = useState('')
   const [payAcctLast4, setPayAcctLast4] = useState('')
   const [payRoutingLast4, setPayRoutingLast4] = useState('')
-  // Credit Card
-  const [ccName, setCcName] = useState('')
-  const [ccLast4, setCcLast4] = useState('')
 
   // ACH sub-choice
   const [achChoice, setAchChoice] = useState<'ach' | 'mbmts_ach'>('ach')
@@ -175,27 +169,23 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
   })
 
-  const payMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: QuotationPaymentCreate }) => createQuotationPayment(id, data),
-    onSuccess: async (result) => {
-      setPayOpen(null)
-      resetPayForm()
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey }),
-        queryClient.invalidateQueries({ queryKey: ['service-requests'] }),
-        queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] }),
-        queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] }),
-        queryClient.invalidateQueries({ queryKey: ['service-invoices'] }),
-        queryClient.invalidateQueries({ queryKey: ['service-invoices-for-sr', serviceRequestId] }),
-        queryClient.invalidateQueries({ queryKey: ['reports'] }),
-        queryClient.invalidateQueries({ queryKey: ['reports-summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['notifications-header'] }),
-      ])
-      toast.success(isPendingCardClaim(result) ? 'Card payment submitted for verification; the balance updates once an Admin confirms it' : 'Payment recorded and billing updated')
-    },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
-  })
+  // A card payment went through Square: the quotation, its request and Billing changed.
+  const onCardPaid = async () => {
+    setPayOpen(null)
+    resetPayForm()
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey }),
+      queryClient.invalidateQueries({ queryKey: ['service-requests'] }),
+      queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] }),
+      queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] }),
+      queryClient.invalidateQueries({ queryKey: ['service-invoices'] }),
+      queryClient.invalidateQueries({ queryKey: ['service-invoices-for-sr', serviceRequestId] }),
+      queryClient.invalidateQueries({ queryKey: ['reports'] }),
+      queryClient.invalidateQueries({ queryKey: ['reports-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['notifications-header'] }),
+    ])
+  }
 
   const paymentProofMut = useMutation({
     mutationFn: ({ id, amount, paymentMethod, notes, file }: {
@@ -261,7 +251,6 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     setPayMethod('credit_card'); setPayAmount(''); setPayNotes('')
     setPayProofFile(null)
     setPayBankName(''); setPayAcctLast4(''); setPayRoutingLast4('')
-    setCcName(''); setCcLast4('')
     setAchChoice('ach')
   }
 
@@ -397,30 +386,19 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       return
     }
     const actualMethod = payMethod === 'ach' ? achChoice : payMethod
-    if (actualMethod !== 'credit_card') {
-      if (!payProofFile) {
-        toast.error('Upload the cheque or ACH payment proof before submitting')
-        return
-      }
-      paymentProofMut.mutate({
-        id: quotationId,
-        amount,
-        paymentMethod: actualMethod,
-        notes: payNotes || undefined,
-        file: payProofFile,
-      })
+    // A card payment is made in the card form itself, through Square.
+    if (actualMethod === 'credit_card') return
+    if (!payProofFile) {
+      toast.error('Upload the cheque or ACH payment proof before submitting')
       return
     }
-    const data: QuotationPaymentCreate = {
-      payment_method: actualMethod as any,
+    paymentProofMut.mutate({
+      id: quotationId,
       amount,
+      paymentMethod: actualMethod,
       notes: payNotes || undefined,
-    }
-    if (actualMethod === 'credit_card') {
-      data.account_last_four = ccLast4 || undefined
-      data.bank_name = ccName || undefined
-    }
-    payMut.mutate({ id: quotationId, data })
+      file: payProofFile,
+    })
   }
 
   const getQuotationPaidTotal = (quotation: ServiceRequestQuotation) => (
@@ -874,33 +852,33 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             </Box>
           )}
 
-          <TextField
-            label="Payment Amount ($)"
-            type="number"
-            fullWidth
-            value={payAmount}
-            onChange={e => setPayAmount(e.target.value)}
-            sx={{ mb: 2 }}
-            inputProps={{
-              min: 0.01,
-              max: activePayBalance || undefined,
-              step: 0.01,
-            }}
-            helperText="The outstanding balance is filled automatically; reduce it only when recording a partial payment."
-          />
-          <TextField label="Notes" multiline rows={2} fullWidth value={payNotes} onChange={e => setPayNotes(e.target.value)} sx={{ mb: 2 }} />
+          {payMethod !== 'credit_card' && (
+            <>
+              <TextField
+                label="Payment Amount ($)"
+                type="number"
+                fullWidth
+                value={payAmount}
+                onChange={e => setPayAmount(e.target.value)}
+                sx={{ mb: 2 }}
+                inputProps={{
+                  min: 0.01,
+                  max: activePayBalance || undefined,
+                  step: 0.01,
+                }}
+                helperText="The outstanding balance is filled automatically; reduce it only when recording a partial payment."
+              />
+              <TextField label="Notes" multiline rows={2} fullWidth value={payNotes} onChange={e => setPayNotes(e.target.value)} sx={{ mb: 2 }} />
+            </>
+          )}
 
-          {/* Credit Card fields */}
-          {payMethod === 'credit_card' && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, p: 2, bgcolor: '#EFF6FF', borderRadius: '12px', border: '1px solid rgba(29,78,216,0.12)' }}>
-              <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: '#1D4ED8' }}>Credit Card Details</Typography>
-              <TextField size="small" label="Cardholder Name" value={ccName} onChange={e => setCcName(e.target.value)} fullWidth />
-              {/* Full card numbers and security codes never enter this system (PCI): last four only. */}
-              <TextField size="small" label="Last 4 Digits" value={ccLast4} onChange={e => setCcLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} fullWidth inputProps={{ inputMode: 'numeric', maxLength: 4 }} placeholder="1234" />
-              <Typography sx={{ fontSize: '0.75rem', color: '#475569' }}>{isInternalCardRecorder
-                ? 'This records a card payment taken through Square or a card terminal. Never enter the full card number, expiry or security code here.'
-                : 'Your card payment will be verified by our team before the invoice shows as paid. Never enter the full card number, expiry or security code here.'}</Typography>
-            </Box>
+          {/* Card: the full balance plus the card processing fee, through Square. */}
+          {payMethod === 'credit_card' && activePayQuotation && (
+            <CardPaymentPanel
+              key={activePayQuotation.id}
+              target={{ kind: 'quotation', id: activePayQuotation.id, number: activePayQuotation.quotation_number || `Q-${activePayQuotation.id}` }}
+              onPaid={() => { void onCardPaid() }}
+            />
           )}
 
           {/* ACH fields */}
@@ -971,12 +949,14 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => { setPayOpen(null); resetPayForm() }} variant="outlined" sx={{ borderRadius: '10px' }}>Cancel</Button>
-          <Button onClick={() => payOpen && handlePay(payOpen)} variant="contained" disabled={payMut.isPending || paymentProofMut.isPending || !payAmount}
-            sx={{ borderRadius: '10px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', fontWeight: 700 }}>
-            {(payMut.isPending || paymentProofMut.isPending)
-              ? <CircularProgress size={20} sx={{ color: '#fff' }} />
-              : payMethod === 'credit_card' ? 'Confirm Payment' : 'Submit Proof for Review'}
-          </Button>
+          {payMethod !== 'credit_card' && (
+            <Button onClick={() => payOpen && handlePay(payOpen)} variant="contained" disabled={paymentProofMut.isPending || !payAmount}
+              sx={{ borderRadius: '10px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', fontWeight: 700 }}>
+              {paymentProofMut.isPending
+                ? <CircularProgress size={20} sx={{ color: '#fff' }} />
+                : 'Submit Proof for Review'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

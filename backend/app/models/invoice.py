@@ -71,6 +71,10 @@ class Invoice(Base):
     total_amount = Column(Numeric(10, 2), nullable=False)
     amount_paid = Column(Numeric(10, 2), default=0)
     refunded_amount = Column(Numeric(10, 2), default=0, nullable=False)
+    # The card processing fee added when the invoice was paid by card. Part of
+    # total_amount and amount_paid, so the invoice reconciles; never counted as
+    # payment toward what the invoice itself charges for.
+    card_fee_amount = Column(Numeric(10, 2), default=0, nullable=False, server_default="0")
     refund_status = Column(String, default="none", nullable=False)
     balance_due = Column(Numeric(10, 2), nullable=False)
     status = Column(SQLEnum(InvoiceStatus), default=InvoiceStatus.PENDING)

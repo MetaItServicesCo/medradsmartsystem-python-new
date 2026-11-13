@@ -35,6 +35,7 @@ from app.utils.payment_idempotency import (
     payment_fingerprint, replay_or_raise,
 )
 from app.utils.payment_receipts import queue_payment_receipt
+from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
 from app.utils.square_payments import (
     SquareRequestError, create_square_payment, disable_square_card, minor_units_to_amount,
     square_is_configured,
@@ -110,9 +111,11 @@ def charge_invoice(db: Session, agreement: LeaseAgreement, invoice: Invoice) -> 
     Returns 'charged', 'declined' or 'exhausted'. Commits internally around
     the call to Square, exactly as the rental charge does.
     """
-    charge_amount = money(invoice.balance_due)
-    if charge_amount <= 0:
+    if money(invoice.balance_due) <= 0:
         return "charged"
+    # The balance plus the card processing fee, as with every card payment.
+    charge = card_charge(invoice.balance_due)
+    charge_amount = charge.total
     attempt = int(invoice.payment_attempt_count or 0) + 1
     invoice.payment_attempt_count = attempt
     invoice.last_payment_attempt_at = datetime.utcnow()
@@ -128,7 +131,7 @@ def charge_invoice(db: Session, agreement: LeaseAgreement, invoice: Invoice) -> 
         fingerprint=payment_fingerprint(
             "lease_auto_charge", invoice_id=invoice.id, amount=charge_amount,
             currency=settings.SQUARE_CURRENCY,
-            attributes={"attempt": attempt, "lease_id": agreement.id},
+            attributes={"attempt": attempt, "lease_id": agreement.id, "card_fee": "{:.2f}".format(charge.fee)},
         ),
         operation_type="lease_auto_charge",
         invoice_id=invoice.id,
@@ -138,6 +141,7 @@ def charge_invoice(db: Session, agreement: LeaseAgreement, invoice: Invoice) -> 
     )
     if replay:
         replay_or_raise(operation)
+    remember_card_charge(operation, charge)
 
     agreement_id, invoice_id, operation_id = agreement.id, invoice.id, operation.id
     card_id, customer_id = agreement.square_card_id, agreement.square_customer_id
@@ -217,6 +221,7 @@ def charge_invoice(db: Session, agreement: LeaseAgreement, invoice: Invoice) -> 
         )
         return "declined"
 
+    apply_card_fee(db, invoice, charge.fee, None, base=charge.base)
     previous_paid = invoice.amount_paid
     invoice.amount_paid = min(money(invoice.total_amount), money(previous_paid) + charge_amount)
     invoice.balance_due = max(money(invoice.total_amount) - money(invoice.amount_paid), Decimal("0"))
@@ -237,7 +242,7 @@ def charge_invoice(db: Session, agreement: LeaseAgreement, invoice: Invoice) -> 
         card_last4=card.get("last_4") or agreement.square_card_last4,
     )
     mark_operation_succeeded(operation, provider_reference=payment.get("id"),
-                             response_data={"invoice_id": invoice.id, "payment_id": payment.get("id")})
+                             response_data=succeeded_response(operation, {"invoice_id": invoice.id, "payment_id": payment.get("id")}))
     agreement.failed_charge_count = 0
     svc.append_history(agreement, "auto_charged",
                        details={"invoice": invoice.invoice_number, "amount": str(charge_amount)})

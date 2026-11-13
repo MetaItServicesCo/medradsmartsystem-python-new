@@ -1,4 +1,5 @@
 import apiClient from './client'
+import type { CardCharge } from './cardPayments'
 
 export type SalesQuotationStatus = 'draft' | 'sent' | 'viewed' | 'changes_requested' | 'declined' | 'accepted' | 'pending' | 'in_progress' | 'completed' | 'cancelled'
 export type SalesPaidStatus = 'unpaid' | 'paid'
@@ -386,6 +387,9 @@ export interface SalesQuotationPortal {
     amount_paid: number
     balance_due: number
     payment_method: string | null
+    card_fee_amount?: number | string
+    /** What a card payment charges now: the balance, the card processing fee, and both. */
+    card_charge?: CardCharge
   } | null
 }
 
@@ -661,7 +665,7 @@ export const payPublicSalesQuotationInTestMode = async (
 
 export const payPublicSalesQuotationWithSquare = async (
   token: string,
-  data: { source_id: string; idempotency_key: string; payer_name: string },
+  data: { source_id: string; idempotency_key: string; payer_name: string; charge_amount?: string },
 ): Promise<SalesQuotationPortal> => {
   const res = await apiClient.post(`/public/quotations/${token}/square-payment`, data)
   return res.data
@@ -706,7 +710,7 @@ export const payClientSalesQuotationInTestMode = async (
 
 export const payClientSalesQuotationWithSquare = async (
   id: number,
-  data: { source_id: string; idempotency_key: string; payer_name: string },
+  data: { source_id: string; idempotency_key: string; payer_name: string; charge_amount?: string },
 ): Promise<SalesQuotationPortal> => {
   const res = await apiClient.post(`/client-sales/quotations/${id}/square-payment`, data)
   return res.data

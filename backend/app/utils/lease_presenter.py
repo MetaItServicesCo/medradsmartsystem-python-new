@@ -11,6 +11,7 @@ from typing import Any, Optional
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.lease import LeaseAgreement
 from app.utils import lease_service as svc
+from app.utils.card_fee import card_charge
 from app.utils.lease_math import money
 
 
@@ -29,6 +30,8 @@ def _invoice_brief(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
         "total_amount": _money_str(invoice.total_amount),
         "amount_paid": _money_str(invoice.amount_paid),
         "balance_due": _money_str(invoice.balance_due),
+        "card_fee_amount": _money_str(invoice.card_fee_amount),
+        "card_charge": card_charge(invoice.balance_due).as_dict(),
         "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
         "payable": status in (InvoiceStatus.PENDING.value, InvoiceStatus.OVERDUE.value,
                               InvoiceStatus.PARTIALLY_PAID.value) and money(invoice.balance_due) > 0,

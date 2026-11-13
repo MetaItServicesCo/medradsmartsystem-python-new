@@ -14,6 +14,7 @@ import PrintIcon from '@mui/icons-material/Print'
 import { toast } from 'react-toastify'
 import { fetchPublicServiceInvoice, payPublicServiceInvoice } from '@/api/serviceRequests'
 import SquareCardCheckout, { clearSquarePaymentKey } from '@/components/Billing/SquareCardCheckout'
+import CardChargeBreakdown from '@/components/Billing/CardChargeBreakdown'
 import ServiceInvoiceFrame from '@/components/Billing/ServiceInvoiceFrame'
 import { buildServiceInvoiceHtml } from '@/utils/serviceInvoiceHtml'
 
@@ -76,13 +77,15 @@ const PublicServiceInvoice = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.payer_name])
 
-  const scope = data ? `service-invoice-${data.invoice_number}-${Number(data.balance_due).toFixed(2)}` : ''
+  const chargeAmount = data?.charge_amount || data?.balance_due || '0'
+  const scope = data ? `service-invoice-${data.invoice_number}-${Number(chargeAmount).toFixed(2)}` : ''
 
   const pay = useMutation({
     mutationFn: ({ sourceId, idempotencyKey }: { sourceId: string; idempotencyKey: string }) => payPublicServiceInvoice(token, {
       source_id: sourceId,
       idempotency_key: idempotencyKey,
       payer_name: payerName.trim(),
+      charge_amount: data?.charge_amount,
     }),
     onSuccess: (response) => {
       queryClient.setQueryData(queryKey, response)
@@ -93,7 +96,10 @@ const PublicServiceInvoice = () => {
       const detail = error.response?.data?.detail
       const message = typeof detail === 'string' ? detail : error.message || 'Square could not complete the payment'
       // An uncertain result keeps its key, so a retry can never charge twice.
-      if (!(error.response?.status === 409 || /pending|verif/i.test(message))) clearSquarePaymentKey(scope)
+      if (/has changed/i.test(message)) {
+        clearSquarePaymentKey(scope)
+        void queryClient.invalidateQueries({ queryKey })
+      } else if (!(error.response?.status === 409 || /pending|verif/i.test(message))) clearSquarePaymentKey(scope)
       toast.error(message)
     },
   })
@@ -168,7 +174,17 @@ const PublicServiceInvoice = () => {
       <Dialog open={payOpen} onClose={() => !pay.isPending && setPayOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 900 }}>Pay invoice {data.invoice_number}</DialogTitle>
         <DialogContent dividers>
-          <Typography sx={{ mb: 2, fontWeight: 800, color: '#475569' }}>Balance {money(data.balance_due)}</Typography>
+          {data.charge_amount ? (
+            <CardChargeBreakdown charge={{
+              base_amount: data.base_amount || data.balance_due || '0',
+              card_fee: data.card_fee || '0',
+              card_fee_percent: data.card_fee_percent || '',
+              card_fee_label: data.card_fee_label || 'Card processing fee',
+              charge_amount: data.charge_amount,
+            }} />
+          ) : (
+            <Typography sx={{ mb: 2, fontWeight: 800, color: '#475569' }}>Balance {money(data.balance_due)}</Typography>
+          )}
           <TextField
             label="Your name"
             value={payerName}
@@ -183,8 +199,9 @@ const PublicServiceInvoice = () => {
                 applicationId={square.application_id}
                 locationId={square.location_id}
                 sdkUrl={square.sdk_url}
-                amount={Number(data.balance_due)}
+                amount={Number(chargeAmount)}
                 currency={square.currency}
+                submitLabel={`Pay ${money(chargeAmount)} by card`}
                 payerName={payerName.trim()}
                 payerEmail={data.payer_email}
                 processing={pay.isPending}

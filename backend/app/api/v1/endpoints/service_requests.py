@@ -87,6 +87,23 @@ from app.utils.payment_proofs import (
     store_encrypted_payment_proof,
 )
 from app.utils.rate_limit import enforce_rate_limit
+from app.core.config import settings
+from app.models.payment_operation import PaymentOperation
+from app.utils.card_fee import card_charge, card_fee_label, remember_card_charge, succeeded_response
+from app.utils.payment_idempotency import (
+    get_or_create_operation,
+    mark_operation_failed,
+    mark_operation_succeeded,
+    payment_fingerprint,
+    replay_or_raise,
+)
+from app.utils.square_payments import (
+    SquareConfigurationError,
+    SquareRequestError,
+    create_square_payment,
+    minor_units_to_amount,
+    square_public_config,
+)
 
 router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
 
@@ -839,6 +856,8 @@ def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
         "tax_amount": invoice.tax_amount,
         "discount_amount": invoice.discount_amount,
         "total_amount": invoice.total_amount,
+        # Added when paid by card; part of the total.
+        "card_fee_amount": invoice.card_fee_amount,
         "amount_paid": invoice.amount_paid,
         "balance_due": invoice.balance_due,
         "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
@@ -3028,65 +3047,6 @@ def _require_quotation_payable(quotation: ServiceRequestQuotation, payment_amoun
     return authorization
 
 
-def _submit_quotation_card_claim(
-    db: Session,
-    quotation: ServiceRequestQuotation,
-    payment_in: QuotationPaymentCreate,
-    payment_amount: Decimal,
-    user: User,
-) -> JSONResponse:
-    _require_quotation_payable(quotation, payment_amount)
-    if payment_in.payment_method != "credit_card":
-        raise HTTPException(
-            status_code=409,
-            detail="Upload payment proof for non-card payments; the quotation will update after Admin or Super Admin approval",
-        )
-    enforce_rate_limit(
-        bucket="authenticated-payment-proof-upload",
-        identity=f"user:{user.id}",
-        limit=10,
-        window_seconds=60,
-        message="Too many payment submissions. Please wait before trying again.",
-    )
-    card_brand, card_last4 = card_claim_details(None, payment_in.account_last_four)
-    claim = (
-        db.query(PaymentProof)
-        .filter(
-            PaymentProof.service_quotation_id == quotation.id,
-            PaymentProof.submitted_by_id == user.id,
-            PaymentProof.stored_filename.is_(None),
-            PaymentProof.claimed_amount == payment_amount,
-            PaymentProof.status == "pending_verification",
-        )
-        .first()
-    )
-    if not claim:
-        claim = new_card_claim(submitted_by_id=user.id, amount=payment_amount, notes=payment_in.notes,
-                               card_brand=card_brand, card_last4=card_last4, service_quotation_id=quotation.id)
-        db.add(claim)
-        db.flush()
-        _append_quotation_ledger(
-            db,
-            quotation,
-            "card_payment_claim_submitted",
-            user,
-            channel="facility_self_service",
-            amount=payment_amount,
-            details={"proof_id": claim.id, "card_last4": card_last4},
-        )
-        notify_admins(
-            db,
-            title="Card payment awaiting verification",
-            message=f"{quotation.quotation_number}: card payment of ${payment_amount} reported; confirm it in Square before approving",
-            notification_type="billing",
-            link_url=f"/billing?search={quotation.quotation_number}",
-            actor_id=user.id,
-        )
-        db.commit()
-        db.refresh(claim)
-    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(payment_proof_response(claim)))
-
-
 @router.post("/quotations/{quotation_id}/payments", response_model=QuotationPaymentResponse, status_code=status.HTTP_201_CREATED)
 def create_quotation_payment(
     quotation_id: int,
@@ -3129,10 +3089,18 @@ def create_quotation_payment(
     if payment_amount <= Decimal("0"):
         raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
 
+    if payment_in.payment_method == "credit_card":
+        # A card payment is taken through Square, never typed in: no card
+        # payment is recorded without a completed charge.
+        raise HTTPException(
+            status_code=409,
+            detail="Card payments are taken through the secure card form, with the card processing fee",
+        )
     if not _is_internal_service_user(current_user):
-        # A customer saying they paid by card moves no money: the claim waits
-        # for staff to confirm the charge, and the quotation changes only then.
-        return _submit_quotation_card_claim(db, db_quotation, payment_in, payment_amount, current_user)
+        raise HTTPException(
+            status_code=409,
+            detail="Upload payment proof for non-card payments; the quotation will update after Admin or Super Admin approval",
+        )
 
     from uuid import uuid4
     from app.utils.payment_idempotency import (
@@ -3190,6 +3158,274 @@ def create_quotation_payment(
     db.refresh(db_payment)
 
     return _payment_dict(db_payment)
+
+
+# ── Card payments through Square ────────────────────────────────────────────
+# A quotation's remaining balance plus the card processing fee, in one Square
+# charge. The quotation is paid its own amount (so its authorization still
+# matches); the fee is charged with it and recorded on the payment.
+
+QUOTATION_PAYER_ROLES = {
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN,
+    UserRole.FACILITY_ADMIN,
+    UserRole.FACILITY_MANAGER,
+    UserRole.CLIENT,
+}
+
+
+class QuotationSquarePayment(BaseModel):
+    source_id: str = Field(min_length=8, max_length=500)
+    idempotency_key: str = Field(min_length=16, max_length=64)
+    charge_amount: Decimal
+
+
+def _require_quotation_card_payer(user: User) -> None:
+    if user.role not in QUOTATION_PAYER_ROLES:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    if not has_module_permission(user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
+
+
+def _quotation_for_card(db: Session, quotation_id: int, user: User, *, for_update: bool = False) -> ServiceRequestQuotation:
+    query = (
+        db.query(ServiceRequestQuotation)
+        .options(
+            joinedload(ServiceRequestQuotation.service_request),
+            selectinload(ServiceRequestQuotation.authorizations),
+            selectinload(ServiceRequestQuotation.payments),
+        )
+        .filter(ServiceRequestQuotation.id == quotation_id)
+    )
+    if for_update:
+        query = query.populate_existing().with_for_update(of=ServiceRequestQuotation)
+    quotation = query.first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    _require_service_facility_access(db, user, quotation.service_request.facility_id)
+    if (
+        db.query(PaymentProof.id)
+        .filter(PaymentProof.service_quotation_id == quotation.id, PaymentProof.status == "pending_verification")
+        .first()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="A payment for this quotation is waiting for review. It must be approved or rejected first.",
+        )
+    return quotation
+
+
+def _quotation_remaining(quotation: ServiceRequestQuotation) -> Decimal:
+    paid = sum(
+        (_money(payment.amount) for payment in (quotation.payments or []) if payment.status == "completed"),
+        Decimal("0"),
+    )
+    return max((_money(quotation.amount) - paid).quantize(Decimal("0.01")), Decimal("0"))
+
+
+def record_quotation_card_payment(
+    db: Session,
+    quotation: ServiceRequestQuotation,
+    *,
+    payment_id: str,
+    charged: Decimal,
+    fee: Decimal,
+    user: User,
+    card: Optional[dict[str, Any]] = None,
+) -> Optional[QuotationPayment]:
+    """Record a completed Square card payment of a quotation, once.
+
+    Used by the payment request itself and by the Square webhook settling an
+    uncertain one. `charged` is what Square took; `fee` the card processing fee
+    within it. Returns None when that Square payment is already recorded.
+    """
+    if (
+        db.query(QuotationLedgerEntry.id)
+        .filter(QuotationLedgerEntry.quotation_id == quotation.id, QuotationLedgerEntry.reference_number == payment_id)
+        .first()
+    ):
+        return None
+    base = (_money(charged) - _money(fee)).quantize(Decimal("0.01"))
+    authorization = _require_quotation_payable(quotation, base)
+    card = card or {}
+    card_text = f"{card.get('card_brand') or 'Card'} ending {card.get('last_4')}" if card.get("last_4") else "Card"
+    payment = _apply_quotation_payment_locked(
+        db,
+        quotation,
+        QuotationPaymentCreate(
+            payment_method="credit_card",
+            amount=base,
+            notes=f"{card_text} through Square ({payment_id}); {card_fee_label()} ${_money(fee):.2f} charged with it",
+            account_last_four=(str(card.get("last_4") or "")[-4:] or None),
+        ),
+        base,
+        authorization,
+        user,
+    )
+    payment.card_fee_amount = _money(fee)
+    _append_quotation_ledger(
+        db,
+        quotation,
+        "card_charged",
+        user,
+        channel=payment.payment_channel,
+        amount=_money(charged),
+        reference_number=payment_id,
+        details={
+            "quotation_payment": base,
+            "card_fee": _money(fee),
+            "card_fee_label": card_fee_label(),
+            "payment_reference": payment.reference_number,
+        },
+    )
+    return payment
+
+
+@router.get("/quotations/{quotation_id}/card-payment")
+def read_quotation_card_payment(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """What a card payment of this quotation charges, and the secure card form's settings."""
+    _require_quotation_card_payer(current_user)
+    quotation = _quotation_for_card(db, quotation_id, current_user)
+    remaining = _quotation_remaining(quotation)
+    _require_quotation_payable(quotation, remaining)
+    square = square_public_config()
+    return {
+        "quotation_id": quotation.id,
+        "quotation_number": quotation.quotation_number,
+        "balance_due": f"{remaining:.2f}",
+        **card_charge(remaining).as_dict(),
+        "payer_name": current_user.full_name or current_user.username,
+        "payer_email": current_user.email,
+        "square_payment": square,
+        "can_pay": remaining > 0 and bool(square.get("enabled")),
+    }
+
+
+@router.post("/quotations/{quotation_id}/square-payment")
+def pay_quotation_by_card(
+    quotation_id: int,
+    payload: QuotationSquarePayment,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_quotation_card_payer(current_user)
+    enforce_rate_limit(
+        bucket="quotation-card-payment",
+        identity=f"user:{current_user.id}:quotation:{quotation_id}",
+        limit=8,
+        window_seconds=600,
+    )
+    # The same payment sent again (a browser retrying after a dropped
+    # connection): once it has succeeded, answer as it did, never charge again.
+    completed = (
+        db.query(PaymentOperation)
+        .filter(PaymentOperation.idempotency_key == payload.idempotency_key)
+        .first()
+    )
+    if completed is not None and completed.status == "succeeded":
+        if completed.quotation_id != quotation_id:
+            raise HTTPException(status_code=409, detail="This payment retry key was already used for different payment details")
+        quotation = db.query(ServiceRequestQuotation).filter(ServiceRequestQuotation.id == quotation_id).first()
+        _require_service_facility_access(db, current_user, quotation.service_request.facility_id)
+        return _quotation_dict(quotation)
+    quotation = _quotation_for_card(db, quotation_id, current_user, for_update=True)
+    remaining = _quotation_remaining(quotation)
+    _require_quotation_payable(quotation, remaining)
+    charge = card_charge(remaining)
+    if _money(payload.charge_amount).quantize(Decimal("0.01")) != charge.total:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The amount due has changed to ${charge.total:.2f}. Review it and pay again.",
+        )
+    operation, replay = get_or_create_operation(
+        db,
+        idempotency_key=payload.idempotency_key,
+        fingerprint=payment_fingerprint(
+            "square_quotation_payment",
+            quotation_id=quotation.id,
+            amount=charge.total,
+            currency=settings.SQUARE_CURRENCY,
+            attributes={"card_fee": f"{charge.fee:.2f}", "payer_id": current_user.id},
+        ),
+        operation_type="square_quotation_payment",
+        quotation_id=quotation.id,
+        amount=charge.total,
+        currency=settings.SQUARE_CURRENCY,
+        provider="square",
+        created_by_id=current_user.id,
+    )
+    if replay:
+        replay_or_raise(operation)
+        db.refresh(quotation)
+        return _quotation_dict(quotation)
+    remember_card_charge(operation, charge)
+
+    quotation_number = quotation.quotation_number or f"Q-{quotation.id}"
+    operation_id = operation.id
+    db.commit()
+    try:
+        square_payment = create_square_payment(
+            source_id=payload.source_id,
+            idempotency_key=payload.idempotency_key,
+            amount=charge.total,
+            invoice_number=quotation_number,
+            customer_email=current_user.email,
+        )
+    except SquareConfigurationError as exc:
+        operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        mark_operation_failed(operation, str(exc))
+        db.commit()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SquareRequestError as exc:
+        operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        mark_operation_failed(operation, str(exc), unknown=exc.indeterminate)
+        db.commit()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    quotation = _quotation_for_card(db, quotation_id, current_user, for_update=True)
+    operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+    payment_id = str(square_payment.get("id") or "").strip()
+    payment_status = str(square_payment.get("status") or "").upper()
+    money_block = square_payment.get("amount_money") or {}
+    square_amount = minor_units_to_amount(money_block.get("amount"))
+    square_currency = str(money_block.get("currency") or "").upper()
+    if payment_status != "COMPLETED":
+        mark_operation_failed(operation, f"Square payment status was {payment_status or 'unknown'}", unknown=True)
+        db.commit()
+        raise HTTPException(status_code=409, detail=f"Square payment is {payment_status.lower() or 'not completed'}")
+    if square_amount != charge.total or square_currency != (settings.SQUARE_CURRENCY.strip().upper() or "USD"):
+        mark_operation_failed(operation, "Square returned an unexpected amount or currency", unknown=True)
+        db.commit()
+        raise HTTPException(status_code=409, detail="Square completed an unexpected amount or currency; the quotation was not changed")
+    try:
+        record_quotation_card_payment(
+            db, quotation,
+            payment_id=payment_id, charged=square_amount, fee=charge.fee, user=current_user,
+            card=(square_payment.get("card_details") or {}).get("card") or {},
+        )
+    except HTTPException as exc:
+        # The card was charged but the quotation changed meanwhile: keep the
+        # charge on record for review rather than lose it.
+        mark_operation_failed(operation, f"Charged but not recorded: {exc.detail}", unknown=True)
+        notify_admins(
+            db,
+            title="Card payment needs attention",
+            message=f"{quotation_number}: ${square_amount:.2f} was charged by card ({payment_id}) but could not be recorded: {exc.detail}",
+            notification_type="billing",
+            link_url=f"/billing?search={quotation_number}",
+            actor_id=current_user.id,
+        )
+        db.commit()
+        raise HTTPException(status_code=409, detail="The card was charged, but the quotation changed meanwhile; an administrator has been asked to review it") from exc
+    mark_operation_succeeded(operation, provider_reference=payment_id,
+                             response_data=succeeded_response(operation, {"quotation_id": quotation.id, "payment_id": payment_id}))
+    db.commit()
+    db.refresh(quotation)
+    return _quotation_dict(quotation)
 
 
 @router.post("/quotations/{quotation_id}/payment-proofs", status_code=status.HTTP_201_CREATED)

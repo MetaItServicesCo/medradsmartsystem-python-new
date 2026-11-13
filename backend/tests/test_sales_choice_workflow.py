@@ -1173,7 +1173,8 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         return {
             "id": "square-payment-001",
             "status": "COMPLETED",
-            "amount_money": {"amount": 12500, "currency": "USD"},
+            # $125.00 plus the 3% card processing fee.
+            "amount_money": {"amount": 12875, "currency": "USD"},
         }
 
     monkeypatch.setattr(
@@ -1334,12 +1335,14 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         assert square_calls == [{
             "source_id": payload.source_id,
             "idempotency_key": payload.idempotency_key,
-            "amount": Decimal("125.00"),
+            "amount": Decimal("128.75"),
             "invoice_number": invoice.invoice_number,
             "customer_email": invoice.customer_email,
         }]
         assert invoice.status == InvoiceStatus.PAID
-        assert invoice.amount_paid == Decimal("125")
+        assert invoice.card_fee_amount == Decimal("3.75")
+        assert invoice.total_amount == Decimal("128.75")
+        assert invoice.amount_paid == Decimal("128.75")
         assert invoice.balance_due == Decimal("0")
         assert invoice.payment_method == "square_card"
         assert response["invoice"]["status"] == "paid"

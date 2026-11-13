@@ -13,6 +13,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, Optional
 
+from app.utils.card_fee import card_fee_label
 from app.api.v1.endpoints.reports import _service_session_entries
 from app.models.invoice import Invoice
 from app.models.service_request import ServiceRequest
@@ -203,6 +204,9 @@ def build_service_invoice_document(
         "subtotal": _money_text(invoice.subtotal),
         "tax_amount": _money_text(invoice.tax_amount),
         "discount_amount": _money_text(invoice.discount_amount),
+        # Added when the invoice was paid by card; part of the total.
+        "card_fee_amount": _money_text(getattr(invoice, "card_fee_amount", 0)),
+        "card_fee_label": card_fee_label(),
         "total_amount": _money_text(invoice.total_amount),
         "amount_paid": _money_text(invoice.amount_paid),
         "balance_due": _money_text(invoice.balance_due),

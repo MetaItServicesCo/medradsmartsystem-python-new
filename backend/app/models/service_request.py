@@ -70,6 +70,9 @@ class QuotationPayment(Base):
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     authorization_id = Column(Integer, ForeignKey("quotation_authorizations.id", ondelete="SET NULL"), nullable=True)
     payment_channel = Column(String, nullable=True)  # admin_assisted / facility_self_service
+    # A card payment's processing fee, charged on top of `amount`. `amount` is
+    # what pays the quotation; the fee is charged with it and recorded here.
+    card_fee_amount = Column(Numeric(10, 2), default=0, nullable=False, server_default="0")
     payer_role = Column(String, nullable=True)
 
     # Relationships
