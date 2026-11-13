@@ -59,6 +59,7 @@ import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipmen
 import { useAuthStore } from '@/stores/authStore'
 import { actsAsTechnician, hasPermission } from '@/config/permissions'
 import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
+import { DEFAULT_SERVICE_TAX_RATE, quotationBeforeTax, serviceInvoiceTaxable, serviceTaxOn } from '@/utils/serviceTax'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
 
@@ -199,7 +200,8 @@ const ServiceRequestDetail = () => {
   const [includeQuotations, setIncludeQuotations] = useState(false)
   const [selectedQuotationIds, setSelectedQuotationIds] = useState<number[]>([])
   const [invoiceDueDate, setInvoiceDueDate] = useState('')
-  const [invoiceTaxAmount, setInvoiceTaxAmount] = useState('0')
+  // null: the sales tax worked out from the invoice; a string: the amount the administrator typed.
+  const [invoiceTaxOverride, setInvoiceTaxOverride] = useState<string | null>(null)
   const [invoiceDiscountAmount, setInvoiceDiscountAmount] = useState('0')
   const [invoiceNotes, setInvoiceNotes] = useState('')
   const [invoiceTravelMode, setInvoiceTravelMode] = useState<'fixed' | 'mileage'>('fixed')
@@ -474,7 +476,8 @@ const ServiceRequestDetail = () => {
     mutationFn: () => generateServiceInvoice(Number(id), {
       include_quotations: includeQuotations,
       quotation_ids: includeQuotations ? selectedQuotationIds : [],
-      tax_amount: Number(invoiceTaxAmount || 0),
+      // Left to the server unless typed in, so it is charged as worked out here.
+      tax_amount: invoiceTaxOverride === null ? null : Math.max(Number(invoiceTaxOverride || 0), 0),
       discount_amount: Number(invoiceDiscountAmount || 0),
       due_date: invoiceDueDate || null,
       notes: invoiceNotes || undefined,
@@ -932,19 +935,26 @@ const ServiceRequestDetail = () => {
     .filter(entry => entry.action === 'technician_clock_out' || entry.action === 'technician_work_session')
     .reduce((sum, entry) => sum + Number(getHistoryChanges(entry.changes).total_mileage || 0), 0)
   const calculatedMileageTravelCharge = totalSessionMileage * tierMileageRate
-  const selectedQuotationTotal = includeQuotations
-    ? billableQuotations
-      .filter(q => selectedQuotationIds.includes(q.id))
-      .reduce((sum, q) => sum + Number(q.amount || 0), 0)
-    : 0
+  const selectedQuotations = includeQuotations
+    ? billableQuotations.filter(q => selectedQuotationIds.includes(q.id))
+    : []
+  // Included at their amount before their own tax: the invoice is taxed as a whole.
+  const selectedQuotationTotal = selectedQuotations.reduce((sum, q) => sum + quotationBeforeTax(q), 0)
   const invoiceLaborAmount = invoiceLaborFees.trim() === '' ? calculatedServiceCost : Number(invoiceLaborFees || 0)
   // What is seen here is what is charged: empty or below zero bills no fee.
   const invoiceServiceCallAmount = Math.max(Number(invoiceServiceCallFee || 0), 0)
   const invoiceTravelAmount = invoiceTravelMode === 'mileage'
     ? calculatedMileageTravelCharge
     : Number(invoiceTravelCharges || 0)
+  const serviceTaxRate = Number(sr.service_tax_rate ?? DEFAULT_SERVICE_TAX_RATE)
+  // Taxed only with a quotation included, then on all of it but travel.
+  const invoiceTaxableAmount = serviceInvoiceTaxable(
+    invoiceServiceCallAmount, invoiceLaborAmount, selectedQuotationTotal, selectedQuotations.length > 0,
+  )
+  const calculatedInvoiceTax = serviceTaxOn(invoiceTaxableAmount, serviceTaxRate)
+  const invoiceTaxAmount = invoiceTaxOverride === null ? calculatedInvoiceTax : Math.max(Number(invoiceTaxOverride || 0), 0)
   const invoicePreviewTotal = Math.max(
-    invoiceServiceCallAmount + invoiceLaborAmount + invoiceTravelAmount + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
+    invoiceServiceCallAmount + invoiceLaborAmount + invoiceTravelAmount + selectedQuotationTotal + invoiceTaxAmount - Number(invoiceDiscountAmount || 0),
     0
   )
 
@@ -952,7 +962,7 @@ const ServiceRequestDetail = () => {
     setIncludeQuotations(false)
     setSelectedQuotationIds(billableQuotations.map(q => q.id))
     setInvoiceDueDate('')
-    setInvoiceTaxAmount('0')
+    setInvoiceTaxOverride(null)
     setInvoiceDiscountAmount('0')
     setInvoiceNotes(`Service invoice for ${sr.request_number}.`)
     setInvoiceLaborFees(calculatedServiceCost.toFixed(2))
@@ -2165,6 +2175,7 @@ const ServiceRequestDetail = () => {
             isCancelled={sr.status === 'cancelled'}
             canEdit={canCreateQuotation}
             queryKey={['service-request', id]}
+            taxRate={sr.service_tax_rate}
           />
         </Box>
       </Box>
@@ -2374,7 +2385,7 @@ const ServiceRequestDetail = () => {
                             </Box>
                           }
                         />
-                        <Typography sx={{ fontWeight: 950, color: '#047857' }}>${Number(q.amount || 0).toFixed(2)}</Typography>
+                        <Typography sx={{ fontWeight: 950, color: '#047857' }}>${quotationBeforeTax(q).toFixed(2)}</Typography>
                       </Box>
                     ))}
                   </Box>
@@ -2405,11 +2416,29 @@ const ServiceRequestDetail = () => {
               <TextField
                 label="Tax Amount ($)"
                 type="number"
-                value={invoiceTaxAmount}
-                onChange={(e) => setInvoiceTaxAmount(e.target.value)}
+                value={invoiceTaxOverride ?? calculatedInvoiceTax.toFixed(2)}
+                onChange={(e) => setInvoiceTaxOverride(e.target.value)}
                 fullWidth
                 sx={{ mb: 1.5 }}
-                inputProps={{ min: 0, step: 0.01 }}
+                inputProps={{ min: 0, step: 0.01, 'data-invoice-tax': '' }}
+                helperText={
+                  <Box component="span" sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                    <span data-invoice-tax-basis>
+                      {invoiceTaxOverride !== null
+                        ? 'Entered by hand'
+                        : selectedQuotations.length > 0
+                          ? `${serviceTaxRate}% of $${invoiceTaxableAmount.toFixed(2)} (travel is not taxed)`
+                          : 'No tax: no quotation is included'}
+                    </span>
+                    {invoiceTaxOverride !== null && (
+                      <Box component="span" role="button" tabIndex={0} onClick={() => setInvoiceTaxOverride(null)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setInvoiceTaxOverride(null) }}
+                        sx={{ color: '#7C3AED', fontWeight: 800, cursor: 'pointer' }}>
+                        Use {serviceTaxRate}% tax
+                      </Box>
+                    )}
+                  </Box>
+                }
               />
               <TextField
                 label="Discount Amount ($)"
@@ -2425,7 +2454,7 @@ const ServiceRequestDetail = () => {
                 ['Labor Fees', Number(invoiceLaborFees || 0)],
                 [invoiceTravelMode === 'mileage' ? 'Travel Charges (Mileage)' : 'Travel Charges', invoiceTravelAmount],
                 ['Included quotations', selectedQuotationTotal],
-                ['Tax', Number(invoiceTaxAmount || 0)],
+                ['Tax', invoiceTaxAmount],
                 ['Discount', -Number(invoiceDiscountAmount || 0)],
               ] as [string, number][]).filter(([label, value]) => (
                 // Only what is charged: no fee line without a fee, no labor line without labor.

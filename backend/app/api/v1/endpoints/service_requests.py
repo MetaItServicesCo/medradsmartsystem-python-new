@@ -51,6 +51,13 @@ from app.utils.facility_access import (
 )
 from app.utils.service_invoice_document import service_work_entries
 from app.utils.service_charges import labor_breakdown
+from app.utils.service_tax import (
+    SERVICE_TAX_RATE,
+    quotation_amount_before_tax,
+    quotation_tax,
+    service_invoice_taxable_amount,
+    tax_on,
+)
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
@@ -155,7 +162,9 @@ class ServiceInvoiceWorkEntryEdit(BaseModel):
 class ServiceInvoiceCreate(BaseModel):
     include_quotations: bool = False
     quotation_ids: Optional[list[int]] = None
-    tax_amount: Decimal = Decimal("0")
+    # Left out, sales tax is worked out: 8.25% of the whole invoice but travel
+    # when it includes a quotation, else none. An amount sent replaces it.
+    tax_amount: Optional[Decimal] = Field(default=None, ge=0)
     discount_amount: Decimal = Decimal("0")
     due_date: Optional[date] = None
     payment_method: Optional[str] = None
@@ -360,6 +369,7 @@ def _ledger_dict(entry: QuotationLedgerEntry) -> dict[str, Any]:
 
 def _quotation_dict(quotation: ServiceRequestQuotation, *, include_ledger: bool = True) -> dict[str, Any]:
     data = {column.name: getattr(quotation, column.name) for column in quotation.__table__.columns}
+    data["subtotal"] = quotation.subtotal
     data["line_items"] = [
         {column.name: getattr(item, column.name) for column in item.__table__.columns}
         for item in (quotation.line_items or [])
@@ -474,6 +484,7 @@ def _enrich(
     data["tier_labor_rate_per_hour"] = tier.labor_rate_per_hour if tier else None
     data["tier_mileage_rate"] = tier.mileage_rate if tier else None
     data["tier_service_call_fee"] = tier.service_call_fee if tier else None
+    data["service_tax_rate"] = SERVICE_TAX_RATE
     data["calculated_service_cost"] = _calculate_service_cost(sr)
     # How the recorded cost was worked out (4.00 hrs × $175.00/hr), when it adds up.
     data["service_cost_breakdown"] = labor_breakdown(
@@ -757,11 +768,11 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
                 "item_number": quotation.quotation_number,
                 "description": quotation.description or "Service quotation",
                 "quantity": Decimal("1"),
-                "unit_price": quotation.amount,
+                "unit_price": quotation_amount_before_tax(quotation),
                 "shipping_fee": Decimal("0"),
                 "setup_fee": Decimal("0"),
                 "condition": None,
-                "total_amount": quotation.amount,
+                "total_amount": quotation_amount_before_tax(quotation),
             })
     # No hours and no labour charged: no hours line, unless it is all there is.
     # Invoices from before the Service Call Fee stay as they were issued.
@@ -1731,9 +1742,18 @@ def generate_service_invoice(
         else _tier_service_call_fee(db_sr)
     )
     travel_charges = _money(payload.travel_charges).quantize(Decimal("0.01"))
-    quotation_amount = sum((_money(quotation.amount) for quotation in selected_quotations), Decimal("0"))
+    # A quotation goes onto the invoice at its amount before its own tax:
+    # the invoice is taxed as a whole instead.
+    quotation_amount = sum((quotation_amount_before_tax(quotation) for quotation in selected_quotations), Decimal("0"))
     subtotal = (service_call_fee + service_amount + travel_charges + quotation_amount).quantize(Decimal("0.01"))
-    tax_amount = _money(payload.tax_amount).quantize(Decimal("0.01"))
+    taxable_amount = service_invoice_taxable_amount(
+        service_call_fee, service_amount, quotation_amount, includes_quotation=bool(selected_quotations),
+    )
+    # Left out, the tax is 8.25% of the taxable amount; an amount sent is what the administrator set.
+    tax_entered = payload.tax_amount is not None
+    tax_amount = (
+        _money(payload.tax_amount).quantize(Decimal("0.01")) if tax_entered else tax_on(taxable_amount)
+    )
     discount_amount = _money(payload.discount_amount).quantize(Decimal("0.01"))
     total_amount = max((subtotal + tax_amount - discount_amount).quantize(Decimal("0.01")), Decimal("0"))
 
@@ -1779,7 +1799,8 @@ def generate_service_invoice(
             quotation,
             "included_in_service_invoice",
             current_user,
-            amount=quotation.amount,
+            # Billed at its amount before tax: the invoice is taxed as a whole.
+            amount=quotation_amount_before_tax(quotation),
             details={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
         )
 
@@ -1793,6 +1814,11 @@ def generate_service_invoice(
         "service_call_fee": str(service_call_fee),
         "included_quotation_ids": [quotation.id for quotation in selected_quotations],
         "included_quotation_total": str(quotation_amount),
+        "travel_charges": str(travel_charges),
+        "tax_rate": str(SERVICE_TAX_RATE),
+        "taxable_amount": str(taxable_amount),
+        "tax_amount": str(tax_amount),
+        "tax_entered": tax_entered,
         "total_amount": str(total_amount),
         "quotations_billed_separately": not payload.include_quotations,
     }))
@@ -2422,16 +2448,17 @@ def create_quotation(
     ).count()
     quotation_number = f"{db_sr.request_number}-Q{count + 1:02d}"
 
-    # Calculate total from line items
-    total_amount = Decimal("0")
-    if quotation_in.line_items:
-        total_amount = sum(li.total for li in quotation_in.line_items)
+    # The lines' total plus sales tax on its part and other lines.
+    subtotal, _taxable, tax_amount = quotation_tax(quotation_in.line_items or [])
+    total_amount = subtotal + tax_amount
 
     db_quotation = ServiceRequestQuotation(
         service_request=db_sr,
         created_by_id=current_user.id,
         quotation_number=quotation_number,
         amount=total_amount,
+        tax_rate=SERVICE_TAX_RATE,
+        tax_amount=tax_amount,
         description=quotation_in.description,
     )
     db.add(db_quotation)
@@ -2539,7 +2566,6 @@ def update_quotation(
             QuotationLineItem.quotation_id == quotation_id
         ).delete()
 
-        total_amount = Decimal("0")
         for li_data in quotation_in.line_items:
             db_item = QuotationLineItem(
                 quotation_id=quotation_id,
@@ -2550,8 +2576,12 @@ def update_quotation(
                 total=li_data.total,
             )
             db.add(db_item)
-            total_amount += li_data.total
-            
+        # New lines are quoted with today's sales tax on the part and other lines.
+        subtotal, _taxable, tax_amount = quotation_tax(quotation_in.line_items)
+        total_amount = subtotal + tax_amount
+        db_quotation.tax_rate = SERVICE_TAX_RATE
+        db_quotation.tax_amount = tax_amount
+
         if total_amount != old_amount:
             # Initialize revision_history if null
             rev_history = list(db_quotation.revision_history) if db_quotation.revision_history else []

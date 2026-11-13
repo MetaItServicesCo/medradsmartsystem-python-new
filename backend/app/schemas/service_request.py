@@ -134,7 +134,11 @@ class ServiceRequestQuotationResponse(ServiceRequestQuotationBase):
     service_request_id: int
     created_by_id: int
     quotation_number: str
+    # amount is what the quotation charges paid on its own: subtotal + tax_amount.
     amount: Decimal
+    subtotal: Optional[Decimal] = None
+    tax_rate: Decimal = Decimal("0")
+    tax_amount: Decimal = Decimal("0")
     status: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -287,6 +291,8 @@ class ServiceRequestResponse(BaseModel):
     tier_labor_rate_per_hour: Optional[Decimal] = None
     tier_mileage_rate: Optional[Decimal] = None
     tier_service_call_fee: Optional[Decimal] = None
+    # The sales tax rate on service quotations and on invoices that include one.
+    service_tax_rate: Optional[Decimal] = None
     calculated_service_cost: Optional[Decimal] = None
     service_cost_breakdown: Optional[str] = None
     requester_name: Optional[str] = None

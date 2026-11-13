@@ -241,7 +241,8 @@ export interface ServiceInvoice {
 export interface ServiceInvoiceCreatePayload {
   include_quotations: boolean
   quotation_ids?: number[]
-  tax_amount?: number
+  /** Left out or null, the server works out the sales tax; a number replaces it. */
+  tax_amount?: number | null
   discount_amount?: number
   due_date?: string | null
   payment_method?: string | null
@@ -280,7 +281,13 @@ export interface ServiceRequestQuotation {
   service_request_id: number
   created_by_id: number
   quotation_number: string
+  /** What it charges paid on its own: subtotal + tax_amount. */
   amount: number
+  /** The lines' total, before tax. */
+  subtotal?: number
+  tax_rate?: number
+  /** Sales tax on the part and other lines; 0 on quotations from before service tax. */
+  tax_amount?: number
   description: string
   status: string
   created_at: string
@@ -334,6 +341,8 @@ export interface ServiceRequest {
   tier_labor_rate_per_hour: number | null
   tier_mileage_rate: number | null
   tier_service_call_fee: number | null
+  /** The sales tax rate on service quotations and on invoices that include one. */
+  service_tax_rate?: number | null
   calculated_service_cost: number | null
   /** How the recorded cost was worked out ("4.00 hrs × $175.00/hr"), when it adds up. */
   service_cost_breakdown?: string | null

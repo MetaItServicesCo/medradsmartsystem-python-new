@@ -151,7 +151,13 @@ class ServiceRequestQuotation(Base):
     service_request_id = Column(Integer, ForeignKey("service_requests.id"), nullable=False)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     quotation_number = Column(String, nullable=False, index=True)
+    # What the customer pays when it is paid on its own: the lines plus tax_amount.
     amount = Column(Numeric(10, 2), nullable=False, default=0)
+    # Sales tax on the part and other lines (labor is not taxed); 0 on quotations
+    # from before service tax. Dropped when the quotation goes onto a service
+    # invoice, which is taxed as a whole.
+    tax_rate = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    tax_amount = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     description = Column(Text, nullable=False)
     status = Column(String, default=QuotationStatus.DRAFT.value)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -181,6 +187,11 @@ class ServiceRequestQuotation(Base):
         cascade="all, delete-orphan",
         order_by="QuotationLedgerEntry.created_at.desc()",
     )
+
+    @property
+    def subtotal(self):
+        """The lines' total, before tax."""
+        return (self.amount or 0) - (self.tax_amount or 0)
 
 
 # ── Service Request models ───────────────────────────────────────────────────

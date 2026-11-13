@@ -39,6 +39,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isFacilityServiceBillingUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 import SearchableSelect from '@/components/SearchableSelect'
+import { DEFAULT_SERVICE_TAX_RATE, quotationTax } from '@/utils/serviceTax'
 
 interface Props {
   serviceRequestId: number
@@ -47,6 +48,8 @@ interface Props {
   isCancelled: boolean
   canEdit: boolean
   queryKey: any[]
+  /** The sales tax rate on a quotation's part and other lines. */
+  taxRate?: number | null
 }
 
 const EMPTY_LINE_ITEM: LineItemCreate = {
@@ -82,7 +85,8 @@ const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
   partially_paid: { bg: '#FFEDD5', color: '#C2410C' },
 }
 
-const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled, canEdit, queryKey }: Props) => {
+const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled, canEdit, queryKey, taxRate }: Props) => {
+  const serviceTaxRate = Number(taxRate ?? DEFAULT_SERVICE_TAX_RATE)
   const queryClient = useQueryClient()
   const user = useAuthStore(state => state.user)
   // Staff record a card payment taken on a terminal; a customer's is verified first.
@@ -492,6 +496,11 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '1.15rem' }}>
               ${Number(q.amount).toFixed(2)}
             </Typography>
+            {Number(q.tax_amount || 0) > 0 && (
+              <Typography data-quotation-tax sx={{ color: '#64748B', fontSize: '0.75rem', fontWeight: 700 }}>
+                Includes ${Number(q.tax_amount).toFixed(2)} tax ({Number(q.tax_rate || 0)}% on parts and other items)
+              </Typography>
+            )}
 
             {/* Payments summary */}
             {q.payments?.length > 0 && (
@@ -543,6 +552,16 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                           <TableCell align="right" sx={{ fontSize: '0.8rem' }}>{Number(li.quantity)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem' }}>${Number(li.unit_price).toFixed(2)}</TableCell>
                           <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 700 }}>${Number(li.total).toFixed(2)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {Number(q.tax_amount || 0) > 0 && ([
+                        ['Subtotal', Number(q.subtotal ?? Number(q.amount) - Number(q.tax_amount || 0))],
+                        [`Tax (${Number(q.tax_rate || 0)}%, labor not taxed)`, Number(q.tax_amount)],
+                        ['Total', Number(q.amount)],
+                      ] as [string, number][]).map(([label, value]) => (
+                        <TableRow key={label}>
+                          <TableCell colSpan={4} align="right" sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B' }}>{label}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem', fontWeight: 800 }}>${value.toFixed(2)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -730,9 +749,18 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             Add Line Item
           </Button>
           <Divider sx={{ my: 2 }} />
-          <Typography sx={{ fontWeight: 800, textAlign: 'right', fontSize: '1.1rem' }}>
-            Total: ${lineItems.reduce((s, li) => s + li.total, 0).toFixed(2)}
-          </Typography>
+          {(() => {
+            const draft = quotationTax(lineItems, serviceTaxRate)
+            return (
+              <Box data-quotation-draft-totals sx={{ display: 'grid', gap: 0.25, justifyContent: 'end', textAlign: 'right' }}>
+                <Typography sx={{ color: '#64748B', fontWeight: 700 }}>Subtotal: ${draft.subtotal.toFixed(2)}</Typography>
+                <Typography sx={{ color: '#64748B', fontWeight: 700 }}>
+                  Tax ({serviceTaxRate}% on parts and other items, labor not taxed): ${draft.tax.toFixed(2)}
+                </Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: '1.1rem' }}>Total: ${draft.total.toFixed(2)}</Typography>
+              </Box>
+            )
+          })()}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={resetForm} variant="outlined" sx={{ borderRadius: '10px' }}>Cancel</Button>
