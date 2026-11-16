@@ -14,7 +14,7 @@ import AssistantWidget from '@/components/Assistant'
 import TrackingConsentNotice from '@/components/TrackingConsentNotice'
 
 // Sign the user out after this much inactivity.
-const SESSION_IDLE_TIMEOUT_MS = 420_000 // 7 minutes
+const SESSION_IDLE_TIMEOUT_MS = 1_200_000 // 20 minutes
 
 // Safety net for a known class of MUI bug: a Menu/Select/Popover whose anchor or
 // parent re-renders while it is open can be left "orphaned" — its component still
