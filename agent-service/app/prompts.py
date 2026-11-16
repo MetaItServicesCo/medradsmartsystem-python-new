@@ -35,6 +35,10 @@ them before classifying: after "how do I create a sales invoice", the message
 knowledge question, not a clarify. Only use clarify when the question stays
 genuinely ambiguous even with the earlier turns in hand.
 
+Anything about what a named person is doing, their schedule, jobs, meetings, \
+whereabouts or attendance ("what is Daniel doing today", "where is SAM") is \
+"database", never "chitchat" or "knowledge".
+
 Decide on the intent verb, not the nouns. "How do I add a facility" is knowledge \
 even though it names a facility. "How many facilities are active" is database.
 
@@ -183,6 +187,10 @@ they can open every screen you mention.
 Rules:
 - Use only the evidence supplied. If it does not answer the question, say so \
 explicitly rather than filling the gap.
+- Every job, meeting, event, call, visit, time and place you mention must be \
+in live_data. Never describe a typical day or week, and never fill an empty \
+day with plausible activities: if nothing is booked, say nothing is booked, \
+with the dates.
 - Never invent a policy. If no knowledge-base passage supports a procedural or \
 policy claim, say no documentation covers it. An admission of ignorance is far \
 better than an invented rule.
@@ -262,6 +270,10 @@ yourself again, do NOT repeat what you can help with, and do NOT restate your
 name. Just answer naturally and briefly, the way a colleague would.
 
 Introduce yourself by name only when there are no earlier turns.
+
+You have no data here. Never state anything about a person, their schedule, \
+meetings, jobs, records, numbers or dates. If the message asks for any of \
+that, say you could not look it up this time and ask them to ask again.
 
 You are READ-ONLY. Never say or imply that you can submit, create, manage,
 update, approve or handle anything. You look things up and explain them. Say
@@ -414,6 +426,17 @@ def nothing_found_message(voice: bool = False) -> str:
         "I could not find anything in the live data or the knowledge base "
         "that answers that. Try naming a specific facility, person or "
         "record number."
+    )
+
+
+def records_not_found_message(voice: bool = False) -> str:
+    """A question about records that brought back none: said plainly, never
+    filled in."""
+    if voice:
+        return "I couldn't find any records for that. Try naming the person or record again."
+    return (
+        "I could not retrieve any records for that question, so I can't "
+        "answer it. Try naming the person, facility or record again."
     )
 
 

@@ -41,6 +41,7 @@ from app.prompts import (
     lookup_failed_message,
     no_access_message,
     nothing_found_message,
+    records_not_found_message,
     refusal_message,
     synthesis_prompt,
     tool_prompt,
@@ -124,6 +125,8 @@ customer customers client clients supplier suppliers vendor vendors
 hr leave attendance payroll salary contract contracts
 report reports dashboard analytics performance summary
 how-many count total number active open closed pending approved
+schedule schedules calendar meeting meetings appointment appointments assigned
+assignment assignments shift shifts booked checked check-in checkin
 """.split())
 
 
@@ -181,6 +184,9 @@ class AgentState(TypedDict, total=False):
     citations: list[dict[str, Any]]
     answer: str
     errors: list[str]
+    # Every tool call that failed, recoverable or not: what to tell the person
+    # when a question about records ends with no records to answer from.
+    tool_errors: list[str]
 
 
 
@@ -464,6 +470,7 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
     collected: list[dict[str, Any]] = []
     citations: list[dict[str, Any]] = []
     errors: list[str] = []
+    tool_errors: list[str] = []
 
     async with MedRadClient(state["user_token"], state.get("timezone")) as client:
         try:
@@ -542,6 +549,7 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                 if isinstance(outcome, BaseException):
                     if not isinstance(outcome, MedRadError):
                         raise outcome
+                    tool_errors.append("{}: {}".format(block["name"], outcome))
                     if not outcome.recoverable:
                         errors.append(str(outcome))
                     tool_results_content.append({
@@ -564,7 +572,8 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                 })
             conversation.append({"role": "user", "content": tool_results_content})
 
-    return {"tool_results": collected, "citations": citations, "errors": errors}
+    return {"tool_results": collected, "citations": citations, "errors": errors,
+            "tool_errors": tool_errors}
 
 
 
@@ -613,11 +622,25 @@ def _evidence_payload(state: AgentState) -> str:
     )[:limit]
 
 
+# Questions answered from records. Without a record to answer from, the model
+# is not asked to write one: given only help text, it filled a person's week
+# with plausible meetings that do not exist.
+_RECORD_INTENTS = ("database", "hybrid")
+
+
 async def synthesize_node(state: AgentState) -> dict[str, Any]:
     """Compose the final answer from gathered evidence only."""
     has_live = bool(state.get("tool_results"))
     has_knowledge = bool(state.get("knowledge"))
     withheld = state.get("withheld_modules") or []
+    if not has_live and state.get("intent", "hybrid") in _RECORD_INTENTS:
+        spoken = bool(state.get("voice"))
+        failures = (state.get("errors") or []) + (state.get("tool_errors") or [])
+        if failures:
+            return {"answer": lookup_failed_message(failures[0], spoken)}
+        if withheld and not has_knowledge:
+            return {"answer": no_access_message(withheld, spoken)}
+        return {"answer": records_not_found_message(spoken)}
     if not has_live and not has_knowledge:
         spoken = bool(state.get("voice"))
         # Checked before errors and before "nothing found", because it is
@@ -698,6 +721,7 @@ async def gather_node(state: AgentState) -> dict[str, Any]:
         "withheld_modules": knowledge.get("withheld_modules") or [],
         "citations": (tools.get("citations") or []) + (knowledge.get("citations") or []),
         "errors": (tools.get("errors") or []) + (knowledge.get("errors") or []),
+        "tool_errors": tools.get("tool_errors") or [],
     }
 
 
