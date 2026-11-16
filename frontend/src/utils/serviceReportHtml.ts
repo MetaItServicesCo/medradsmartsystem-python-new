@@ -173,7 +173,8 @@ const serviceFacilityHtml = (facility: Facility | null | undefined, sr: any) => 
   return `<div class="facbox"><div class="fac">${esc(fac.name)}</div><div>${details}</div></div>`
 }
 
-/** A report of work still in progress: titled and marked so it cannot pass for the final one. */
+/** A report of work still in progress: titled and marked so it cannot pass for the final one,
+ * and only the work: no cost and no billing page, which belong to the final report. */
 export type ServiceReportOptions = { progress?: boolean; generatedAt?: Date }
 
 const progressBannerHtml = (generatedAt: Date) => `
@@ -219,12 +220,12 @@ const serviceOverviewPageHtml = (sr: any, facility: Facility | null | undefined,
     ], 'No service timeline was recorded.')}
     <h2 class="sec">Work Summary</h2>
     <table class="doc">
-      <thead><tr><th>Work Sessions</th><th class="right">Total Hours</th><th class="right">Total Mileage</th><th class="right">Recorded Service Cost</th></tr></thead>
+      <thead><tr><th>Work Sessions</th><th class="right">Total Hours</th><th class="right">Total Mileage</th>${progress ? '' : '<th class="right">Recorded Service Cost</th>'}</tr></thead>
       <tbody><tr>
         <td>${esc(sessions.length)}</td>
         <td class="right">${esc(numberValue(sr.time_spent_hours).toFixed(2))} hrs</td>
         <td class="right">${esc(totalMileage(sessions).toFixed(2))} mi</td>
-        <td class="right amount">${esc(money(sr.total_cost))}${costBreakdown(sr)}</td>
+        ${progress ? '' : `<td class="right amount">${esc(money(sr.total_cost))}${costBreakdown(sr)}</td>`}
       </tr></tbody>
     </table>
   `, { break: true })
@@ -292,7 +293,7 @@ const chargesHtml = (invoice: any) => {
     </table>`
 }
 
-const serviceBillingPageHtml = (sr: any, options: ServiceReportOptions = {}) => {
+const serviceBillingPageHtml = (sr: any) => {
   const invoice = sr.invoice
   const amount = invoice ? numberValue(invoice.total_amount) : numberValue(sr.total_cost)
   const paid = invoice?.amount_paid !== undefined
@@ -311,7 +312,7 @@ const serviceBillingPageHtml = (sr: any, options: ServiceReportOptions = {}) => 
     ['Payment Method', displayStatus(invoice.payment_method, '')],
   ] : [
     ['Billing Status', displayStatus(sr.billing_status, 'Not invoiced')],
-    [options.progress ? 'Recorded Service Cost (so far)' : 'Recorded Service Cost', money(sr.total_cost)],
+    ['Recorded Service Cost', money(sr.total_cost)],
   ]
   return page(`
     <h2 class="sec" style="text-align:center;font-size:22px;color:#1E3A8A">Billing Page</h2>
@@ -326,9 +327,7 @@ const serviceBillingPageHtml = (sr: any, options: ServiceReportOptions = {}) => 
     ${chargesHtml(invoice)}
     <h2 class="sec">${invoice ? 'Invoice Summary' : 'Billing Summary'}</h2>
     ${detailRowsHtml(summaryRows)}
-    ${invoice ? '' : options.progress
-      ? '<p class="muted" style="margin-top:10px">The service is still in progress: it is invoiced once completed.</p>'
-      : '<p class="muted" style="margin-top:10px">No service invoice has been generated for this request.</p>'}
+    ${invoice ? '' : '<p class="muted" style="margin-top:10px">No service invoice has been generated for this request.</p>'}
   `)
 }
 
@@ -338,7 +337,8 @@ export const buildServiceReportBody = (sr: any, facility: Facility | null | unde
     serviceOverviewPageHtml(sr, facility, sessions, options),
     ...sessions.map((session, index) => serviceSessionPageHtml(session, index)),
     ...serviceAdditions(sr).map((addition, index) => serviceAdditionPageHtml(addition, index)),
-    serviceBillingPageHtml(sr, options),
+    // The billing page is the final report's: a report of work in progress has none.
+    ...(options.progress ? [] : [serviceBillingPageHtml(sr)]),
   ].join('')
 }
 

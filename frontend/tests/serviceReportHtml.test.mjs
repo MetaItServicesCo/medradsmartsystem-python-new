@@ -107,11 +107,15 @@ ok('breakdowns and labels are escaped', !hostile.includes('<img src=x') && !host
   ok('  with the work-in-progress banner and when it was made', progress.includes('data-progress-banner') && progress.includes('not a final report') && progress.includes('Nov 14, 2026'))
   ok('  its status as it is, and Completed: Not yet completed', progress.includes('in progress') && progress.includes('Not yet completed'))
   ok('  the work so far is all there', ['Pre-amp error', 'Replaced supply', 'Noise', 'Tightened'].every(text => progress.includes(text)))
-  ok('  the cost is the cost so far, not invoiced yet', progress.includes('Recorded Service Cost (so far)') && progress.includes('invoiced once completed'))
+  ok('  no money in it: no cost column and no billing page',
+    !progress.includes('Recorded Service Cost') && !progress.includes('Billing Page') && !progress.includes('Billing Summary')
+    && !progress.includes('$0.00') && !progress.includes('Invoice'))
+  ok('  hours and mileage are still there', progress.includes('Total Hours') && progress.includes('8.00 hrs') && progress.includes('Total Mileage'))
   ok('  the document is named as a progress report', progress.includes('<title>2026-002064 Service Progress Report</title>'))
   ok('the final report is unchanged: no banner, no progress wording',
     final.includes('Service Engineering Report') && !final.includes('data-progress-banner') && !final.includes('Progress Report')
-    && !final.includes('Not yet completed') && !final.includes('(so far)') && final.includes('<title>2026-002064 Service Report</title>'))
+    && !final.includes('Not yet completed') && final.includes('<title>2026-002064 Service Report</title>'))
+  ok('  and it keeps its cost column and billing page', final.includes('Recorded Service Cost') && final.includes('Billing Page'))
 }
 
 console.log()
