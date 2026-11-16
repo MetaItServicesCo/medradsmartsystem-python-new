@@ -225,7 +225,7 @@ const serviceOverviewPageHtml = (sr: any, facility: Facility | null | undefined,
         <td>${esc(sessions.length)}</td>
         <td class="right">${esc(numberValue(sr.time_spent_hours).toFixed(2))} hrs</td>
         <td class="right">${esc(totalMileage(sessions).toFixed(2))} mi</td>
-        ${progress ? '' : `<td class="right amount">${esc(money(sr.total_cost))}${costBreakdown(sr)}</td>`}
+        ${progress ? '' : `<td class="right amount">${esc(money(reportedLabour(sr).amount))}${costBreakdown(reportedLabour(sr).breakdown)}</td>`}
       </tr></tbody>
     </table>
   `, { break: true })
@@ -273,9 +273,37 @@ const serviceAdditionPageHtml = (addition: any, index: number) => page(`
   ${sessionPartsHtml(addition)}
 `, { break: true })
 
+// The request's invoice, when it has one that stands: from the Reports list
+// (invoice) or the request itself (service_invoice).
+const standingInvoice = (sr: any): any | null => {
+  const invoice = sr?.invoice || sr?.service_invoice || null
+  return invoice && String(invoice.status || '').toLowerCase() !== 'cancelled' ? invoice : null
+}
+
+// The labour cost a report shows. Once invoiced it is the invoice's labour line
+// -- what the customer is billed -- not the cost stored when hours were saved,
+// which a later change of tier left behind ($300 beside a $325 labour line).
+const reportedLabour = (sr: any): { amount: unknown; breakdown: string | null } => {
+  const invoice = standingInvoice(sr)
+  if (!invoice) return { amount: sr.total_cost, breakdown: sr.service_cost_breakdown || null }
+  const charge = (Array.isArray(invoice.charges) ? invoice.charges : []).find((row: any) => row?.label === 'Labor')
+  if (charge) return { amount: charge.amount, breakdown: charge.breakdown || null }
+  const line = (Array.isArray(invoice.line_items) ? invoice.line_items : [])
+    .find((row: any) => /^service labor/i.test(String(row?.description || '')))
+  if (!line) return { amount: 0, breakdown: null }
+  const hours = numberValue(line.quantity)
+  const rate = numberValue(line.unit_price)
+  const total = numberValue(line.total_amount)
+  const addsUp = hours > 0 && Math.round(hours * rate * 100) === Math.round(total * 100)
+  return {
+    amount: total,
+    breakdown: hours > 0 ? (addsUp ? `${hours.toFixed(2)} hrs × ${money(rate)}/hr` : `${hours.toFixed(2)} hrs, adjusted`) : null,
+  }
+}
+
 // How the recorded cost was worked out (4.00 hrs × $175.00/hr), when the server says it adds up.
-const costBreakdown = (sr: any) => (sr.service_cost_breakdown
-  ? `<div class="muted" style="font-size:11px;font-weight:600;white-space:nowrap">${esc(sr.service_cost_breakdown)}</div>`
+const costBreakdown = (breakdown: string | null | undefined) => (breakdown
+  ? `<div class="muted" style="font-size:11px;font-weight:600;white-space:nowrap">${esc(breakdown)}</div>`
   : '')
 
 // The invoice's charge lines, each with how it was worked out, as the invoice shows them.
@@ -473,7 +501,7 @@ export const buildServiceReportSheet = (sr: any): string => {
           <div class="report-summary">
             <span class="report-pill">Total Hours: ${esc(numberValue(sr.time_spent_hours).toFixed(2))}</span>
             <span class="report-pill">Total Mileage: ${esc(totalMileage(sessions).toFixed(2))} mi</span>
-            <span class="report-pill">Total Cost: ${esc(money(sr.total_cost))}${sr.service_cost_breakdown ? ` (${esc(sr.service_cost_breakdown)})` : ''}</span>
+            <span class="report-pill">Total Cost: ${esc(money(reportedLabour(sr).amount))}${reportedLabour(sr).breakdown ? ` (${esc(reportedLabour(sr).breakdown)})` : ''}</span>
             <span class="report-pill">Billing: ${esc((sr.billing_status || 'pending').replace(/_/g, ' '))}</span>
           </div>
         </div>

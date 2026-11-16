@@ -6,7 +6,7 @@ import {
   Box, Card, Typography, Button, Chip, Avatar, TextField,
   FormControl, InputLabel, Select, MenuItem, IconButton,
   Skeleton, Divider, CircularProgress, Dialog, DialogTitle,
-  DialogContent, DialogActions, Checkbox, FormControlLabel,
+  DialogContent, DialogActions, Checkbox, FormControlLabel, Alert,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import BuildIcon from '@mui/icons-material/Build'
@@ -47,6 +47,7 @@ import {
   fetchServiceInvoices,
   generateServiceInvoice,
   updateServiceRequest,
+  reopenServiceRequest,
   updateServiceInvoice,
   type ServiceRequest,
   type ServiceRequestUpdate,
@@ -62,6 +63,7 @@ import { actsAsTechnician, hasPermission } from '@/config/permissions'
 import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 import { DEFAULT_SERVICE_TAX_RATE, quotationBeforeTax, serviceInvoiceTaxable, serviceTaxOn } from '@/utils/serviceTax'
 import { fetchServiceProgressReport } from '@/api/reports'
+import ReplayIcon from '@mui/icons-material/Replay'
 import { downloadServiceProgressReport } from '@/utils/serviceReportPdf'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
@@ -200,6 +202,8 @@ const ServiceRequestDetail = () => {
   const [imageOpen, setImageOpen] = useState(false)
   const [requestImageUrl, setRequestImageUrl] = useState('')
   const [invoiceOpen, setInvoiceOpen] = useState(false)
+  const [reopenOpen, setReopenOpen] = useState(false)
+  const [reopenReason, setReopenReason] = useState('')
   const [downloadingProgressReport, setDownloadingProgressReport] = useState(false)
   const [includeQuotations, setIncludeQuotations] = useState(false)
   const [selectedQuotationIds, setSelectedQuotationIds] = useState<number[]>([])
@@ -278,7 +282,7 @@ const ServiceRequestDetail = () => {
   const canAddWithoutTime = Boolean(
     sr
     && !['new', 'cancelled'].includes(sr.status)
-    && (sr.status !== 'completed' || sr.is_invoiced === false)
+    && (sr.status !== 'completed' || sr.is_invoiced === false || Boolean(sr.invoice_needs_revision))
     && sr.assigned_technician_id
     && canAddServiceRequests
     && (isInternalServiceUser || user?.id === sr.assigned_technician_id),
@@ -476,6 +480,22 @@ const ServiceRequestDetail = () => {
     },
   })
 
+  const reopenMutation = useMutation({
+    mutationFn: () => reopenServiceRequest(Number(id), reopenReason.trim()),
+    onSuccess: (updated) => {
+      toast.success(`${updated.request_number} was reopened`)
+      setReopenOpen(false)
+      setReopenReason('')
+      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['service-invoices-for-sr', id] })
+      queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'The request could not be reopened')
+    },
+  })
+
   const invoiceMutation = useMutation({
     mutationFn: () => generateServiceInvoice(Number(id), {
       include_quotations: includeQuotations,
@@ -491,7 +511,11 @@ const ServiceRequestDetail = () => {
       work_entries: invoiceWorkEntries.map(({ key, diagnosis, work_done }) => ({ key, diagnosis, work_done })),
     }),
     onSuccess: (invoice) => {
-      toast.success(`Invoice ${invoice.invoice_number} was generated and is pending billing approval`)
+      // Read from the request as it stood: reopened and closed again means the invoice was updated.
+      const updated = Boolean(queryClient.getQueryData<ServiceRequest>(['service-request', id])?.invoice_needs_revision)
+      toast.success(updated
+        ? `Invoice ${invoice.invoice_number} was updated and is pending billing approval`
+        : `Invoice ${invoice.invoice_number} was generated and is pending billing approval`)
       setInvoiceOpen(false)
       // Immediately stamp the invoice into cached SR so the button switches without a round-trip
       queryClient.setQueryData(['service-request', id], (old: any) =>
@@ -882,6 +906,26 @@ const ServiceRequestDetail = () => {
   // Until it is completed, a request's report so far can be downloaded; completed, its
   // report is in Reports as before, and a cancelled request has none.
   const canDownloadProgressReport = !isTerminal && canViewServiceReports
+  // Reopening is for Admins and Super Admins, and never once money has reached the invoice.
+  const canReopen = sr.status === 'completed' && ['superadmin', 'admin'].includes(String(user?.role || ''))
+  const invoiceHasPayment = Boolean(resolvedInvoice && (
+    Number(resolvedInvoice.amount_paid || 0) > 0 || ['paid', 'partially_paid'].includes(String(resolvedInvoice.status))
+  ))
+  const reopenBlockedReason = invoiceHasPayment
+    ? `Its invoice ${resolvedInvoice?.invoice_number} has been paid or partly paid, so it cannot be reopened.`
+    : resolvedInvoice?.payment_pending_review
+      ? `A payment for invoice ${resolvedInvoice.invoice_number} is waiting for review.`
+      : null
+  // Labour as billed: once invoiced, the invoice's labour line -- the stored
+  // cost can predate a change of tier and disagree with what was billed.
+  const invoiceLabourLine = resolvedInvoice && !sr.invoice_needs_revision
+    ? (resolvedInvoice.line_items || []).find(line => /^service labor/i.test(String(line.description || '')))
+    : undefined
+  const displayedLabourCost = resolvedInvoice && !sr.invoice_needs_revision
+    ? Number(invoiceLabourLine?.total_amount || 0)
+    : Number(sr.total_cost || 0)
+  // Reopened and closed again: generating updates the same invoice.
+  const revisingInvoice = Boolean(sr.invoice_needs_revision && resolvedInvoice)
   const downloadProgressReport = async () => {
     if (downloadingProgressReport) return
     setDownloadingProgressReport(true)
@@ -899,7 +943,7 @@ const ServiceRequestDetail = () => {
   // Once completed, adding without time is the only kind of entry left.
   const addingWithoutTime = !canLogWork || workEntryMode === 'addition'
   // An administrator corrects total hours, with a reason, until invoiced.
-  const canCorrectHours = canManageServiceBilling && sr.is_invoiced === false && !['new', 'cancelled'].includes(sr.status)
+  const canCorrectHours = canManageServiceBilling && (sr.is_invoiced === false || Boolean(sr.invoice_needs_revision)) && !['new', 'cancelled'].includes(sr.status)
   // Total hours show in the work card and in the summary; the correction is
   // offered in the work card when it is shown, so only one editor ever opens.
   const hoursCorrectedInWorkCard = canLogWork || canAddWithoutTime
@@ -992,6 +1036,13 @@ const ServiceRequestDetail = () => {
       .catch(() => toast.warning('The work details could not be loaded; the invoice will use them as recorded'))
     setInvoiceTravelMode('fixed')
     setInvoiceTravelCharges('0')
+    if (revisingInvoice && resolvedInvoice) {
+      // An update starts from what the invoice carried; labour and the Service
+      // Fee come from the request's hours and its current tier, as for any invoice.
+      setInvoiceDiscountAmount(String(Number(resolvedInvoice.discount_amount || 0)))
+      setInvoiceTravelCharges(String(Number(resolvedInvoice.travel_charges || 0)))
+      if (resolvedInvoice.notes) setInvoiceNotes(resolvedInvoice.notes)
+    }
     setInvoiceOpen(true)
   }
 
@@ -1009,6 +1060,20 @@ const ServiceRequestDetail = () => {
         >
           Back to Service Requests
         </Button>
+        {canReopen && (
+          <Box component="span" title={reopenBlockedReason || ''}>
+            <Button
+              variant="outlined"
+              data-reopen-request
+              startIcon={<ReplayIcon />}
+              disabled={Boolean(reopenBlockedReason)}
+              onClick={() => setReopenOpen(true)}
+              sx={{ borderRadius: '12px', fontWeight: 800, textTransform: 'none', borderColor: '#FCD34D', color: '#92400E', '&:hover': { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' } }}
+            >
+              Reopen Request
+            </Button>
+          </Box>
+        )}
         {canDownloadProgressReport && (
           <Button
             variant="outlined"
@@ -1022,6 +1087,14 @@ const ServiceRequestDetail = () => {
           </Button>
         )}
       </Box>
+
+      {sr.invoice_needs_revision && resolvedInvoice && (
+        <Alert severity="warning" data-revision-notice sx={{ mb: 2, borderRadius: '14px', fontWeight: 600 }}>
+          {sr.status === 'completed'
+            ? `Reopened and closed again: update invoice ${resolvedInvoice.invoice_number} to put the current work and rates on it. It keeps its number, and cannot be paid until it is updated and approved.`
+            : `Reopened: invoice ${resolvedInvoice.invoice_number} will be updated when this request is closed again. It cannot be paid until then.`}
+        </Alert>
+      )}
 
       {/* Header Card */}
       <Card
@@ -1973,13 +2046,13 @@ const ServiceRequestDetail = () => {
                     )}
                   </Box>
                 )}
-                {sr.total_cost && (
-                  <Box>
+                {(resolvedInvoice && !sr.invoice_needs_revision ? Boolean(invoiceLabourLine) : Boolean(sr.total_cost)) && (
+                  <Box data-total-cost>
                     <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
                       Total Cost
                     </Typography>
                     <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
-                      ${Number(sr.total_cost).toFixed(2)}
+                      ${Number(displayedLabourCost).toFixed(2)}
                     </Typography>
                   </Box>
                 )}
@@ -2020,7 +2093,16 @@ const ServiceRequestDetail = () => {
               </Box>
 
               {/* Primary invoice action */}
-              {resolvedInvoice && !sr.invoice_deleted ? (
+              {revisingInvoice && resolvedInvoice ? (
+                <Button
+                  fullWidth variant="contained" startIcon={<ReceiptLongIcon />} onClick={openInvoiceDialog}
+                  data-update-invoice
+                  disabled={invoiceMutation.isPending}
+                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, background: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)' }}
+                >
+                  Update Invoice ({resolvedInvoice.invoice_number})
+                </Button>
+              ) : resolvedInvoice && !sr.invoice_deleted ? (
                 <Button
                   fullWidth variant="contained" startIcon={<EditIcon />} onClick={openEditInvoice}
                   sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(124,58,237,0.65)', background: 'linear-gradient(135deg, #7C3AED 0%, #9A55B0 100%)', '&:hover': { background: 'linear-gradient(135deg, #6D28D9 0%, #8A46C2 100%)', boxShadow: '0 14px 30px -14px rgba(124,58,237,0.75)' } }}
@@ -2030,7 +2112,7 @@ const ServiceRequestDetail = () => {
               ) : (
                 <Button
                   fullWidth variant="contained" startIcon={<ReceiptLongIcon />} onClick={openInvoiceDialog}
-                  disabled={invoiceMutation.isPending || sr.invoice_deleted}
+                  disabled={invoiceMutation.isPending}
                   sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(124,58,237,0.65)', background: 'linear-gradient(135deg, #7C3AED 0%, #9A55B0 100%)', '&:hover': { background: 'linear-gradient(135deg, #6D28D9 0%, #8A46C2 100%)' } }}
                 >
                   Generate Invoice
@@ -2267,12 +2349,25 @@ const ServiceRequestDetail = () => {
         PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}
       >
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-          Generate Service Invoice
+          {revisingInvoice ? `Update Invoice ${resolvedInvoice?.invoice_number}` : 'Generate Service Invoice'}
           <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13, mt: 0.5 }}>
             Choose whether service quotations should be included in this invoice or billed separately.
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
+          {revisingInvoice && (
+            <Box sx={{ display: 'grid', gap: 1, mb: 2 }}>
+              <Alert severity="info" sx={{ borderRadius: '12px' }}>
+                Invoice {resolvedInvoice?.invoice_number} keeps its number. Its figures are worked out again from this
+                request now, at the equipment's current tier rates. Quotations already on it stay on it.
+              </Alert>
+              {resolvedInvoice?.edited_in_billing && (
+                <Alert severity="warning" sx={{ borderRadius: '12px' }}>
+                  Billing hand-edited this invoice's lines. Updating it replaces those edits with the figures below.
+                </Alert>
+              )}
+            </Box>
+          )}
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.2fr 0.8fr' }, gap: 2.5 }}>
             <Box sx={{ display: 'grid', gap: 1.5 }}>
               {timeSpentHours > 0 && (
@@ -2518,7 +2613,42 @@ const ServiceRequestDetail = () => {
             startIcon={invoiceMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ReceiptLongIcon />}
             sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
           >
-            Generate Invoice
+            {revisingInvoice ? 'Update Invoice' : 'Generate Invoice'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reopen a completed request: Admins and Super Admins, with the reason */}
+      <Dialog open={reopenOpen} onClose={() => !reopenMutation.isPending && setReopenOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Reopen {sr.request_number}</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: '#475569', fontSize: 14, mb: 1.5, lineHeight: 1.6 }}>
+            The request goes back to In Progress so its work can be changed, then closed again.
+            {resolvedInvoice
+              ? ` Invoice ${resolvedInvoice.invoice_number} keeps its number. It is taken out of billing approval and cannot be paid until the request is closed again and the invoice is updated.`
+              : ''}
+            {' '}The facility is not notified.
+          </Typography>
+          <TextField
+            autoFocus fullWidth multiline minRows={2}
+            label="Reason for reopening"
+            value={reopenReason}
+            onChange={(e) => setReopenReason(e.target.value)}
+            inputProps={{ maxLength: 500, 'data-reopen-reason': '' }}
+            helperText="Recorded in the request's history"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setReopenOpen(false)} disabled={reopenMutation.isPending}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => reopenMutation.mutate()}
+            disabled={reopenMutation.isPending || reopenReason.trim().length < 3}
+            startIcon={reopenMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ReplayIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)' }}
+          >
+            Reopen Request
           </Button>
         </DialogActions>
       </Dialog>

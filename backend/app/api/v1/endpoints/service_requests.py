@@ -59,7 +59,7 @@ from app.utils.service_tax import (
     tax_on,
 )
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
     approval_response,
     approve_invoice_for_billing,
@@ -876,6 +876,10 @@ def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
         "due_date": invoice.due_date,
         "payment_method": invoice.payment_method,
         "notes": _strip_fee_prefix(invoice.notes),
+        # What a revision starts from: travel charged, and whether Billing
+        # hand-edited the lines (a revision replaces those edits).
+        "travel_charges": _parse_fee_notes(invoice.notes)[1] or Decimal("0"),
+        "edited_in_billing": bool(editable_line_items(invoice.notes)),
         "created_at": invoice.created_at,
         "updated_at": invoice.updated_at,
         "transactions": [transaction_response(item) for item in invoice.transactions or []],
@@ -930,6 +934,103 @@ def _service_request_is_invoiced(db: Session, request_id: int) -> bool:
         Invoice.invoice_type == InvoiceType.SERVICE,
         Invoice.status != InvoiceStatus.CANCELLED,
     ).first() is not None
+
+
+def _work_order_locked(db: Session, sr: ServiceRequest) -> bool:
+    """Invoiced work is closed to additions and hours corrections -- except a
+    request an administrator reopened, which stays open until it is closed
+    again and its invoice updated."""
+    return _service_request_is_invoiced(db, sr.id) and not sr.invoice_needs_revision
+
+
+# Reopening a completed request is an administrator's decision.
+REOPEN_ROLES = {UserRole.SUPERADMIN, UserRole.ADMIN}
+
+
+def _require_reopen_admin(user: User) -> None:
+    if user.role not in REOPEN_ROLES:
+        raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can do this")
+
+
+def _active_service_invoice(db: Session, request_id: int, *, for_update: bool = False) -> Optional[Invoice]:
+    query = db.query(Invoice).filter(
+        Invoice.service_request_id == request_id,
+        Invoice.invoice_type == InvoiceType.SERVICE,
+        Invoice.status != InvoiceStatus.CANCELLED,
+    )
+    if for_update:
+        query = query.with_for_update()
+    return query.first()
+
+
+def _invoice_payment_block(db: Session, invoice: Invoice) -> Optional[str]:
+    """Why this invoice may not be reopened, revised or cancelled -- money has
+    reached it or is on its way -- or None."""
+    if _money(invoice.amount_paid) > 0 or invoice.status in {InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID}:
+        return "has been paid or partly paid"
+    try:
+        require_no_other_service_payment(db, invoice)
+    except HTTPException as exc:
+        return "has a payment in progress ({})".format(str(exc.detail).rstrip("."))
+    pending = db.query(PaymentProof.id).filter(
+        PaymentProof.invoice_id == invoice.id,
+        PaymentProof.status == "pending_verification",
+    ).first()
+    if pending is not None:
+        return "has a payment waiting for review"
+    return None
+
+
+def _cancel_service_invoice(db: Session, sr: ServiceRequest, user: User) -> Invoice:
+    """Really cancel the request's invoice, so it is owed by nobody and the
+    request can be invoiced again. Never once money has reached it."""
+    if not _is_internal_service_user(user) or not has_module_permission(user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required to cancel an invoice")
+    invoice = _active_service_invoice(db, sr.id, for_update=True)
+    if invoice is None:
+        raise HTTPException(status_code=409, detail="This service request has no invoice to cancel")
+    blocked = _invoice_payment_block(db, invoice)
+    if blocked:
+        raise HTTPException(
+            status_code=409,
+            detail="Invoice {} cannot be cancelled: it {}.".format(invoice.invoice_number, blocked),
+        )
+    previous_status = invoice.status
+    invoice.status = InvoiceStatus.CANCELLED
+    record_status_change(db, invoice, previous_status, user,
+                         "Cancelled from service request {}".format(sr.request_number))
+    # Quotations it carried go back to how they were, to be billed again.
+    released = []
+    for quotation in sr.quotations or []:
+        if quotation.status != "included_in_invoice":
+            continue
+        fulfilled = next(
+            (item for item in (quotation.authorizations or []) if item.status == "fulfilled_in_invoice"),
+            None,
+        )
+        if fulfilled is not None:
+            fulfilled.status = "authorized"
+            fulfilled.invalidated_at = None
+        quotation.status = "authorized" if fulfilled is not None else "draft"
+        quotation.updated_at = datetime.utcnow()
+        _append_quotation_ledger(
+            db, quotation, "released_from_cancelled_invoice", user,
+            amount=quotation.amount,
+            details={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
+        )
+        released.append(quotation.quotation_number)
+    sr.invoice_deleted = True
+    sr.invoice_needs_revision = False
+    sr.billing_status = "pending"
+    history = list(sr.history or [])
+    history.append(_history_entry("service_invoice_cancelled", user, {
+        "invoice_id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "invoice_total": str(invoice.total_amount),
+        "quotations_released": released,
+    }))
+    sr.history = history
+    return invoice
 
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
@@ -1536,6 +1637,11 @@ def update_service_request(
         )
     if update_data.get("assigned_technician_id"):
         require_assignable_technician(db, update_data["assigned_technician_id"], db_sr.facility_id)
+    if update_data.get("invoice_deleted") is True:
+        # Deleting the invoice cancels it -- the flag alone once left a live,
+        # payable invoice behind a request that said it had none.
+        update_data.pop("invoice_deleted")
+        _cancel_service_invoice(db, db_sr, current_user)
     changes = {}
 
     requested_billing_status = update_data.get("billing_status")
@@ -1716,8 +1822,18 @@ def generate_service_invoice(
         )
         .first()
     )
-    if existing_invoice:
+    # A request reopened and closed again updates its own invoice, which keeps
+    # its number; any other request with an invoice gets it back unchanged.
+    revising = existing_invoice is not None and bool(db_sr.invoice_needs_revision)
+    if existing_invoice and not revising:
         return _service_invoice_response(existing_invoice)
+    if revising:
+        blocked = _invoice_payment_block(db, existing_invoice)
+        if blocked:
+            raise HTTPException(
+                status_code=409,
+                detail="Invoice {} cannot be updated: it {}.".format(existing_invoice.invoice_number, blocked),
+            )
 
     selected_quotations: list[ServiceRequestQuotation] = []
     if payload.include_quotations:
@@ -1730,6 +1846,13 @@ def generate_service_invoice(
             quotation for quotation in eligible
             if payload.quotation_ids is None or quotation.id in selected_ids
         ]
+
+    newly_selected = list(selected_quotations)
+    if revising:
+        # Quotations already on the invoice stay on it.
+        selected_quotations = [
+            quotation for quotation in (db_sr.quotations or []) if quotation.status == "included_in_invoice"
+        ] + newly_selected
 
     service_amount = (
         _money(payload.labor_fee_override).quantize(Decimal("0.01"))
@@ -1756,6 +1879,16 @@ def generate_service_invoice(
     )
     discount_amount = _money(payload.discount_amount).quantize(Decimal("0.01"))
     total_amount = max((subtotal + tax_amount - discount_amount).quantize(Decimal("0.01")), Decimal("0"))
+
+    if revising:
+        return _revise_service_invoice(
+            db, db_sr, existing_invoice, current_user, payload=payload,
+            service_amount=service_amount, service_call_fee=service_call_fee,
+            travel_charges=travel_charges, quotation_amount=quotation_amount,
+            subtotal=subtotal, taxable_amount=taxable_amount, tax_amount=tax_amount,
+            tax_entered=tax_entered, discount_amount=discount_amount, total_amount=total_amount,
+            selected_quotations=selected_quotations, newly_selected=newly_selected,
+        )
 
     facility = db_sr.facility
     invoice = Invoice(
@@ -1835,6 +1968,191 @@ def generate_service_invoice(
     db.commit()
     db.refresh(invoice)
     return _service_invoice_response(invoice)
+
+
+def _revise_service_invoice(
+    db: Session,
+    db_sr: ServiceRequest,
+    invoice: Invoice,
+    user: User,
+    *,
+    payload: "ServiceInvoiceCreate",
+    service_amount: Decimal,
+    service_call_fee: Decimal,
+    travel_charges: Decimal,
+    quotation_amount: Decimal,
+    subtotal: Decimal,
+    taxable_amount: Decimal,
+    tax_amount: Decimal,
+    tax_entered: bool,
+    discount_amount: Decimal,
+    total_amount: Decimal,
+    selected_quotations: list,
+    newly_selected: list,
+) -> dict[str, Any]:
+    """Put the request's current work and rates on its existing invoice.
+
+    The invoice keeps its number, issue date and payment link; its figures
+    become what the request now says. Every change is in its ledger.
+    """
+    before_values = {field: getattr(invoice, field) for field in ("subtotal", "tax_amount", "discount_amount", "total_amount")}
+    before_line_items = editable_line_items(invoice.notes)
+    before_summary_rows = editable_summary_rows(invoice.notes)
+    note_text = payload.notes or _strip_fee_prefix(invoice.notes) or "Service invoice for {}.".format(db_sr.request_number)
+
+    invoice.subtotal = subtotal
+    invoice.tax_amount = tax_amount
+    invoice.discount_amount = discount_amount
+    invoice.total_amount = total_amount
+    invoice.balance_due = max((total_amount - _money(invoice.amount_paid)).quantize(Decimal("0.01")), Decimal("0"))
+    if payload.due_date:
+        invoice.due_date = payload.due_date
+    if payload.payment_method is not None:
+        invoice.payment_method = payload.payment_method
+    # Rebuilt from the request: Billing's hand-edited lines, if any, are replaced.
+    invoice.notes = "__FEES__:labor={},travel={},service_call={}::{}".format(
+        service_amount, travel_charges, service_call_fee, note_text)
+    invoice.service_work_entries = service_work_entries(
+        db_sr, {edit.key: edit.model_dump() for edit in payload.work_entries or []},
+    )
+
+    for quotation in newly_selected:
+        active_authorization = _latest_active_authorization(quotation)
+        if active_authorization:
+            active_authorization.status = "fulfilled_in_invoice"
+            active_authorization.invalidated_at = datetime.utcnow()
+        quotation.status = "included_in_invoice"
+        quotation.updated_at = datetime.utcnow()
+        _append_quotation_ledger(
+            db, quotation, "included_in_service_invoice", user,
+            amount=quotation_amount_before_tax(quotation),
+            details={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
+        )
+
+    # It must be approved again before it can be paid.
+    invalidate_invoice_approval(db, invoice, user, reason="Service invoice updated after the request was reopened")
+    record_invoice_edit(
+        db, invoice, before_values=before_values, before_line_items=before_line_items,
+        before_summary_rows=before_summary_rows, user=user,
+    )
+    db_sr.invoice_needs_revision = False
+    db_sr.invoice_deleted = False
+    db_sr.billing_status = "pending"
+    history = list(db_sr.history or [])
+    history.append(_history_entry("service_invoice_revised", user, {
+        "invoice_id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "previous_total": str(before_values["total_amount"]),
+        "service_amount": str(service_amount),
+        "service_call_fee": str(service_call_fee),
+        "included_quotation_ids": [quotation.id for quotation in selected_quotations],
+        "included_quotation_total": str(quotation_amount),
+        "travel_charges": str(travel_charges),
+        "tax_rate": str(SERVICE_TAX_RATE),
+        "taxable_amount": str(taxable_amount),
+        "tax_amount": str(tax_amount),
+        "tax_entered": tax_entered,
+        "total_amount": str(total_amount),
+    }))
+    db_sr.history = history
+    db.commit()
+    db.refresh(invoice)
+    return _service_invoice_response(invoice)
+
+
+class ServiceRequestReopen(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+@router.post("/{request_id}/reopen", response_model=ServiceRequestResponse)
+def reopen_service_request(
+    request_id: int,
+    payload: ServiceRequestReopen,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Reopen a completed request so it can be worked on and closed again.
+
+    Admins and Super Admins only, with a reason. Never once its invoice has
+    been paid or partly paid, or while a payment is on its way. The invoice
+    keeps its number; it is taken out of approval -- so it cannot be paid --
+    and is updated when the request is closed again. Internal: the facility is
+    not notified.
+    """
+    _require_reopen_admin(current_user)
+    db.query(ServiceRequest.id).filter(ServiceRequest.id == request_id).with_for_update().first()
+    db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
+    if not db_sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
+    if db_sr.status != ServiceRequestStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="Only a completed service request can be reopened")
+    reason = payload.reason.strip()
+    if len(reason) < 3:
+        raise HTTPException(status_code=400, detail="Give the reason for reopening")
+
+    invoice = _active_service_invoice(db, db_sr.id, for_update=True)
+    if invoice is not None:
+        blocked = _invoice_payment_block(db, invoice)
+        if blocked:
+            raise HTTPException(
+                status_code=409,
+                detail="{} cannot be reopened: its invoice {} {}.".format(
+                    db_sr.request_number, invoice.invoice_number, blocked),
+            )
+        invalidate_invoice_approval(db, invoice, current_user, reason="Service request reopened: {}".format(reason))
+        add_invoice_transaction(
+            db, invoice, "revision_started", invoice.total_amount,
+            description="{} reopened: {}. Invoice {} will be updated when the request is closed again.".format(
+                db_sr.request_number, reason, invoice.invoice_number),
+            user=current_user, reference_prefix="REV",
+        )
+
+    db_sr.status = ServiceRequestStatus.IN_PROGRESS
+    db_sr.completed_at = None
+    db_sr.billing_status = "pending"
+    db_sr.invoice_needs_revision = invoice is not None
+    if invoice is not None:
+        # A live invoice: whatever the old flag said, it was never deleted.
+        db_sr.invoice_deleted = False
+    history = list(db_sr.history or [])
+    history.append(_history_entry("request_reopened", current_user, {
+        "reason": reason,
+        "status": {"from": ServiceRequestStatus.COMPLETED.value, "to": ServiceRequestStatus.IN_PROGRESS.value},
+        "invoice_number": invoice.invoice_number if invoice is not None else None,
+        "invoice_total": str(invoice.total_amount) if invoice is not None else None,
+    }))
+    db_sr.history = history
+    db.commit()
+    if db_sr.assigned_technician_id and db_sr.assigned_technician_id != current_user.id:
+        create_notification(
+            db,
+            user_id=db_sr.assigned_technician_id,
+            title="Service request reopened",
+            message="{} was reopened: {}".format(db_sr.request_number, reason),
+            notification_type="service_request",
+            link_url="/service-requests/{}".format(db_sr.id),
+            actor_id=current_user.id,
+        )
+        db.commit()
+    return get_service_request(request_id, db, current_user)
+
+
+@router.post("/{request_id}/cancel-invoice", response_model=ServiceRequestResponse)
+def cancel_service_request_invoice(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Cancel the request's invoice so the request can be invoiced again."""
+    db.query(ServiceRequest.id).filter(ServiceRequest.id == request_id).with_for_update().first()
+    db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
+    if not db_sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
+    _cancel_service_invoice(db, db_sr, current_user)
+    db.commit()
+    return get_service_request(request_id, db, current_user)
 
 
 @router.post("/{request_id}/clock-in", response_model=ServiceRequestResponse)
@@ -2268,7 +2586,7 @@ def add_to_work_order(
         raise HTTPException(status_code=400, detail="A cancelled service request cannot be added to")
     if db_sr.status == ServiceRequestStatus.NEW or not db_sr.assigned_technician_id:
         raise HTTPException(status_code=400, detail="Assign a technician before adding to the work order")
-    if _service_request_is_invoiced(db, db_sr.id):
+    if _work_order_locked(db, db_sr):
         raise HTTPException(
             status_code=409,
             detail="This service request has been invoiced; nothing more can be added to its work order",
@@ -2371,7 +2689,7 @@ def correct_service_hours(
     _require_service_facility_access(db, current_user, db_sr.facility_id)
     if db_sr.status in {ServiceRequestStatus.NEW, ServiceRequestStatus.CANCELLED}:
         raise HTTPException(status_code=400, detail="Hours can be corrected once work has started, and not on a cancelled request")
-    if _service_request_is_invoiced(db, db_sr.id):
+    if _work_order_locked(db, db_sr):
         raise HTTPException(
             status_code=409,
             detail="This service request has been invoiced; its hours can no longer be corrected",

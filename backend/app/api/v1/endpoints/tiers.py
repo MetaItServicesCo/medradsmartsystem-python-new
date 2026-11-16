@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -83,6 +83,7 @@ def update_tier(
     tier_in: TierUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
+    response: Response = None,  # FastAPI supplies it; direct callers may leave it out
 ) -> Any:
     """Update a tier — admin only."""
     tier = crud.tier.get(db=db, id=id)
@@ -97,7 +98,26 @@ def update_tier(
         existing = db.query(Tier).filter(Tier.name == tier_in.name).first()
         if existing:
             raise HTTPException(status_code=400, detail="Tier name already exists")
+    from app.utils.logging import log_activity
+    from app.utils.service_repricing import (
+        REPRICED_HEADER, equipment_on_tier, reprice_open_service_requests, tier_rate_snapshot,
+    )
+
+    before = {"tier_code": tier.tier_code, "name": tier.name, **tier_rate_snapshot(tier)}
     updated = crud.tier.update(db=db, db_obj=tier, obj_in=tier_in)
+    after = {"tier_code": updated.tier_code, "name": updated.name, **tier_rate_snapshot(updated)}
+    changed = {key: {"from": before[key], "to": after[key]} for key in before if before[key] != after[key]}
+    if changed:
+        # Every edit of a tier's rates is on record, with what it was before.
+        log_activity(db, "tiers", updated.id, "UPDATE", current_user, changed)
+        repriced = 0
+        if "labor_rate_per_hour" in changed:
+            # Requests still being worked use the new rate at once.
+            repriced = reprice_open_service_requests(db, equipment_on_tier(db, updated.id))
+        db.commit()
+        db.refresh(updated)
+        if response is not None:
+            response.headers[REPRICED_HEADER] = str(repriced)
     return updated
 
 

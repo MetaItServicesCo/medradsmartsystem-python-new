@@ -60,9 +60,14 @@ export const createTier = async (data: TierCreate): Promise<Tier> => {
   return res.data
 }
 
-export const updateTier = async (id: number, data: TierUpdate): Promise<Tier> => {
+export const updateTier = async (
+  id: number,
+  data: TierUpdate,
+): Promise<Tier & { repriced_open_requests?: number }> => {
   const res = await apiClient.put(`/tiers/${id}`, data)
-  return res.data
+  // Set when its labor rate changed: open service requests on its assets now use it.
+  const repriced = res.headers?.['x-repriced-open-requests']
+  return repriced === undefined ? res.data : { ...res.data, repriced_open_requests: Number(repriced) }
 }
 
 export const duplicateTier = async (id: number): Promise<Tier> => {

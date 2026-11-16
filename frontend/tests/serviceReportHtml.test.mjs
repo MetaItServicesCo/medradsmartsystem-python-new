@@ -118,6 +118,35 @@ ok('breakdowns and labels are escaped', !hostile.includes('<img src=x') && !host
   ok('  and it keeps its cost column and billing page', final.includes('Recorded Service Cost') && final.includes('Billing Page'))
 }
 
+// Once invoiced, the labour a report shows is the invoice's labour line: a
+// stale $300 stored before a tier change can never sit beside a $325 line again.
+{
+  const invoice = { invoice_number: 'INV-SERVICE-000005', status: 'pending', total_amount: 475, subtotal: 475, tax_amount: 0,
+    discount_amount: 0, amount_paid: 0, balance_due: 475,
+    charges: [{ label: 'Service Fee', amount: '150.00' }, { label: 'Labor', amount: '325.00', breakdown: '2.50 hrs × $130.00/hr' }] }
+  const stale = { ...sr, status: 'completed', completed_at: '2026-11-16T19:02:00', time_spent_hours: 2.5, total_cost: 300,
+    service_cost_breakdown: null, invoice }
+  const report = buildServiceReportDocument(stale, null)
+  const summary = report.slice(report.indexOf('Work Summary'), report.indexOf('Billing Page'))
+  ok('invoiced: the Work Summary shows the invoice labour line, $325.00 (2.50 hrs × $130.00/hr)',
+    summary.includes('$325.00') && summary.includes('2.50 hrs × $130.00/hr') && !summary.includes('$300.00'))
+  ok('  and the billing page the invoice, $475.00', report.slice(report.indexOf('Billing Page')).includes('$475.00'))
+  const fromRequest = {
+    ...stale, invoice: undefined,
+    service_invoice: { invoice_number: 'INV-SERVICE-000005', status: 'pending', total_amount: 475,
+      line_items: [{ description: 'Service Fee', quantity: 1, unit_price: 150, total_amount: 150 },
+        { description: 'Service labor - EarthLite Elloha Vista', quantity: 2.5, unit_price: 130, total_amount: 325 }] },
+  }
+  ok('the sheet printed from Billing (the request\'s invoice lines): Total Cost $325.00 (2.50 hrs × $130.00/hr)',
+    buildServiceReportSheet(fromRequest).includes('Total Cost: $325.00 (2.50 hrs × $130.00/hr)'))
+  const adjusted = { ...fromRequest, service_invoice: { ...fromRequest.service_invoice,
+    line_items: [{ description: 'Service labor', quantity: 2.5, unit_price: 130, total_amount: 300 }] } }
+  ok('  labour typed in on the invoice reads as adjusted, never as a sum that does not add up',
+    buildServiceReportSheet(adjusted).includes('Total Cost: $300.00 (2.50 hrs, adjusted)'))
+  const cancelled = buildServiceReportDocument({ ...stale, invoice: { ...invoice, status: 'cancelled' } }, null)
+  ok('a cancelled invoice does not count: the recorded cost is shown', cancelled.slice(cancelled.indexOf('Work Summary')).includes('$300.00'))
+}
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)

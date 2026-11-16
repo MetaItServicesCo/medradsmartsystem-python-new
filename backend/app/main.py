@@ -43,7 +43,7 @@ app.add_middleware(
         "X-CSRF-Token",
         "X-Request-ID",
     ],
-    expose_headers=["X-Request-ID", "Retry-After"],
+    expose_headers=["X-Request-ID", "Retry-After", "X-Repriced-Open-Requests"],
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.TRUSTED_HOSTS)
 app.add_middleware(ApiSecurityMiddleware)

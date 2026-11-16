@@ -135,8 +135,12 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number, data: Partial<EquipmentCreate> }) => updateEquipment(id, data),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       toast.success('Facility inventory item updated')
+      // Moved to another tier: open service requests on it now use that tier's rates.
+      if (updated?.repriced_open_requests) {
+        toast.info(`${updated.repriced_open_requests} open service request(s) on this asset now use the new tier's rates.`)
+      }
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', facility?.id] })
       setShowForm(false)

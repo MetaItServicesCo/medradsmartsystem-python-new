@@ -1,7 +1,7 @@
 import csv
 import io
 from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -154,6 +154,7 @@ def update_equipment(
     equip_in: EquipmentUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    response: Response = None,  # FastAPI supplies it; direct callers may leave it out
 ) -> Any:
     """Update an equipment item."""
     item = crud.equipment.get(db=db, id=id)
@@ -173,7 +174,28 @@ def update_equipment(
         last_inspection_date = update_data.get("last_pm_date", item.last_pm_date)
         schedule = update_data.get("pm_scheduling", item.pm_scheduling)
         update_data["next_generated_pm_date"] = next_inspection_date(last_inspection_date, schedule)
-    return crud.equipment.update(db=db, db_obj=item, obj_in=update_data)
+    previous_tier_id = item.tier_id
+    updated = crud.equipment.update(db=db, db_obj=item, obj_in=update_data)
+    if "tier_id" in update_data and update_data["tier_id"] != previous_tier_id:
+        # Who moved this asset to which tier, at what rates -- and its open
+        # requests re-priced, so the move cannot reach an invoice silently.
+        from app.models.tier import Tier
+        from app.utils.logging import log_activity
+        from app.utils.service_repricing import REPRICED_HEADER, reprice_open_service_requests, tier_summary
+
+        log_activity(db, "equipment", updated.id, "UPDATE", current_user, {
+            "tier": {
+                "from": tier_summary(db.get(Tier, previous_tier_id) if previous_tier_id else None),
+                "to": tier_summary(db.get(Tier, updated.tier_id) if updated.tier_id else None),
+            },
+            "asset_tag": updated.asset_tag,
+        })
+        repriced = reprice_open_service_requests(db, [updated.id])
+        db.commit()
+        db.refresh(updated)
+        if response is not None:
+            response.headers[REPRICED_HEADER] = str(repriced)
+    return updated
 
 
 @router.delete("/{id}")

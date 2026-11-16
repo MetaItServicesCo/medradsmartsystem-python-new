@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Boolean, JSON, Index
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Boolean, JSON, Index, false
 
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -254,6 +254,9 @@ class ServiceRequest(Base):
     billing_status = Column(String, default=BillingStatus.PENDING.value)
     cc_auth_requested = Column(Boolean, default=False)
     invoice_deleted = Column(Boolean, default=False)
+    # Set only when an admin reopens a completed request that has an invoice:
+    # closing it again updates that same invoice instead of returning it as is.
+    invoice_needs_revision = Column(Boolean, nullable=False, default=False, server_default=false())
     history = Column(JSON, default=list)
 
     # Relationships

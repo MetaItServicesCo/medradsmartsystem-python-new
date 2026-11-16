@@ -125,9 +125,15 @@ export const createEquipment = async (data: EquipmentCreate): Promise<EquipmentI
   return res.data
 }
 
-export const updateEquipment = async (id: number, data: EquipmentUpdate): Promise<EquipmentItem> => {
+export const updateEquipment = async (
+  id: number,
+  data: EquipmentUpdate,
+): Promise<EquipmentItem & { repriced_open_requests?: number }> => {
   const res = await apiClient.put(`/equipment/${id}`, data)
-  return res.data
+  // Set when the asset moved to another tier: its open service requests now
+  // use the new tier's rates.
+  const repriced = res.headers?.['x-repriced-open-requests']
+  return repriced === undefined ? res.data : { ...res.data, repriced_open_requests: Number(repriced) }
 }
 
 export const deleteEquipment = async (id: number): Promise<void> => {

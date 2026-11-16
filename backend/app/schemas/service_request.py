@@ -272,6 +272,7 @@ class ServiceRequestResponse(BaseModel):
     billing_status: Optional[str] = "pending"
     cc_auth_requested: Optional[bool] = False
     invoice_deleted: Optional[bool] = False
+    invoice_needs_revision: Optional[bool] = False
     # Whether a (not cancelled) service invoice exists; once it does, nothing
     # more is added to the work order and hours are no longer corrected. Set
     # by the request's own GET; None where a response does not say.

@@ -223,6 +223,10 @@ export interface ServiceInvoice {
   due_date: string | null
   payment_method?: string | null
   notes?: string | null
+  /** Travel charged on it: what a revision starts from. */
+  travel_charges?: number | string | null
+  /** Billing hand-edited its lines; an update after reopening replaces those edits. */
+  edited_in_billing?: boolean
   created_at: string
   updated_at: string
   transactions?: InvoiceTransaction[]
@@ -355,6 +359,8 @@ export interface ServiceRequest {
   billing_status: 'pending' | 'approved' | 'not_approved'
   cc_auth_requested: boolean
   invoice_deleted: boolean
+  /** Reopened by an admin with an invoice: closing it again updates that same invoice. */
+  invoice_needs_revision?: boolean
   service_invoice?: ServiceInvoice | null
   // Whether a service invoice exists: once it does, nothing more is added to
   // the work order and hours are no longer corrected. Set by the request's own fetch.
@@ -602,6 +608,12 @@ export const fetchAllServiceInvoices = async (
     skip += page.items.length
   } while (skip < total)
   return { items, total }
+}
+
+/** Reopen a completed request (Admins and Super Admins), with the reason. */
+export const reopenServiceRequest = async (requestId: number, reason: string): Promise<ServiceRequest> => {
+  const res = await apiClient.post(`/service-requests/${requestId}/reopen`, { reason })
+  return res.data
 }
 
 export const generateServiceInvoice = async (

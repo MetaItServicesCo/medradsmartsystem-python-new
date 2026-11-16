@@ -98,8 +98,12 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number, data: TierUpdate }) => updateTier(id, data),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       toast.success('Tier updated successfully!')
+      // Its labor rate changed: open service requests on its assets now use it.
+      if (updated?.repriced_open_requests) {
+        toast.info(`${updated.repriced_open_requests} open service request(s) now use this tier's new labor rate.`)
+      }
       queryClient.invalidateQueries({ queryKey: ['tiers'] })
       setEditTierId(null)
     },
