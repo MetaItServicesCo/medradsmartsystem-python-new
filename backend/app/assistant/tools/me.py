@@ -49,8 +49,15 @@ from app.models.service_request import ServiceRequest, ServiceRequestStatus
 
 
 # A schedule with no dates means "the week ahead", which is what people mean
-# when they ask what they have on without saying when.
+# when they ask what they have on without saying when -- or "from now on",
+# "moving forward", "coming up": today and the six days after it. A start with
+# no end ("from today") is the same week from that day, never that day alone.
 DEFAULT_WINDOW_DAYS = 7
+
+
+def _day(value: date) -> str:
+    """'Monday, Nov 16, 2026': a date as the answer should say it."""
+    return "{}, {} {}, {}".format(value.strftime("%A"), value.strftime("%b"), value.day, value.year)
 
 # Work that is still yours to do. Completed and cancelled requests are on
 # nobody's schedule, and neither are closed inspections.
@@ -204,12 +211,17 @@ def my_schedule(
     elif date_from is None:
         date_from = date_to
     elif date_to is None:
-        date_to = date_from
+        date_to = date_from + timedelta(days=DEFAULT_WINDOW_DAYS - 1)
     validate_date_range(date_from, date_to)
     start, end = datetime_bounds(date_from, date_to)
+    # Looking ahead from today, work whose day has passed but is not done is
+    # still the person's to do -- and the most pressing of it. It is listed,
+    # marked overdue, rather than falling between "past" and "upcoming".
+    include_overdue = date_from == date.today()
 
     items: list[dict[str, Any]] = []
     unscheduled = 0
+    overdue = {"service_request": 0, "inspection": 0}
 
     if allowed["requests"]:
         mine = (
@@ -223,6 +235,11 @@ def my_schedule(
             ServiceRequest.preferred_datetime >= start,
             ServiceRequest.preferred_datetime < end,
         ).all())
+        if include_overdue:
+            for sr in mine.filter(ServiceRequest.preferred_datetime.isnot(None),
+                                  ServiceRequest.preferred_datetime < start).all():
+                items.append({**_request_item(sr), "overdue": True})
+                overdue["service_request"] += 1
         # Work that is yours but has no agreed time is not on the schedule and
         # must not silently vanish: it is the commonest reason a day looks
         # emptier than it is.
@@ -234,11 +251,16 @@ def my_schedule(
             ctx.db.query(Inspection)
             .filter(Inspection.inspector_id == ctx.user.id)
             .filter(Inspection.status.in_(_LIVE_INSPECTION_STATUSES))
-            .filter(Inspection.scheduled_date >= start,
-                    Inspection.scheduled_date < end)
         )
         mine = ctx.scope_to_facilities(mine, Inspection.facility_id)
-        items.extend(_inspection_item(row) for row in mine.all())
+        items.extend(_inspection_item(row) for row in mine.filter(
+            Inspection.scheduled_date >= start,
+            Inspection.scheduled_date < end,
+        ).all())
+        if include_overdue:
+            for row in mine.filter(Inspection.scheduled_date < start).all():
+                items.append({**_inspection_item(row), "overdue": True})
+                overdue["inspection"] += 1
 
     if allowed["events"]:
         events = (
@@ -264,11 +286,26 @@ def my_schedule(
     items = items[:clamp_limit(limit)]
     _attach_places(ctx.db, items)
 
+    window = "{} to {}".format(_day(date_from), _day(date_to)) if date_from != date_to else _day(date_from)
+    # The answer must say which days it covers: "you have 2 inspections" means
+    # nothing without "between Monday, Nov 16 and Sunday, Nov 22".
+    notes.insert(0, "This covers {}. Say these dates in the answer.".format(window))
+    if overdue["service_request"] or overdue["inspection"]:
+        parts = []
+        if overdue["inspection"]:
+            parts.append("{} inspection(s)".format(overdue["inspection"]))
+        if overdue["service_request"]:
+            parts.append("{} service request(s)".format(overdue["service_request"]))
+        notes.append(
+            "Also included, marked overdue: {} whose day has passed and that are "
+            "still not done. Mention them first.".format(" and ".join(parts))
+        )
     if unscheduled:
         notes.append(
             "{} service request(s) are assigned to you with no agreed date, so "
             "they are not on this schedule.".format(unscheduled)
         )
+
     if not total:
         notes.append(
             "Nothing is scheduled for you in this period. That is not the same "
@@ -283,11 +320,17 @@ def my_schedule(
         tool="my_schedule",
         total_count=total,
         items=items,
-        aggregates={**counts, "unscheduled_service_requests": unscheduled},
+        aggregates={
+            **counts,
+            "unscheduled_service_requests": unscheduled,
+            "overdue_service_requests": overdue["service_request"],
+            "overdue_inspections": overdue["inspection"],
+        },
         applied_filters={
             "person": ctx.user.full_name or ctx.user.username,
             "date_from": date_from.isoformat(),
             "date_to": date_to.isoformat(),
+            "covers": window,
         },
         notes=notes,
     )

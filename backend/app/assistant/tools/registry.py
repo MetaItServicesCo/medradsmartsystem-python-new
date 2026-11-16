@@ -117,7 +117,12 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "and their approved leave -- whichever of those they have "
             "access to. Never use a general search tool to answer a "
             "question about the asker: this one knows who they are and "
-            "cannot be pointed at anybody else."
+            "cannot be pointed at anybody else. Without dates -- and for "
+            "\"from now on\", \"moving forward\", \"upcoming\", \"coming up\" -- "
+            "it covers today and the next six days; a start date alone covers "
+            "the seven days from it. Looking ahead from today it also lists "
+            "work whose day has passed and is not done, marked overdue. The "
+            "answer must say the dates it covers, from applied_filters.covers."
         ),
         parameters={
             "type": "object",

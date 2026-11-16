@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from app.prompts import SYNTHESIS_PROMPT, TOOL_PROMPT  # noqa: E402
+from app.prompts import SYNTHESIS_PROMPT, TOOL_PROMPT, VOICE_SYNTHESIS_PROMPT  # noqa: E402
 
 failures: list[str] = []
 
@@ -29,6 +29,7 @@ def ok(label: str, condition: bool) -> None:
 
 flat_tools = " ".join(TOOL_PROMPT.split())
 flat_answer = " ".join(SYNTHESIS_PROMPT.split())
+flat_voice = " ".join(VOICE_SYNTHESIS_PROMPT.split())
 
 ok("\"assigned to me for the 16th\" is named as a my_schedule question",
    "what service requests are assigned to me for the 16th" in flat_tools)
@@ -47,6 +48,18 @@ ok("answers never show internal numbers such as user IDs",
    "Never show internal database numbers: user IDs" in flat_answer)
 ok("  people are \"you\" or their name, records their own number",
    "Refer to the person asking as \"you\"" in flat_answer and "SR-000024" in flat_answer)
+
+# "What are my inspections from now on?"
+ok("\"from now on\" / \"moving forward\" / \"upcoming\" is my_schedule with no dates: today and the next six days",
+   '"From now on", "moving forward", "upcoming"' in flat_tools and "today and the next six days" in flat_tools)
+ok("  every schedule answer says the dates it covers", "Every schedule answer says the dates it covers" in flat_tools
+   and 'Never answer "your upcoming inspections" without the dates' in flat_tools)
+ok("  overdue items are named first", "Name them first, as overdue" in flat_tools)
+ok("  and it offers to look further ahead rather than implying that is all", "offer to look further ahead" in flat_tools)
+ok("the written answer opens with the dates and puts overdue first",
+   "A schedule answer opens with the days it covers, as dates" in flat_answer and "Items marked overdue come first" in flat_answer)
+ok("the spoken answer says the days naturally, overdue first",
+   "from today through Sunday the 22nd" in flat_voice and "Anything overdue comes first" in flat_voice)
 
 print(f"\n{len(failures)} FAILED: {failures}" if failures else "\nALL PASSED")
 sys.exit(1 if failures else 0)
