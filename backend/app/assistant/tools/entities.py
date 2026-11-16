@@ -17,10 +17,10 @@ from app.assistant.tools.base import (
     ToolInputError,
     ToolResult,
     clamp_limit,
-    datetime_bounds,
     money,
     validate_date_range,
 )
+from app.assistant.tools.local_time import facility_local_day_filter, facility_zones, time_label
 from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
@@ -317,7 +317,7 @@ def facility_business_summary(
         Invoice.status.in_([
             InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE
         ]),
-        Invoice.due_date < date.today(),
+        Invoice.due_date < ctx.today(),
     ).count()
     cancelled_count = base.filter(Invoice.status == InvoiceStatus.CANCELLED).count()
 
@@ -399,7 +399,6 @@ def search_inspections(
             )
 
     completed_only = normalized_status == [InspectionStatus.COMPLETED]
-    start, end = datetime_bounds(date_from, date_to)
 
     def build(target):
         query = ctx.scope_to_facilities(ctx.db.query(target), target.facility_id)
@@ -410,10 +409,12 @@ def search_inspections(
         if normalized_status:
             query = query.filter(target.status.in_(normalized_status))
         date_column = target.completed_at if completed_only else target.scheduled_date
-        if start is not None:
-            query = query.filter(date_column >= start)
-        if end is not None:
-            query = query.filter(date_column < end)
+        if date_from or date_to:
+            # On each facility's own day, not the UTC date of the stored time.
+            query = query.filter(facility_local_day_filter(
+                ctx.db, date_column, target.facility_id,
+                date_from or date_to, date_to or date_from,
+            ))
         return query
 
     query = build(model)
@@ -425,6 +426,7 @@ def search_inspections(
     rows = query.order_by(model.scheduled_date.desc()).limit(take).all()
     facility_names = _facility_names(ctx, {r.facility_id for r in rows})
     inspector_names = _user_names(ctx, {r.inspector_id for r in rows if r.inspector_id})
+    zones = facility_zones(ctx.db, {r.facility_id for r in rows})
 
     items = [{
         ("inspection_id" if count_assets else "batch_id"): row.id,
@@ -437,6 +439,7 @@ def search_inspections(
         "inspector_id": row.inspector_id,
         "inspector_name": inspector_names.get(row.inspector_id),
         "scheduled_date": row.scheduled_date.isoformat() if row.scheduled_date else None,
+        "scheduled_local": time_label(row.scheduled_date, zones.get(row.facility_id)),
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
         "route": _deep_link(
             "/inspections",
@@ -620,12 +623,14 @@ def search_service_requests(
     if priority:
         query = query.filter(ServiceRequest.priority == priority)
 
-    start, end = datetime_bounds(date_from, date_to)
     date_column = ServiceRequest.preferred_datetime if basis == "scheduled" else ServiceRequest.created_at
-    if start is not None:
-        query = query.filter(date_column >= start)
-    if end is not None:
-        query = query.filter(date_column < end)
+    if date_from or date_to:
+        # On the facility's own day: a job booked for 7 pm Tuesday in Texas is
+        # stored as 1 am Wednesday UTC, and is still Tuesday's.
+        query = query.filter(facility_local_day_filter(
+            ctx.db, date_column, ServiceRequest.facility_id,
+            date_from or date_to, date_to or date_from,
+        ))
 
     total = query.count()
     ordering = (
@@ -635,6 +640,7 @@ def search_service_requests(
     rows = query.order_by(*ordering).limit(take).all()
     facility_names = _facility_names(ctx, {r.facility_id for r in rows})
     tech_names = _user_names(ctx, {r.assigned_technician_id for r in rows if r.assigned_technician_id})
+    zones = facility_zones(ctx.db, {r.facility_id for r in rows})
 
     items = [{
         "service_request_id": row.id,
@@ -646,14 +652,16 @@ def search_service_requests(
         "created_at": row.created_at.isoformat() if row.created_at else None,
         # The day the work is booked for (the request's Preferred Date / Time).
         "scheduled_for": row.preferred_datetime.isoformat() if row.preferred_datetime else None,
+        "scheduled_for_local": time_label(row.preferred_datetime, zones.get(row.facility_id)),
         "route": _deep_link("/service-requests", search=row.request_number),
     } for row in rows]
 
     notes: list[str] = []
     if basis == "scheduled":
         notes.append(
-            "Dates are the day each request is booked for (its Preferred Date / Time). "
-            "Requests with no booked date are not counted."
+            "Dates are the day each request is booked for (its Preferred Date / Time), "
+            "on its facility's local clock (scheduled_for_local). Requests with no "
+            "booked date are not counted."
         )
     elif basis == "created":
         notes.append("Dates are when each request was raised, not the day it is booked for.")
@@ -751,7 +759,7 @@ def search_invoices(
             Invoice.status.in_([
                 InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE
             ]),
-            Invoice.due_date < date.today(),
+            Invoice.due_date < ctx.today(),
         )
     if date_from:
         query = query.filter(Invoice.issue_date >= date_from)
@@ -766,7 +774,7 @@ def search_invoices(
 
     rows = query.order_by(Invoice.due_date.asc()).limit(take).all()
     facility_names = _facility_names(ctx, {r.facility_id for r in rows if r.facility_id})
-    today = date.today()
+    today = ctx.today()
 
     items = [{
         "invoice_id": row.id,

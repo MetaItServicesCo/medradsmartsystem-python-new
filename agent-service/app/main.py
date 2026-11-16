@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -43,6 +44,8 @@ class RunRequest(BaseModel):
     history: list[Turn] = Field(default_factory=list, max_length=12)
     # Answer will be spoken, so it is composed for the ear rather than the page.
     voice: bool = False
+    # The asker's browser time zone ("America/Chicago"): their "today".
+    timezone: Optional[str] = Field(default=None, max_length=64)
 
 
 @app.get("/health")
@@ -89,7 +92,8 @@ async def stream_run(
         try:
             history = [{"role": t.role, "text": t.text} for t in payload.history]
             async for event in run_agent(
-                payload.question, payload.user_token, history, payload.voice
+                payload.question, payload.user_token, history, payload.voice,
+                timezone=payload.timezone,
             ):
                 yield {"event": event.get("event", "message"), "data": json.dumps(event)}
         except Exception as exc:  # noqa: BLE001 - surface as a stream error, never a 500 mid-stream

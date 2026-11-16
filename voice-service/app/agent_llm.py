@@ -32,7 +32,7 @@ from app.config import settings
 class MedRadAgentLLM(LLMService):
     """Streams answers from the assistant service into the voice pipeline."""
 
-    def __init__(self, *, user_token: str, **kwargs: Any) -> None:
+    def __init__(self, *, user_token: str, timezone: str | None = None, **kwargs: Any) -> None:
         # All None: the sampling knobs belong to the agent service, which
         # owns the model and its prompts. Declaring them keeps pipecat from
         # logging an error per connection about settings this service could
@@ -52,6 +52,8 @@ class MedRadAgentLLM(LLMService):
         ))
         super().__init__(**kwargs)
         self._user_token = user_token
+        # The speaker's own time zone, so "today" is their day.
+        self._timezone = timezone
         # Turns kept here rather than in Pipecat's context, because the agent
         # already knows how to use its own history for follow-ups and
         # elliptical questions ("and sales quotations?").
@@ -68,6 +70,7 @@ class MedRadAgentLLM(LLMService):
             "history": self._history[-8:],
             # Composed for the ear: short, spoken numbers, no field names.
             "voice": True,
+            "timezone": self._timezone,
         }
         headers = {"X-Internal-Key": settings.ASSISTANT_INTERNAL_KEY}
 

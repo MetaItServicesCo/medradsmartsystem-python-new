@@ -19,6 +19,7 @@ tools and its knowledge base, wrapped to look like a language model.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import sys
 from contextlib import asynccontextmanager
@@ -339,12 +340,15 @@ def _build_pipeline(websocket: WebSocket, user_token: str) -> tuple[Pipeline, An
         VADProcessor(vad_analyzer=_models["vad"]),
         turns,
         _models["stt"],
-        MedRadAgentLLM(user_token=user_token),
+        MedRadAgentLLM(user_token=user_token, timezone=getattr(websocket.state, "timezone", None)),
         # Built per conversation because it holds its own connection.
         _build_tts(),
         transport.output(),
     ])
     return pipeline, transport
+
+
+_ZONE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}")
 
 
 async def _authenticate(websocket: WebSocket) -> str | None:
@@ -362,6 +366,10 @@ async def _authenticate(websocket: WebSocket) -> str | None:
     ):
         return None
     token = str(payload.get("user_token") or "")
+    # Where the speaker is ("Asia/Karachi"), so their "today" is their own.
+    # Only the shape of a zone name is kept; the backend validates the zone.
+    zone = str(payload.get("timezone") or "")[:64]
+    websocket.state.timezone = zone if _ZONE_NAME.fullmatch(zone) else None
     return token or None
 
 

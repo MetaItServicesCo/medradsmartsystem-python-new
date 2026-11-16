@@ -11,13 +11,13 @@ schema validation, before any query runs.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from app.assistant import actions
 from app.assistant.tools import (
     analytics, attendance, commerce, entities, me, people,
 )
-from app.assistant.tools.base import ToolContext, ToolResult
+from app.assistant.tools.base import ToolContext, ToolPermissionError, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
 from app.models.rental import RentalStatus
@@ -62,6 +62,13 @@ class ToolDefinition:
     # The module permission a caller needs. Reads need "index"; writes
     # need "add" or "edit", matching the public API.
     permission: str = "index"
+    # Who may be offered it beyond the module permission. A technician may
+    # read service requests -- their own -- and that permission alone must
+    # not hand them a tool that reads somebody else's day.
+    offered_if: Optional[Callable[[Any], bool]] = None
+
+    def offered_to(self, user: Any) -> bool:
+        return self.offered_if is None or bool(self.offered_if(user))
 
     def anthropic_schema(self) -> dict[str, Any]:
         return {
@@ -122,7 +129,9 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "it covers today and the next six days; a start date alone covers "
             "the seven days from it. Looking ahead from today it also lists "
             "work whose day has passed and is not done, marked overdue. The "
-            "answer must say the dates it covers, from applied_filters.covers."
+            "answer must say the dates it covers, from applied_filters.covers. "
+            "Days and times are local: each job on its facility's clock "
+            "(when_local), today on the asker's own."
         ),
         parameters={
             "type": "object",
@@ -145,6 +154,39 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         ),
         parameters={"type": "object", "properties": {}},
         handler=me.my_next_commitment,
+    ),
+    # Only for those who can see other people's service work -- not a
+    # technician (their own work only) or an employee (what they raised).
+    ToolDefinition(
+        name="person_schedule",
+        module="service-requests",
+        permission="view",
+        offered_if=me.can_see_others_work,
+        description=(
+            "A named person's day or days: their booked service requests and "
+            "inspections (overdue work first), meetings and approved leave, "
+            "each part only where you may see it. Use for \"what are Daniel's "
+            "jobs today\", \"what is Sam doing tomorrow\", \"Daniel's "
+            "schedule this week\". Call resolve_entity for the name first and "
+            "pass that user_id; if it returns several people, ask which. "
+            "Without dates it covers the person's today and the next six "
+            "days, on their own clock; for \"today\" pass today's date as "
+            "date_from and date_to. Say the dates it covers (covers) and the "
+            "local times (when_local). Not for the person asking: that is "
+            "my_schedule."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100,
+                          "default": 25},
+            },
+            "required": ["user_id"],
+        },
+        handler=me.person_schedule,
     ),
     ToolDefinition(
         name="my_leave",
@@ -378,7 +420,8 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "booked for (\"what is John doing on the 16th\", \"jobs for "
             "tomorrow\"); 'created' is when requests were raised (\"what came in "
             "last week\"). Not for the person asking about their own work or "
-            "day: that is my_schedule."
+            "day: that is my_schedule. For one named person's day -- jobs and "
+            "inspections together -- use person_schedule."
         ),
         parameters={
             "type": "object",
@@ -550,9 +593,14 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "service requests, inspections or any other module, so if the "
             "question is who was at work, who is in today, when someone "
             "arrived or left, or anything about check-ins, use this. "
-            "Defaults to today when no dates are given. Reports how a "
-            "check-in was recorded (manual, face, admin) but never the "
-            "stored images or face data."
+            "Defaults to today when no dates are given -- each person's own "
+            "today where they checked in. For one person (\"has Sultan "
+            "marked attendance today\") call resolve_entity first and pass "
+            "user_id: the answer is then on their own clock, says when they "
+            "last checked in if not today, and whether they are on approved "
+            "leave. Times are local (local_time). Reports how a check-in was "
+            "recorded (manual, face, admin) but never the stored images or "
+            "face data."
         ),
         parameters={
             "type": "object",
@@ -562,7 +610,8 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
                     "enum": list(attendance.EVENT_TYPES),
                     "description": "Defaults to all events; use check_in for arrivals.",
                 },
-                "person": {"type": "string", "description": "Name, partial match."},
+                "person": {"type": "string", "description": "Name, partial match. Prefer user_id for one person."},
+                "user_id": {"type": "integer", "description": "One person, from resolve_entity."},
                 "facility_id": {"type": "integer"},
                 "source": {"type": "string", "enum": list(attendance.SOURCES)},
                 "verification_status": {
@@ -826,4 +875,6 @@ def dispatch(name: str, ctx: ToolContext, arguments: dict[str, Any]) -> ToolResu
         raise ValueError(
             "Unexpected argument(s) for {}: {}".format(name, ", ".join(sorted(unexpected)))
         )
+    if not definition.offered_to(ctx.user):
+        raise ToolPermissionError(definition.module)
     return definition.handler(ctx, **(arguments or {}))

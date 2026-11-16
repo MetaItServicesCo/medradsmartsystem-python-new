@@ -55,6 +55,15 @@ export const transcribeSpeech = async (audio: Blob): Promise<string> => {
  * A browser cannot set an Authorization header on a WebSocket, so the token
  * goes in the path, exactly as the existing chat socket does.
  */
+/** The browser's time zone ("Asia/Karachi"), so the assistant's "today" is the asker's day. */
+export const browserTimeZone = (): string | undefined => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
+  } catch {
+    return undefined
+  }
+}
+
 export const voiceStreamUrl = (): string => {
   const token = useAuthStore.getState().token || ''
   const base = (apiClient.defaults.baseURL || '').replace(/\/$/, '')
@@ -75,7 +84,9 @@ export const liveVoiceUrl = (): string => {
   const token = useAuthStore.getState().token || ''
   const base = (apiClient.defaults.baseURL || '').replace(/\/$/, '')
   const absolute = base.startsWith('http') ? base : `${window.location.origin}${base}`
-  return `${absolute.replace(/^http/, 'ws')}/ws/assistant-live/${encodeURIComponent(token)}`
+  const zone = browserTimeZone()
+  const where = zone ? `?tz=${encodeURIComponent(zone)}` : ''
+  return `${absolute.replace(/^http/, 'ws')}/ws/assistant-live/${encodeURIComponent(token)}${where}`
 }
 
 export const fetchAssistantStatus = async (): Promise<AssistantStatus> => {
@@ -121,7 +132,7 @@ export const askAssistant = (
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question, history, voice }),
+        body: JSON.stringify({ question, history, voice, timezone: browserTimeZone() }),
         signal: controller.signal,
       })
 

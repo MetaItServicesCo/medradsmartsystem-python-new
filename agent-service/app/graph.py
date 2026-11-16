@@ -156,6 +156,8 @@ def local_intent(question: str) -> Optional[Intent]:
 class AgentState(TypedDict, total=False):
     question: str
     user_token: str
+    # The asker's browser time zone, forwarded on every backend call.
+    timezone: Optional[str]
     today: str
     history: list[dict[str, str]]
     # Spoken answers need a different register, not just different rendering.
@@ -320,7 +322,13 @@ def _ask_header(state: AgentState) -> str:
     cached and identical for everybody, and folding one person into it
     would give every user their own cache entry.
     """
+    asker = state.get("asker") or {}
     today = "Today is {}.".format(state.get("today", date.today().isoformat()))
+    if asker.get("now_local"):
+        # Their own clock and place, so "today", "tonight" and "this
+        # morning" are theirs and not the server's UTC date.
+        today = "Today is {}. It is now {} where they are ({}).".format(
+            state.get("today"), asker["now_local"], asker.get("timezone_label") or asker.get("timezone"))
     context = asker_context(state.get("asker"))
     return today + ("\n\n" + context if context else "")
 
@@ -389,7 +397,7 @@ async def classify_node(state: AgentState) -> dict[str, Any]:
 async def retrieve_node(state: AgentState) -> dict[str, Any]:
     """Fetch supporting passages from the generated knowledge base."""
     _emit_phase("retrieve")
-    async with MedRadClient(state["user_token"]) as client:
+    async with MedRadClient(state["user_token"], state.get("timezone")) as client:
         try:
             payload = await client.search_knowledge(
                 state["question"], module=state.get("module"), limit=6
@@ -457,7 +465,7 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
     citations: list[dict[str, Any]] = []
     errors: list[str] = []
 
-    async with MedRadClient(state["user_token"]) as client:
+    async with MedRadClient(state["user_token"], state.get("timezone")) as client:
         try:
             available, tool_modules = await client.list_tools()
         except MedRadError as exc:
@@ -745,6 +753,7 @@ async def run_agent(
     user_token: str,
     history: list[dict[str, str]] | None = None,
     voice: bool = False,
+    timezone: Optional[str] = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Execute the graph, yielding progress events for SSE streaming."""
     # One round trip on the private network before anything else runs.
@@ -752,7 +761,7 @@ async def run_agent(
     # role-blind behaviour it had before, rather than refusing.
     asker: Optional[dict[str, Any]] = None
     try:
-        async with MedRadClient(user_token) as client:
+        async with MedRadClient(user_token, timezone) as client:
             asker = await client.whoami()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not identify the asker: %s", exc)
@@ -761,7 +770,10 @@ async def run_agent(
         "question": question,
         "user_token": user_token,
         "asker": asker,
-        "today": date.today().isoformat(),
+        "timezone": timezone,
+        # The asker's own today, worked out by the backend from their time
+        # zone; the server's date only if that lookup failed.
+        "today": (asker or {}).get("today") or date.today().isoformat(),
         "history": history or [],
         "voice": bool(voice),
         "tool_results": [],

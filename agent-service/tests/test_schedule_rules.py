@@ -38,9 +38,22 @@ ok("  and the general search with their own id is ruled out",
    "search_service_requests with their own id answers a different question" in flat_tools)
 ok("the old rule sending everyone's workload to the search is gone",
    "counting someone's assigned work is search_service_requests" not in flat_tools)
-ok("  it now covers other people only, and sends the asker to my_schedule",
-   "counting another person's assigned work is search_service_requests" in flat_tools
-   and "their own work is my_schedule" in flat_tools)
+ok("  another named person's day or jobs is person_schedule, after resolve_entity",
+   "Another named person's day or jobs" in flat_tools and "then person_schedule with that user_id" in flat_tools
+   and '"jobs" means both' in flat_tools)
+ok("  and the asker's own work is still my_schedule", "their own work is my_schedule" in flat_tools)
+
+# "Has Sultan marked attendance today?"
+ok("one person's attendance: resolve_entity, then search_attendance with user_id; ask if several match",
+   "search_attendance with that user_id" in flat_tools and "If several people match, ask which" in flat_tools)
+ok("  answered on that person's own clock, with their day and place",
+   "on that person's own clock" in flat_tools and "Today in Karachi" in flat_tools)
+ok("  no check-in is not absent: leave and last check-in are repeated",
+   "No check-in is not the same as absent" in flat_tools
+   and "no check-in is not the same as absent" in flat_answer)
+ok("times are local, with the place, never a stored UTC timestamp",
+   "Times are local" in flat_tools and "Never restate a stored UTC timestamp" in flat_tools
+   and "Never present a stored UTC timestamp as a time of day" in flat_answer)
 ok("the booked day and the raised day are told apart, with date_basis",
    "Preferred Date / Time" in flat_tools and "date_basis" in flat_tools
    and "never answer a question about one with the other" in flat_tools)

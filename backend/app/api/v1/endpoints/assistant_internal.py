@@ -75,6 +75,19 @@ def require_assistant_user(current_user: User = Depends(get_current_user)) -> Us
     return current_user
 
 
+def asker_timezone_header(
+    x_asker_timezone: Optional[str] = Header(None, alias="X-Asker-Timezone"),
+) -> Optional[str]:
+    """The asker's browser time zone, as the agent forwards it ("Asia/Karachi").
+
+    Only a real IANA zone is kept; anything else is as if none was sent, and
+    "today" falls back to where they last checked in.
+    """
+    from app.assistant.tools.local_time import valid_zone
+
+    return valid_zone(x_asker_timezone)
+
+
 class ToolCallRequest(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
 
@@ -120,6 +133,7 @@ _ROLE_LABELS = {
 def whoami(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_assistant_user),
+    browser_zone: Optional[str] = Depends(asker_timezone_header),
 ) -> Any:
     """Who the agent is talking to, derived from their own token.
 
@@ -162,12 +176,22 @@ def whoami(
         ] if ids else []
         scope = {"facility_ids": ids, "facilities": sorted(names)}
 
+    # "Today" is the asker's own day, not the server's UTC date: at 8 pm in
+    # Texas it is already tomorrow in UTC.
+    from app.assistant.tools.local_time import asker_zone, to_local, today_in, zone_label
+
+    zone = asker_zone(db, current_user.id, browser_zone)
+    now_local = to_local(datetime.utcnow(), zone)
     return {
         "name": current_user.full_name or current_user.username,
         "role": role,
         "role_label": _ROLE_LABELS.get(role, role.replace("_", " ").title()),
         "facility_scope": scope,
         "modules": modules,
+        "timezone": zone,
+        "timezone_label": zone_label(zone),
+        "today": today_in(zone).isoformat(),
+        "now_local": now_local.strftime("%A, %b %d, %Y, %I:%M %p %Z"),
     }
 
 @router.get("/tools", dependencies=[Depends(require_internal_caller)])
@@ -187,9 +211,9 @@ def list_tools(
     usable = frozenset(
         definition.name
         for definition in TOOLS_BY_NAME.values()
-        if definition.module == "platform"
-        or has_module_permission(
-            current_user, definition.module, definition.permission)
+        if definition.offered_to(current_user)
+        and (definition.module == "platform"
+             or has_module_permission(current_user, definition.module, definition.permission))
     )
     allowed = tuple(
         TOOLS_BY_NAME[name].module for name in usable
@@ -211,6 +235,7 @@ def execute_tool(
     payload: ToolCallRequest = Body(default_factory=ToolCallRequest),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_assistant_user),
+    browser_zone: Optional[str] = Depends(asker_timezone_header),
 ) -> Any:
     """Run one tool as the requesting user.
 
@@ -227,7 +252,7 @@ def execute_tool(
 
     arguments = _coerce_dates(payload.arguments)
     started = time.perf_counter()
-    ctx = ToolContext(db=db, user=current_user)
+    ctx = ToolContext(db=db, user=current_user, timezone=browser_zone)
     try:
         result = dispatch(tool_name, ctx, arguments)
     except HTTPException:

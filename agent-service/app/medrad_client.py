@@ -26,12 +26,17 @@ class MedRadError(RuntimeError):
 
 
 class MedRadClient:
-    def __init__(self, user_token: str) -> None:
+    def __init__(self, user_token: str, timezone: Optional[str] = None) -> None:
         self._headers = {
             "X-Internal-Key": settings.MEDRAD_INTERNAL_KEY,
             "Authorization": "Bearer {}".format(user_token),
             "Accept": "application/json",
         }
+        # Where the asker is ("Asia/Karachi"), so "today" and every day the
+        # tools count is theirs, not the server's UTC date. The backend
+        # validates it; an unknown zone is as if none was sent.
+        if timezone:
+            self._headers["X-Asker-Timezone"] = timezone[:64]
         self._base = settings.MEDRAD_INTERNAL_URL.rstrip("/")
 
     async def __aenter__(self) -> "MedRadClient":

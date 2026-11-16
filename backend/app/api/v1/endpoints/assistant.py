@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.assistant.tools.local_time import valid_zone
 from app.core.deps import get_current_user
 from app.core.security import decode_token, password_token_version
 from app.db.base import SessionLocal, get_db
@@ -68,6 +69,9 @@ class AskRequest(BaseModel):
     # The answer will be read aloud, so it is composed for the ear: short,
     # spoken numbers, no lists or field names.
     voice: bool = False
+    # The asker's browser time zone ("America/Chicago"), so "today" is their
+    # day and not the server's UTC date. Validated before it is used.
+    timezone: Optional[str] = Field(default=None, max_length=64)
 
 
 def require_assistant_user(current_user: User = Depends(get_current_user)) -> User:
@@ -167,6 +171,7 @@ async def ask(
             "user_token": token,
             "history": [turn.model_dump() for turn in payload.history],
             "voice": payload.voice,
+            "timezone": valid_zone(payload.timezone),
         }
         try:
             async with httpx.AsyncClient(timeout=settings.ASSISTANT_TIMEOUT_SECONDS) as client:
@@ -279,6 +284,8 @@ async def assistant_live(websocket: WebSocket, token: str) -> None:
                 "type": "auth",
                 "key": settings.ASSISTANT_INTERNAL_KEY,
                 "user_token": token,
+                # The speaker's own time zone, from the socket address.
+                "timezone": valid_zone(websocket.query_params.get("tz")),
             }))
 
             async def to_upstream() -> None:

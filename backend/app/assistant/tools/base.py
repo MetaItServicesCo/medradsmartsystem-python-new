@@ -97,6 +97,25 @@ class ToolContext:
 
     db: Session
     user: User
+    # The asker's time zone, from their browser ("Asia/Karachi"). Not set,
+    # it is where they last checked in, else the business's.
+    timezone: Optional[str] = None
+
+    @property
+    def zone(self) -> str:
+        from app.assistant.tools.local_time import asker_zone
+
+        cached = getattr(self, "_zone_cache", None)
+        if cached is None:
+            cached = asker_zone(self.db, getattr(self.user, "id", None), self.timezone)
+            object.__setattr__(self, "_zone_cache", cached)
+        return cached
+
+    def today(self) -> date:
+        """Today where the person asking is -- not the server's UTC date."""
+        from app.assistant.tools.local_time import today_in
+
+        return today_in(self.zone)
 
     def require_module(self, module: str, action: str = "index") -> None:
         if not has_module_permission(self.user, module, action):

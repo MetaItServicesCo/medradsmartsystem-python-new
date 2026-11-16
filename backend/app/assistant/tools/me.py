@@ -39,7 +39,11 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.assistant.tools.base import (
-    ToolContext, ToolResult, clamp_limit, datetime_bounds, validate_date_range,
+    ToolContext, ToolInputError, ToolPermissionError, ToolResult, clamp_limit, validate_date_range,
+)
+from app.assistant.tools.local_time import (
+    facility_before_filter, facility_local_day_filter, facility_zones,
+    local_date, person_zone, range_label, time_label, today_in, utc_bounds, zone_label,
 )
 from app.models.calendar import CalendarEvent
 from app.models.facility import Facility
@@ -54,10 +58,6 @@ from app.models.service_request import ServiceRequest, ServiceRequestStatus
 # no end ("from today") is the same week from that day, never that day alone.
 DEFAULT_WINDOW_DAYS = 7
 
-
-def _day(value: date) -> str:
-    """'Monday, Nov 16, 2026': a date as the answer should say it."""
-    return "{}, {} {}, {}".format(value.strftime("%A"), value.strftime("%b"), value.day, value.year)
 
 # Work that is still yours to do. Completed and cancelled requests are on
 # nobody's schedule, and neither are closed inspections.
@@ -195,29 +195,67 @@ def _sort_key(item: dict[str, Any]) -> tuple[int, str]:
     return (0, item["when"]) if item["when"] else (1, "")
 
 
-def my_schedule(
-    ctx: ToolContext,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-    limit: Optional[int] = None,
-) -> ToolResult:
-    """Everything on the asker's own schedule in a date window, in time order."""
-    ctx.apply_statement_timeout()
-    allowed, notes = _available(ctx)
+def _localize(db: Session, items: list[dict[str, Any]], zone: str) -> None:
+    """Give each item its local day and wall-clock time.
 
+    A job on its facility's clock, anything else on the person's own. "when"
+    stays the stored UTC instant; "when_local" is what an answer says.
+    """
+    zones = facility_zones(db, {i.get("facility_id") for i in items if i.get("facility_id")})
+    for item in items:
+        if not item.get("when"):
+            continue
+        item_zone = zones.get(item.get("facility_id"), zone) if item.get("facility_id") else zone
+        instant = datetime.fromisoformat(item["when"])
+        if item["kind"] == "leave":
+            # Leave is a whole day wherever the person is: no clock time.
+            item["local_date"] = instant.date().isoformat()
+            item["when_local"] = None
+            continue
+        item["local_date"] = local_date(instant, item_zone).isoformat()
+        item["when_local"] = time_label(instant, item_zone)
+
+
+def _window(date_from: Optional[date], date_to: Optional[date], today: date) -> tuple[date, date]:
     if date_from is None and date_to is None:
-        date_from = date.today()
+        date_from = today
         date_to = date_from + timedelta(days=DEFAULT_WINDOW_DAYS - 1)
     elif date_from is None:
         date_from = date_to
     elif date_to is None:
         date_to = date_from + timedelta(days=DEFAULT_WINDOW_DAYS - 1)
     validate_date_range(date_from, date_to)
-    start, end = datetime_bounds(date_from, date_to)
+    return date_from, date_to
+
+
+def _schedule(
+    ctx: ToolContext,
+    *,
+    tool: str,
+    person_id: int,
+    person_name: str,
+    zone: str,
+    allowed: dict[str, bool],
+    notes: list[str],
+    date_from: Optional[date],
+    date_to: Optional[date],
+    limit: Optional[int],
+    you: bool,
+) -> ToolResult:
+    """One person's work and time off in a window of days, in time order.
+
+    Jobs count on their facility's local day, everything else on the
+    person's own (``zone``): the day a Texas job is booked for is the day in
+    Texas, whatever the UTC date of the stored instant.
+    """
+    today = today_in(zone)
+    date_from, date_to = _window(date_from, date_to, today)
     # Looking ahead from today, work whose day has passed but is not done is
     # still the person's to do -- and the most pressing of it. It is listed,
     # marked overdue, rather than falling between "past" and "upcoming".
-    include_overdue = date_from == date.today()
+    include_overdue = date_from == today
+    own_start, own_end = utc_bounds(date_from, date_to, zone)
+    whose = "you" if you else person_name
 
     items: list[dict[str, Any]] = []
     unscheduled = 0
@@ -226,58 +264,54 @@ def my_schedule(
     if allowed["requests"]:
         mine = (
             ctx.db.query(ServiceRequest)
-            .filter(ServiceRequest.assigned_technician_id == ctx.user.id)
+            .filter(ServiceRequest.assigned_technician_id == person_id)
             .filter(ServiceRequest.status.in_(_LIVE_REQUEST_STATUSES))
         )
         mine = ctx.scope_to_facilities(mine, ServiceRequest.facility_id)
-        items.extend(_request_item(sr) for sr in mine.filter(
-            ServiceRequest.preferred_datetime.isnot(None),
-            ServiceRequest.preferred_datetime >= start,
-            ServiceRequest.preferred_datetime < end,
-        ).all())
+        booked = mine.filter(ServiceRequest.preferred_datetime.isnot(None))
+        items.extend(_request_item(sr) for sr in booked.filter(facility_local_day_filter(
+            ctx.db, ServiceRequest.preferred_datetime, ServiceRequest.facility_id, date_from, date_to,
+        )).all())
         if include_overdue:
-            for sr in mine.filter(ServiceRequest.preferred_datetime.isnot(None),
-                                  ServiceRequest.preferred_datetime < start).all():
+            for sr in booked.filter(facility_before_filter(
+                    ctx.db, ServiceRequest.preferred_datetime, ServiceRequest.facility_id, date_from)).all():
                 items.append({**_request_item(sr), "overdue": True})
                 overdue["service_request"] += 1
-        # Work that is yours but has no agreed time is not on the schedule and
+        # Work that is theirs but has no agreed time is not on the schedule and
         # must not silently vanish: it is the commonest reason a day looks
         # emptier than it is.
-        unscheduled = mine.filter(
-            ServiceRequest.preferred_datetime.is_(None)).count()
+        unscheduled = mine.filter(ServiceRequest.preferred_datetime.is_(None)).count()
 
     if allowed["inspections"]:
         mine = (
             ctx.db.query(Inspection)
-            .filter(Inspection.inspector_id == ctx.user.id)
+            .filter(Inspection.inspector_id == person_id)
             .filter(Inspection.status.in_(_LIVE_INSPECTION_STATUSES))
         )
         mine = ctx.scope_to_facilities(mine, Inspection.facility_id)
-        items.extend(_inspection_item(row) for row in mine.filter(
-            Inspection.scheduled_date >= start,
-            Inspection.scheduled_date < end,
-        ).all())
+        items.extend(_inspection_item(row) for row in mine.filter(facility_local_day_filter(
+            ctx.db, Inspection.scheduled_date, Inspection.facility_id, date_from, date_to,
+        )).all())
         if include_overdue:
-            for row in mine.filter(Inspection.scheduled_date < start).all():
+            for row in mine.filter(facility_before_filter(
+                    ctx.db, Inspection.scheduled_date, Inspection.facility_id, date_from)).all():
                 items.append({**_inspection_item(row), "overdue": True})
                 overdue["inspection"] += 1
 
     if allowed["events"]:
         events = (
             ctx.db.query(CalendarEvent)
-            .filter(CalendarEvent.user_id == ctx.user.id)
-            .filter(CalendarEvent.start_time < end,
-                    CalendarEvent.end_time >= start)
+            .filter(CalendarEvent.user_id == person_id)
+            .filter(CalendarEvent.start_time < own_end, CalendarEvent.end_time >= own_start)
         )
         items.extend(_event_item(row) for row in events.all())
 
     if allowed["leave"]:
         leave = (
             ctx.db.query(LeaveRequest)
-            .filter(LeaveRequest.user_id == ctx.user.id)
+            .filter(LeaveRequest.user_id == person_id)
             .filter(LeaveRequest.status == LeaveRequestStatus.APPROVED)
-            .filter(LeaveRequest.start_date <= date_to,
-                    LeaveRequest.end_date >= date_from)
+            .filter(LeaveRequest.start_date <= date_to, LeaveRequest.end_date >= date_from)
         )
         items.extend(_leave_item(row) for row in leave.all())
 
@@ -285,11 +319,14 @@ def my_schedule(
     total = len(items)
     items = items[:clamp_limit(limit)]
     _attach_places(ctx.db, items)
+    _localize(ctx.db, items, zone)
 
-    window = "{} to {}".format(_day(date_from), _day(date_to)) if date_from != date_to else _day(date_from)
+    window = range_label(date_from, date_to)
     # The answer must say which days it covers: "you have 2 inspections" means
     # nothing without "between Monday, Nov 16 and Sunday, Nov 22".
     notes.insert(0, "This covers {}. Say these dates in the answer.".format(window))
+    notes.insert(1, "Each job is on its facility's local day and time (when_local); "
+                    "\"today\" is {} for {}.".format(zone_label(zone), whose))
     if overdue["service_request"] or overdue["inspection"]:
         parts = []
         if overdue["inspection"]:
@@ -302,14 +339,13 @@ def my_schedule(
         )
     if unscheduled:
         notes.append(
-            "{} service request(s) are assigned to you with no agreed date, so "
-            "they are not on this schedule.".format(unscheduled)
+            "{} service request(s) are assigned to {} with no agreed date, so "
+            "they are not on this schedule.".format(unscheduled, whose)
         )
-
     if not total:
         notes.append(
-            "Nothing is scheduled for you in this period. That is not the same "
-            "as having no work: anything without a date on it is not shown here."
+            "Nothing is scheduled for {} in this period. That is not the same "
+            "as having no work: anything without a date on it is not shown here.".format(whose)
         )
 
     counts: dict[str, int] = {}
@@ -317,7 +353,7 @@ def my_schedule(
         counts[item["kind"]] = counts.get(item["kind"], 0) + 1
 
     return ToolResult(
-        tool="my_schedule",
+        tool=tool,
         total_count=total,
         items=items,
         aggregates={
@@ -327,12 +363,98 @@ def my_schedule(
             "overdue_inspections": overdue["inspection"],
         },
         applied_filters={
-            "person": ctx.user.full_name or ctx.user.username,
+            "person": person_name,
             "date_from": date_from.isoformat(),
             "date_to": date_to.isoformat(),
             "covers": window,
+            "timezone": zone,
         },
         notes=notes,
+    )
+
+
+def my_schedule(
+    ctx: ToolContext,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: Optional[int] = None,
+) -> ToolResult:
+    """Everything on the asker's own schedule in a date window, in time order."""
+    ctx.apply_statement_timeout()
+    allowed, notes = _available(ctx)
+    return _schedule(
+        ctx, tool="my_schedule", person_id=ctx.user.id,
+        person_name=ctx.user.full_name or ctx.user.username, zone=ctx.zone,
+        allowed=allowed, notes=notes, date_from=date_from, date_to=date_to, limit=limit, you=True,
+    )
+
+
+# Someone else's day reads from these modules; the calendar and leave of
+# another person need the access that shows them anywhere else.
+_OTHERS_SOURCES: tuple[tuple[str, str, str], ...] = (
+    ("requests", "service-requests", "service requests"),
+    ("inspections", "inspections", "inspections"),
+    ("events", "calendar", "calendar entries and meetings"),
+    ("leave", "hr", "approved leave"),
+)
+
+
+def can_see_others_work(user: Any) -> bool:
+    """May this person read another person's service work at all?
+
+    Super Admins, Admins and facility staff -- the facility roles only for
+    their own sites, which the queries enforce. Not a technician, who sees
+    the work assigned to them, nor an employee or client, who see what they
+    raised.
+    """
+    from app.models.user import UserRole
+    from app.utils.permissions import assigned_only, has_module_permission
+
+    role = getattr(user, "role", None)
+    if role in (UserRole.EMPLOYEE, UserRole.CLIENT, UserRole.TECHNICIAN):
+        return False
+    return has_module_permission(user, "service-requests", "view") and not assigned_only(user, "service-requests")
+
+
+def person_schedule(
+    ctx: ToolContext,
+    user_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: Optional[int] = None,
+) -> ToolResult:
+    """A named person's work and time off in a window, for someone allowed to see it.
+
+    The same day as my_schedule -- booked service requests and inspections,
+    overdue work first, meetings and approved leave -- for another person,
+    each part only where the asker may see that module, and jobs only at the
+    facilities the asker may see. "Today" is the person's own: where they
+    last checked in.
+    """
+    from app.models.user import User
+    from app.utils.permissions import has_module_permission
+
+    ctx.apply_statement_timeout()
+    if not can_see_others_work(ctx.user):
+        raise ToolPermissionError("service-requests")
+    person = ctx.db.get(User, user_id) if user_id else None
+    if person is None:
+        raise ToolInputError("No person with that id. Find them with resolve_entity first.")
+    if person.id == ctx.user.id:
+        return my_schedule(ctx, date_from=date_from, date_to=date_to, limit=limit)
+
+    allowed = {key: has_module_permission(ctx.user, module, "view") for key, module, _ in _OTHERS_SOURCES}
+    # Inspections only for someone who sees others' inspections, not just their own.
+    from app.utils.permissions import assigned_only
+    allowed["inspections"] = allowed["inspections"] and not assigned_only(ctx.user, "inspections")
+    missing = [label for key, _, label in _OTHERS_SOURCES if not allowed[key]]
+    notes = (["Not included, because your account does not have access: " + ", ".join(missing) + "."]
+             if missing else [])
+    zone = person_zone(ctx.db, person.id) or ctx.zone
+    return _schedule(
+        ctx, tool="person_schedule", person_id=person.id,
+        person_name=person.full_name or person.username, zone=zone,
+        allowed=allowed, notes=notes, date_from=date_from, date_to=date_to, limit=limit, you=False,
     )
 
 
@@ -342,7 +464,7 @@ def my_next_commitment(ctx: ToolContext) -> ToolResult:
     allowed, notes = _available(ctx)
 
     now = datetime.utcnow()
-    today = now.date()
+    today = ctx.today()
     candidates: list[dict[str, Any]] = []
 
     if allowed["requests"]:
@@ -396,6 +518,7 @@ def my_next_commitment(ctx: ToolContext) -> ToolResult:
     candidates.sort(key=_sort_key)
     items = candidates[:1]
     _attach_places(ctx.db, items)
+    _localize(ctx.db, items, ctx.zone)
 
     if not items:
         notes.append(
@@ -435,7 +558,7 @@ def my_leave(ctx: ToolContext, limit: Optional[int] = None) -> ToolResult:
     # Entitlement is per calendar year, so taken days are counted the same
     # way. A request spanning the new year is counted where it starts,
     # which matches how the allowance itself is granted.
-    year_start = date(date.today().year, 1, 1)
+    year_start = date(ctx.today().year, 1, 1)
     taken: dict[str, float] = {}
     for row in mine.filter(
         LeaveRequest.status == LeaveRequestStatus.APPROVED,
@@ -471,7 +594,7 @@ def my_leave(ctx: ToolContext, limit: Optional[int] = None) -> ToolResult:
         } for row in rows],
         aggregates={"balance_this_year": balance},
         applied_filters={"person": ctx.user.full_name or ctx.user.username,
-                         "year": date.today().year},
+                         "year": ctx.today().year},
         notes=["Remaining days assume the standard yearly allowance and do "
                "not account for carry-over or unapproved requests."],
     )
@@ -488,7 +611,7 @@ def my_timesheet(
     ctx.apply_statement_timeout()
 
     if date_from is None and date_to is None:
-        date_to = date.today()
+        date_to = ctx.today()
         date_from = date_to - timedelta(days=13)
     elif date_from is None:
         date_from = date_to
