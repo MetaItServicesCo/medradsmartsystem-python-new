@@ -24,6 +24,7 @@ import CancelIcon from '@mui/icons-material/Cancel'
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ThumbUpIcon from '@mui/icons-material/ThumbUp'
 import ThumbDownIcon from '@mui/icons-material/ThumbDown'
@@ -60,6 +61,8 @@ import { useAuthStore } from '@/stores/authStore'
 import { actsAsTechnician, hasPermission } from '@/config/permissions'
 import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 import { DEFAULT_SERVICE_TAX_RATE, quotationBeforeTax, serviceInvoiceTaxable, serviceTaxOn } from '@/utils/serviceTax'
+import { fetchServiceProgressReport } from '@/api/reports'
+import { downloadServiceProgressReport } from '@/utils/serviceReportPdf'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
 
@@ -197,6 +200,7 @@ const ServiceRequestDetail = () => {
   const [imageOpen, setImageOpen] = useState(false)
   const [requestImageUrl, setRequestImageUrl] = useState('')
   const [invoiceOpen, setInvoiceOpen] = useState(false)
+  const [downloadingProgressReport, setDownloadingProgressReport] = useState(false)
   const [includeQuotations, setIncludeQuotations] = useState(false)
   const [selectedQuotationIds, setSelectedQuotationIds] = useState<number[]>([])
   const [invoiceDueDate, setInvoiceDueDate] = useState('')
@@ -875,6 +879,21 @@ const ServiceRequestDetail = () => {
     : sr.status
   const currentStepIndex = STATUS_STEPS.indexOf(progressStatus)
   const isTerminal = sr.status === 'completed' || sr.status === 'cancelled'
+  // Until it is completed, a request's report so far can be downloaded; completed, its
+  // report is in Reports as before, and a cancelled request has none.
+  const canDownloadProgressReport = !isTerminal && canViewServiceReports
+  const downloadProgressReport = async () => {
+    if (downloadingProgressReport) return
+    setDownloadingProgressReport(true)
+    try {
+      await downloadServiceProgressReport(await fetchServiceProgressReport(sr.id))
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'The progress report could not be downloaded. Please try again.')
+      if (err?.response?.status === 409) queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+    } finally {
+      setDownloadingProgressReport(false)
+    }
+  }
   const nextStatus = NEXT_STATUS[sr.status]
   const canLogWork = canLogWorkForRequest
   // Once completed, adding without time is the only kind of entry left.
@@ -978,17 +997,31 @@ const ServiceRequestDetail = () => {
 
   return (
     <Box className="page-enter">
-      {/* Back Button */}
-      <Button
-        startIcon={<ArrowBackIcon />}
-        onClick={() => navigate('/service-requests')}
-        sx={{
-          mb: 2, color: '#7C3AED', fontWeight: 600,
-          '&:hover': { backgroundColor: '#F5F3FF' },
-        }}
-      >
-        Back to Service Requests
-      </Button>
+      {/* Back Button, and the report so far while the request is open */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <Button
+          startIcon={<ArrowBackIcon />}
+          onClick={() => navigate('/service-requests')}
+          sx={{
+            color: '#7C3AED', fontWeight: 600,
+            '&:hover': { backgroundColor: '#F5F3FF' },
+          }}
+        >
+          Back to Service Requests
+        </Button>
+        {canDownloadProgressReport && (
+          <Button
+            variant="outlined"
+            data-progress-report
+            startIcon={downloadingProgressReport ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
+            disabled={downloadingProgressReport}
+            onClick={() => { void downloadProgressReport() }}
+            sx={{ borderRadius: '12px', fontWeight: 800, textTransform: 'none', borderColor: '#C4B5FD', color: '#6D28D9', '&:hover': { borderColor: '#7C3AED', backgroundColor: '#F5F3FF' } }}
+          >
+            {downloadingProgressReport ? 'Preparing PDF…' : 'Download Progress Report'}
+          </Button>
+        )}
+      </Box>
 
       {/* Header Card */}
       <Card

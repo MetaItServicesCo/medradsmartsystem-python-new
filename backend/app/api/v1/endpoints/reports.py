@@ -481,6 +481,39 @@ def get_service_reports(
     }
 
 
+@router.get("/service-reports/{request_id}/progress")
+def get_service_progress_report(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The service report of a request still being worked: everything recorded so far.
+
+    Seen by exactly who sees the completed report (the Reports module, scoped as
+    the service report list is). A completed request has its final report in
+    Reports instead, and a cancelled one has none.
+    """
+    sr = (
+        _scope_service_query(db.query(ServiceRequest), db, current_user)
+        .options(
+            joinedload(ServiceRequest.facility),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+            joinedload(ServiceRequest.requester),
+            joinedload(ServiceRequest.assigned_technician),
+        )
+        .filter(ServiceRequest.id == request_id)
+        .first()
+    )
+    if not sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    if sr.status == ServiceRequestStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="This request is completed: its service report is in Reports.")
+    if sr.status == ServiceRequestStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="A cancelled request has no progress report.")
+    # Work in progress is not invoiced: there is no invoice to show.
+    return _service_report_row(sr)
+
+
 @router.get("/inspection-reports")
 def get_inspection_reports(
     db: Session = Depends(get_db),

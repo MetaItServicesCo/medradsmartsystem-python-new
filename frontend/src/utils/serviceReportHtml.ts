@@ -173,13 +173,24 @@ const serviceFacilityHtml = (facility: Facility | null | undefined, sr: any) => 
   return `<div class="facbox"><div class="fac">${esc(fac.name)}</div><div>${details}</div></div>`
 }
 
-const serviceOverviewPageHtml = (sr: any, facility: Facility | null | undefined, sessions: any[]) => {
+/** A report of work still in progress: titled and marked so it cannot pass for the final one. */
+export type ServiceReportOptions = { progress?: boolean; generatedAt?: Date }
+
+const progressBannerHtml = (generatedAt: Date) => `
+    <div data-progress-banner style="margin:0 0 12px;padding:10px 14px;border-radius:12px;border:1px solid #FCD34D;background:#FFFBEB;color:#92400E;font-weight:800;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+      Work in progress &mdash; not a final report.
+      <span style="font-weight:600">Shows the work recorded up to ${esc(fmtDateTime(generatedAt.toISOString()))}.</span>
+    </div>`
+
+const serviceOverviewPageHtml = (sr: any, facility: Facility | null | undefined, sessions: any[], options: ServiceReportOptions = {}) => {
   const equipment = [sr.make, sr.model].filter(hasVal).join(' ') || sr.equipment_name
+  const progress = Boolean(options.progress)
   return page(`
     <div class="rtitle">
-      <h2 class="sec" style="font-size:20px;color:#1E3A8A">Service Engineering Report</h2>
-      <span class="status ${statusClass(sr.status)}">${esc(displayStatus(sr.status, 'Completed'))}</span>
+      <h2 class="sec" style="font-size:20px;color:#1E3A8A">${progress ? 'Service Progress Report' : 'Service Engineering Report'}</h2>
+      <span class="status ${statusClass(sr.status)}">${esc(displayStatus(sr.status, progress ? 'In progress' : 'Completed'))}</span>
     </div>
+    ${progress ? progressBannerHtml(options.generatedAt || new Date()) : ''}
     <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:14px;align-items:start">
       <div class="identity">
         ${idBox('Request #', sr.request_number)}
@@ -204,7 +215,7 @@ const serviceOverviewPageHtml = (sr: any, facility: Facility | null | undefined,
       ['Created', fmtDateTime(sr.created_at)],
       ['Assigned', fmtDateTime(sr.assigned_at)],
       ['Started', fmtDateTime(sr.started_at)],
-      ['Completed', fmtDateTime(sr.completed_at)],
+      ['Completed', progress ? 'Not yet completed' : fmtDateTime(sr.completed_at)],
     ], 'No service timeline was recorded.')}
     <h2 class="sec">Work Summary</h2>
     <table class="doc">
@@ -281,7 +292,7 @@ const chargesHtml = (invoice: any) => {
     </table>`
 }
 
-const serviceBillingPageHtml = (sr: any) => {
+const serviceBillingPageHtml = (sr: any, options: ServiceReportOptions = {}) => {
   const invoice = sr.invoice
   const amount = invoice ? numberValue(invoice.total_amount) : numberValue(sr.total_cost)
   const paid = invoice?.amount_paid !== undefined
@@ -300,7 +311,7 @@ const serviceBillingPageHtml = (sr: any) => {
     ['Payment Method', displayStatus(invoice.payment_method, '')],
   ] : [
     ['Billing Status', displayStatus(sr.billing_status, 'Not invoiced')],
-    ['Recorded Service Cost', money(sr.total_cost)],
+    [options.progress ? 'Recorded Service Cost (so far)' : 'Recorded Service Cost', money(sr.total_cost)],
   ]
   return page(`
     <h2 class="sec" style="text-align:center;font-size:22px;color:#1E3A8A">Billing Page</h2>
@@ -315,22 +326,27 @@ const serviceBillingPageHtml = (sr: any) => {
     ${chargesHtml(invoice)}
     <h2 class="sec">${invoice ? 'Invoice Summary' : 'Billing Summary'}</h2>
     ${detailRowsHtml(summaryRows)}
-    ${invoice ? '' : '<p class="muted" style="margin-top:10px">No service invoice has been generated for this request.</p>'}
+    ${invoice ? '' : options.progress
+      ? '<p class="muted" style="margin-top:10px">The service is still in progress: it is invoiced once completed.</p>'
+      : '<p class="muted" style="margin-top:10px">No service invoice has been generated for this request.</p>'}
   `)
 }
 
-export const buildServiceReportBody = (sr: any, facility: Facility | null | undefined): string => {
+export const buildServiceReportBody = (sr: any, facility: Facility | null | undefined, options: ServiceReportOptions = {}): string => {
   const sessions = serviceSessions(sr)
   return [
-    serviceOverviewPageHtml(sr, facility, sessions),
+    serviceOverviewPageHtml(sr, facility, sessions, options),
     ...sessions.map((session, index) => serviceSessionPageHtml(session, index)),
     ...serviceAdditions(sr).map((addition, index) => serviceAdditionPageHtml(addition, index)),
-    serviceBillingPageHtml(sr),
+    serviceBillingPageHtml(sr, options),
   ].join('')
 }
 
-export const buildServiceReportDocument = (sr: any, facility: Facility | null | undefined): string =>
-  buildInspectionReportDocumentHtml(buildServiceReportBody(sr, facility), `${sr.request_number || 'Service'} Service Report`)
+export const buildServiceReportDocument = (sr: any, facility: Facility | null | undefined, options: ServiceReportOptions = {}): string =>
+  buildInspectionReportDocumentHtml(
+    buildServiceReportBody(sr, facility, options),
+    `${sr.request_number || 'Service'} ${options.progress ? 'Service Progress Report' : 'Service Report'}`,
+  )
 
 const printDocument = (docHtml: string) => {
   const frame = document.createElement('iframe')

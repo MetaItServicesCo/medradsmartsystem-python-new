@@ -161,6 +161,12 @@ export const fetchServiceReports = async (params: ReportListParams = {}): Promis
   return res.data
 }
 
+/** A request still being worked: its report so far. Not for completed or cancelled requests. */
+export const fetchServiceProgressReport = async (requestId: number): Promise<ServiceReport> => {
+  const res = await apiClient.get(`/reports/service-reports/${requestId}/progress`)
+  return res.data
+}
+
 export const fetchInspectionReports = async (params: ReportListParams = {}): Promise<ReportListResponse<InspectionReport>> => {
   const res = await apiClient.get('/reports/inspection-reports', { params: cleanParams(params) })
   return res.data
