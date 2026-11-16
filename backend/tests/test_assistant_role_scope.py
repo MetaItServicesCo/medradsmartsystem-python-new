@@ -50,7 +50,11 @@ def ok(label: str, condition: bool, detail: object = "") -> None:
         failures.append(label)
 
 
-engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+# ROLE_SCOPE_TEST_DB runs the same checks on a throwaway Postgres, as production uses.
+if os.environ.get("ROLE_SCOPE_TEST_DB"):
+    engine = create_engine(os.environ["ROLE_SCOPE_TEST_DB"])
+else:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 
 
 def _buildable(table) -> bool:
