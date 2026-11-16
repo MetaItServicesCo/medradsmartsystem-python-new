@@ -21,6 +21,10 @@ from app.assistant.tools.base import (
     validate_date_range,
 )
 from app.assistant.tools.local_time import facility_local_day_filter, facility_zones, time_label
+from app.assistant.tools.scope import (
+    OWN_INSPECTIONS_NOTE, OWN_SERVICE_WORK_NOTE, scope_inspections, scope_service_requests,
+    sees_only_own_inspections, sees_only_own_service_work,
+)
 from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
@@ -138,9 +142,7 @@ def resolve_entity(
 
     elif kind == "service_request":
         ctx.require_module("service-requests")
-        base = ctx.scope_to_facilities(
-            ctx.db.query(ServiceRequest), ServiceRequest.facility_id
-        ).filter(or_(
+        base = scope_service_requests(ctx, ctx.db.query(ServiceRequest)).filter(or_(
             ServiceRequest.request_number.ilike(pattern, escape="\\"),
             ServiceRequest.problem_description.ilike(pattern, escape="\\"),
         ))
@@ -156,9 +158,8 @@ def resolve_entity(
 
     elif kind == "inspection":
         ctx.require_module("inspections")
-        base = ctx.scope_to_facilities(
-            ctx.db.query(Inspection), Inspection.facility_id
-        ).filter(Inspection.inspection_number.ilike(pattern, escape="\\"))
+        base = scope_inspections(ctx, ctx.db.query(Inspection), Inspection).filter(
+            Inspection.inspection_number.ilike(pattern, escape="\\"))
         total = base.count()
         for inspection in base.order_by(Inspection.scheduled_date.desc()).limit(take).all():
             items.append({
@@ -401,7 +402,7 @@ def search_inspections(
     completed_only = normalized_status == [InspectionStatus.COMPLETED]
 
     def build(target):
-        query = ctx.scope_to_facilities(ctx.db.query(target), target.facility_id)
+        query = scope_inspections(ctx, ctx.db.query(target), target)
         if inspector_id is not None:
             query = query.filter(target.inspector_id == inspector_id)
         if facility_id is not None:
@@ -447,7 +448,7 @@ def search_inspections(
         ),
     } for row in rows]
 
-    notes = [
+    notes = ([OWN_INSPECTIONS_NOTE] if sees_only_own_inspections(ctx) else []) + [
         "Counted {} — the same unit the Inspections module displays.".format(unit)
         if not count_assets
         else "Counted individual asset inspections, not the visits shown in the module.",
@@ -490,7 +491,7 @@ def service_request_detail(
     if service_request_id is None and not request_number:
         raise ToolInputError("Provide either service_request_id or request_number.")
 
-    query = ctx.scope_to_facilities(ctx.db.query(ServiceRequest), ServiceRequest.facility_id)
+    query = scope_service_requests(ctx, ctx.db.query(ServiceRequest))
     if service_request_id is not None:
         query = query.filter(ServiceRequest.id == service_request_id)
     else:
@@ -589,7 +590,7 @@ def search_service_requests(
     ctx.apply_statement_timeout()
     take = clamp_limit(limit)
 
-    query = ctx.scope_to_facilities(ctx.db.query(ServiceRequest), ServiceRequest.facility_id)
+    query = scope_service_requests(ctx, ctx.db.query(ServiceRequest))
     if facility_id is not None:
         query = query.filter(ServiceRequest.facility_id == facility_id)
     if assigned_technician_id is not None:
@@ -656,7 +657,7 @@ def search_service_requests(
         "route": _deep_link("/service-requests", search=row.request_number),
     } for row in rows]
 
-    notes: list[str] = []
+    notes: list[str] = [OWN_SERVICE_WORK_NOTE] if sees_only_own_service_work(ctx) else []
     if basis == "scheduled":
         notes.append(
             "Dates are the day each request is booked for (its Preferred Date / Time), "
@@ -672,8 +673,7 @@ def search_service_requests(
         # answer contradict whichever screen the reader checks.
         if status_group in {"new_open", "open_all"}:
             counterpart = "open_all" if status_group == "new_open" else "new_open"
-            other = query.session.query(ServiceRequest)
-            other = ctx.scope_to_facilities(other, ServiceRequest.facility_id).filter(
+            other = scope_service_requests(ctx, query.session.query(ServiceRequest)).filter(
                 ServiceRequest.status.in_(SERVICE_STATUS_GROUPS[counterpart])
             )
             if facility_id is not None:

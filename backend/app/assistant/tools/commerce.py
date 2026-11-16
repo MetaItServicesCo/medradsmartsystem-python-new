@@ -31,6 +31,7 @@ from app.models.service_request import (
     ServiceRequestQuotation,
 )
 from app.models.sales import SalesQuotation
+from app.assistant.tools.scope import OWN_SERVICE_WORK_NOTE, scope_service_requests, sees_only_own_service_work
 
 
 logger = logging.getLogger("medrad.assistant.commerce")
@@ -309,12 +310,13 @@ def search_service_quotations(
 
     # Joined so the query can be scoped and filtered by facility: a service
     # quote has no facility of its own, it inherits the request's.
-    query = ctx.scope_to_facilities(
+    # The quote's request decides who may see it, as on the screen.
+    query = scope_service_requests(
+        ctx,
         ctx.db.query(ServiceRequestQuotation).join(
             ServiceRequest,
             ServiceRequestQuotation.service_request_id == ServiceRequest.id,
         ),
-        ServiceRequest.facility_id,
     )
 
     allowed = [member.value for member in QuotationStatus]
@@ -391,7 +393,7 @@ def search_service_quotations(
             "date_from": date_from.isoformat() if date_from else None,
             "date_to": date_to.isoformat() if date_to else None,
         },
-        notes=[
+        notes=([OWN_SERVICE_WORK_NOTE] if sees_only_own_service_work(ctx) else []) + [
             "Service quotes belong to service requests and are numbered after "
             "them, as in SR-001709-Q01. They are unrelated to sales "
             "quotations; searching one will never find the other.",

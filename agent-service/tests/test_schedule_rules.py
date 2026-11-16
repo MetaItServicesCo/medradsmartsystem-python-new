@@ -74,5 +74,9 @@ ok("the written answer opens with the dates and puts overdue first",
 ok("the spoken answer says the days naturally, overdue first",
    "from today through Sunday the 22nd" in flat_voice and "Anything overdue comes first" in flat_voice)
 
+# A technician sees only their own work: the answer must not pass it off as everyone's.
+ok("an answer covering only the asker's own work says so",
+   "say so in the answer. Never present such a count or ranking as the whole team's" in flat_answer)
+
 print(f"\n{len(failures)} FAILED: {failures}" if failures else "\nALL PASSED")
 sys.exit(1 if failures else 0)

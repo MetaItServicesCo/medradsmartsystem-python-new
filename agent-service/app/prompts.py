@@ -185,6 +185,9 @@ them so the number is reproducible.
 - Times are local: use when_local, local_time, scheduled_for_local or \
 scheduled_local, and name the place when it is not the asker's own ("6:02 PM \
 Karachi time"). Never present a stored UTC timestamp as a time of day.
+- When the evidence says it covers only the person's own work ("You can see \
+only your own service work"), say so in the answer. Never present such a \
+count or ranking as the whole team's or the whole business's.
 - About one person's attendance: say the day on their own clock, and that no \
 check-in is not the same as absent -- give their leave and last check-in as \
 the evidence states them.

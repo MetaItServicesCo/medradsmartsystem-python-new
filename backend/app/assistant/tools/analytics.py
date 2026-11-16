@@ -15,6 +15,8 @@ from typing import Any, Optional
 
 from sqlalchemy import func
 
+from app.assistant.tools.scope import OWN_SERVICE_WORK_NOTE, scope_inspections, scope_service_requests, sees_only_own_service_work
+from app.utils.permissions import has_module_permission
 from app.assistant.tools.base import (
     ToolContext,
     ToolInputError,
@@ -66,7 +68,12 @@ def rank_technicians(
     start, end = datetime_bounds(date_from, date_to)
 
     def tally(model, person_column, date_column, completed_value):
-        query = ctx.scope_to_facilities(ctx.db.query(model), model.facility_id)
+        # As the module shows them: a technician's own work only, an
+        # employee's own requests only.
+        if model is ServiceRequest:
+            query = scope_service_requests(ctx, ctx.db.query(model))
+        else:
+            query = scope_inspections(ctx, ctx.db.query(model), model)
         query = query.filter(person_column.isnot(None))
         if measure == "completed":
             query = query.filter(model.status == completed_value)
@@ -86,7 +93,9 @@ def rank_technicians(
     )
     inspection_date = InspectionBatch.completed_at if measure == "completed" else InspectionBatch.scheduled_date
     inspections = {}
-    if ctx.user and True:
+    # Inspections only for someone who may see the Inspections module.
+    inspections_counted = has_module_permission(ctx.user, "inspections", "view")
+    if inspections_counted:
         inspections = tally(
             InspectionBatch, InspectionBatch.inspector_id,
             inspection_date, InspectionStatus.COMPLETED,
@@ -105,7 +114,8 @@ def rank_technicians(
             tool="rank_technicians",
             total_count=0,
             applied_filters={"measure": measure},
-            notes=["No technician activity matched these filters."],
+            notes=(["No technician activity matched these filters."]
+                   + ([OWN_SERVICE_WORK_NOTE] if sees_only_own_service_work(ctx) else [])),
         )
 
     names = {
@@ -148,10 +158,12 @@ def rank_technicians(
             "date_from": date_from.isoformat() if date_from else None,
             "date_to": date_to.isoformat() if date_to else None,
         },
-        notes=[
-            "Ranked by {} work: service requests plus inspection visits.".format(measure),
+        notes=([OWN_SERVICE_WORK_NOTE] if sees_only_own_service_work(ctx) else []) + [
+            "Ranked by {} work: service requests{}.".format(
+                measure, " plus inspection visits" if inspections_counted else ""),
             "Includes anyone assigned work, not only accounts with the technician role.",
-        ],
+        ] + ([] if inspections_counted else [
+            "Inspections are not counted: your account does not have access to the Inspections module."]),
     )
 
 
