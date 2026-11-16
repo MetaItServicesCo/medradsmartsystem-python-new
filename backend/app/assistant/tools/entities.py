@@ -21,6 +21,7 @@ from app.assistant.tools.base import (
     validate_date_range,
 )
 from app.assistant.tools.local_time import facility_local_day_filter, facility_zones, time_label
+from app.assistant.tools.person_match import clear_match, close_candidates, match_people
 from app.assistant.tools.scope import (
     OWN_INSPECTIONS_NOTE, OWN_SERVICE_WORK_NOTE, scope_inspections, scope_service_requests,
     sees_only_own_inspections, sees_only_own_service_work,
@@ -125,20 +126,20 @@ def resolve_entity(
 
     elif kind == "user":
         ctx.require_module("users")
-        base = ctx.db.query(User).filter(or_(
-            User.full_name.ilike(pattern, escape="\\"),
-            User.username.ilike(pattern, escape="\\"),
-        ))
-        total = base.count()
-        for user in base.order_by(User.full_name).limit(take).all():
-            items.append({
-                "user_id": user.id,
-                "full_name": user.full_name,
-                "username": user.username,
-                "role": getattr(user.role, "value", str(user.role)),
-                "is_active": bool(getattr(user, "is_active", True)),
-                "route": _deep_link("/users", search=user.full_name),
-            })
+        # Word by word, typo-tolerant, best fit first: "SAM" is the person
+        # whose name has the word SAM, not everyone with those letters.
+        candidates = match_people(ctx.db, needle, limit=take)
+        total = len(candidates)
+        best = clear_match(candidates)
+        for person in candidates:
+            items.append({**person, "route": _deep_link("/users", search=person["full_name"])})
+        if best is not None:
+            person_note = "Clear match: {} -- use this person.".format(best["full_name"])
+        elif candidates:
+            person_note = ("No single clear match for '{}': {}. Ask which one is meant.".format(
+                needle, ", ".join(p["full_name"] or p["username"] for p in close_candidates(candidates))))
+        else:
+            person_note = None
 
     elif kind == "service_request":
         ctx.require_module("service-requests")
@@ -187,6 +188,9 @@ def resolve_entity(
     notes: list[str] = []
     if total == 0:
         notes.append("No {} matched '{}'.".format(kind.replace("_", " "), needle))
+    elif kind == "user":
+        if person_note:
+            notes.append(person_note)
     elif total > 1:
         notes.append(
             "{} candidates matched; confirm which one is meant before answering.".format(total)

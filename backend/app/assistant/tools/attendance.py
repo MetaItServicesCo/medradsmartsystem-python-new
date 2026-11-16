@@ -25,6 +25,7 @@ from app.assistant.tools.base import (
     validate_date_range,
 )
 from app.assistant.tools.entities import _deep_link, _facility_names
+from app.assistant.tools.person_match import clear_match, close_candidates, match_people
 from app.assistant.tools.local_time import (
     day_label, person_zone, time_label, today_in, utc_bounds, widened_utc_bounds, zone_label,
 )
@@ -43,21 +44,6 @@ logger = logging.getLogger("medrad.assistant.attendance")
 EVENT_TYPES: tuple[str, ...] = tuple(m.value for m in AttendanceEventType)
 SOURCES: tuple[str, ...] = tuple(m.value for m in AttendanceSource)
 VERIFICATION_STATUSES: tuple[str, ...] = tuple(m.value for m in AttendanceVerificationStatus)
-
-
-def _like(value: str) -> str:
-    return "%{}%".format(value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_"))
-
-
-def _matching_people(ctx: ToolContext, person: str) -> list[User]:
-    """Everyone whose name matches, so two Sultans are never merged into one."""
-    return (
-        ctx.db.query(User)
-        .filter(User.full_name.ilike(_like(person), escape="\\"))
-        .order_by(User.full_name.asc())
-        .limit(10)
-        .all()
-    )
 
 
 def search_attendance(
@@ -123,9 +109,15 @@ def search_attendance(
         if subject is None:
             raise ToolInputError("No person with that id. Find them with resolve_entity first.")
     elif person:
-        matches = _matching_people(ctx, person)
-        if len(matches) > 1:
-            names = [m.full_name or m.username for m in matches]
+        # Word by word and typo-tolerant ("Sultan", "SAM", "Shahryad Ahmad"):
+        # one clear match is that person; several close ones are asked about,
+        # never merged.
+        candidates = match_people(ctx.db, person, limit=10)
+        best = clear_match(candidates)
+        if best is not None:
+            subject = ctx.db.get(User, best["user_id"])
+        elif candidates:
+            names = [m["full_name"] or m["username"] for m in close_candidates(candidates)]
             return ToolResult(
                 tool="search_attendance",
                 total_count=0,
@@ -135,8 +127,6 @@ def search_attendance(
                 notes=["{} people match \"{}\": {}. Ask which one before answering, then "
                        "search again with their user_id.".format(len(names), person, ", ".join(names))],
             )
-        if len(matches) == 1:
-            subject = matches[0]
         else:
             notes.append("Nobody's name matches \"{}\". Say so; do not report it as no "
                          "check-in.".format(person))
@@ -167,7 +157,8 @@ def search_attendance(
     if subject is not None:
         query = query.filter(AttendanceEvent.user_id == subject.id)
     elif person:
-        query = query.filter(User.full_name.ilike(_like(person), escape="\\"))
+        # A name that matched nobody: nothing to show for it.
+        query = query.filter(AttendanceEvent.user_id.is_(None))
 
     # A UTC range wide enough to hold the local days in every zone; the exact
     # local day of each event is then read from the zone it recorded.

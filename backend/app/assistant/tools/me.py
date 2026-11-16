@@ -36,6 +36,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.assistant.tools.base import (
@@ -161,16 +162,48 @@ def _inspection_item(row: Inspection) -> dict[str, Any]:
 
 def _event_item(row: CalendarEvent) -> dict[str, Any]:
     return {
-        "kind": "meeting" if row.is_meeting else "calendar_event",
+        # A technician schedule is work booked on the calendar ("Texas Pain
+        # Physicians, 1 pm") -- a job, with the place it is at.
+        "kind": "schedule" if row.is_schedule else ("meeting" if row.is_meeting else "calendar_event"),
         "reference": None,
         "id": row.id,
         "title": row.title,
         "when": _iso(row.start_time),
         "until": _iso(row.end_time),
+        "all_day": bool(getattr(row, "all_day", False)),
+        "location": getattr(row, "location", None),
         "status": None,
         "priority": None,
         "facility_id": None,
     }
+
+
+def _own_calendar(person_id: int):
+    """A person's own calendar entries: their personal events, and the
+    technician schedules they are tagged on -- not schedules they merely
+    created for somebody else."""
+    from app.models.user import User
+
+    return or_(
+        and_(CalendarEvent.user_id == person_id, CalendarEvent.is_schedule.is_(False)),
+        and_(CalendarEvent.is_schedule.is_(True), CalendarEvent.technicians.any(User.id == person_id)),
+    )
+
+
+def _their_schedules(ctx: ToolContext, person_id: int):
+    """Another person's technician schedules that the asker may see, as the
+    Calendar decides: an Admin or Super Admin sees every schedule, anyone
+    else those they created or are tagged on. Their personal events stay
+    private."""
+    from app.models.user import User, UserRole
+
+    tagged = and_(CalendarEvent.is_schedule.is_(True), CalendarEvent.technicians.any(User.id == person_id))
+    if ctx.user.role in (UserRole.SUPERADMIN, UserRole.ADMIN):
+        return tagged
+    return and_(tagged, or_(
+        CalendarEvent.user_id == ctx.user.id,
+        CalendarEvent.technicians.any(User.id == ctx.user.id),
+    ))
 
 
 def _leave_item(row: LeaveRequest) -> dict[str, Any]:
@@ -210,6 +243,10 @@ def _localize(db: Session, items: list[dict[str, Any]], zone: str) -> None:
         if item["kind"] == "leave":
             # Leave is a whole day wherever the person is: no clock time.
             item["local_date"] = instant.date().isoformat()
+            item["when_local"] = None
+            continue
+        if item.get("all_day"):
+            item["local_date"] = local_date(instant, item_zone).isoformat()
             item["when_local"] = None
             continue
         item["local_date"] = local_date(instant, item_zone).isoformat()
@@ -301,7 +338,7 @@ def _schedule(
     if allowed["events"]:
         events = (
             ctx.db.query(CalendarEvent)
-            .filter(CalendarEvent.user_id == person_id)
+            .filter(_own_calendar(person_id) if you else _their_schedules(ctx, person_id))
             .filter(CalendarEvent.start_time < own_end, CalendarEvent.end_time >= own_start)
         )
         items.extend(_event_item(row) for row in events.all())
@@ -418,7 +455,8 @@ def can_see_others_work(user: Any) -> bool:
 
 def person_schedule(
     ctx: ToolContext,
-    user_id: int,
+    user_id: Optional[int] = None,
+    person: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     limit: Optional[int] = None,
@@ -437,7 +475,29 @@ def person_schedule(
     ctx.apply_statement_timeout()
     if not can_see_others_work(ctx.user):
         raise ToolPermissionError("service-requests")
-    person = ctx.db.get(User, user_id) if user_id else None
+    if user_id is None and person:
+        # The name as typed -- "SAM", "Shahryad Ahmad (SAM)" -- resolved here,
+        # so a plain question needs one tool call, not a lookup and then this.
+        from app.assistant.tools.person_match import clear_match, close_candidates, match_people
+
+        candidates = match_people(ctx.db, person)
+        best = clear_match(candidates)
+        if best is None:
+            names = [p["full_name"] or p["username"] for p in close_candidates(candidates)]
+            return ToolResult(
+                tool="person_schedule",
+                total_count=0,
+                items=[],
+                aggregates={"people_matching": names},
+                applied_filters={"person": person},
+                notes=["{} \"{}\"{}.".format(
+                    "Several people could be" if names else "Nobody's name matches",
+                    person, ": " + ", ".join(names) + ". Ask which one is meant" if names else "")],
+            )
+        user_id = best["user_id"]
+    if user_id is None:
+        raise ToolInputError("Say who: their name as person, or user_id from resolve_entity.")
+    person = ctx.db.get(User, user_id)
     if person is None:
         raise ToolInputError("No person with that id. Find them with resolve_entity first.")
     if person.id == ctx.user.id:
@@ -495,7 +555,7 @@ def my_next_commitment(ctx: ToolContext) -> ToolResult:
     if allowed["events"]:
         found = (
             ctx.db.query(CalendarEvent)
-            .filter(CalendarEvent.user_id == ctx.user.id)
+            .filter(_own_calendar(ctx.user.id))
             .filter(CalendarEvent.end_time >= now)
             .order_by(CalendarEvent.start_time.asc())
             .first()

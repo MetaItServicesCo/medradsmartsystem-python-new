@@ -163,28 +163,30 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         permission="view",
         offered_if=me.can_see_others_work,
         description=(
-            "A named person's day or days: their booked service requests and "
-            "inspections (overdue work first), meetings and approved leave, "
-            "each part only where you may see it. Use for \"what are Daniel's "
-            "jobs today\", \"what is Sam doing tomorrow\", \"Daniel's "
-            "schedule this week\". Call resolve_entity for the name first and "
-            "pass that user_id; if it returns several people, ask which. "
-            "Without dates it covers the person's today and the next six "
-            "days, on their own clock; for \"today\" pass today's date as "
-            "date_from and date_to. Say the dates it covers (covers) and the "
-            "local times (when_local). Not for the person asking: that is "
-            "my_schedule."
+            "A named person's day or days: their technician schedules from "
+            "the Calendar (each with its place), booked service requests and "
+            "inspections (overdue work first) with each facility and address, "
+            "and approved leave, each part only where you may see it. Use for \"what are Daniel's jobs today\", \"what is "
+            "assigned to SAM today\", \"where is SAM today\", \"what is Sam "
+            "doing tomorrow\". Pass the name exactly as typed in person -- "
+            "nicknames such as SAM and small typos are fine, no lookup "
+            "needed first; if several people could be meant it says so, and "
+            "you ask which. Without dates it covers the person's today and "
+            "the next six days, on their own clock; for \"today\" pass "
+            "today's date as date_from and date_to. Say the dates it covers "
+            "(covers) and the local times (when_local). Not for the person "
+            "asking: that is my_schedule."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "user_id": {"type": "integer"},
+                "person": {"type": "string", "description": "The name as typed, e.g. \"SAM\" or \"Daniel Perez\"."},
+                "user_id": {"type": "integer", "description": "Instead of person, when already known."},
                 "date_from": _DATE,
                 "date_to": _DATE,
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100,
                           "default": 25},
             },
-            "required": ["user_id"],
         },
         handler=me.person_schedule,
     ),
@@ -595,10 +597,11 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "arrived or left, or anything about check-ins, use this. "
             "Defaults to today when no dates are given -- each person's own "
             "today where they checked in. For one person (\"has Sultan "
-            "marked attendance today\") call resolve_entity first and pass "
-            "user_id: the answer is then on their own clock, says when they "
-            "last checked in if not today, and whether they are on approved "
-            "leave. Times are local (local_time). Reports how a check-in was "
+            "marked attendance today\", \"where did SAM check in\") pass the "
+            "name as typed in person -- nicknames and small typos are fine -- "
+            "or user_id: the answer is then on their own clock, gives where "
+            "they checked in, says when they last checked in if not today, "
+            "and whether they are on approved leave. Times are local (local_time). Reports how a check-in was "
             "recorded (manual, face, admin) but never the stored images or "
             "face data."
         ),
@@ -610,7 +613,7 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
                     "enum": list(attendance.EVENT_TYPES),
                     "description": "Defaults to all events; use check_in for arrivals.",
                 },
-                "person": {"type": "string", "description": "Name, partial match. Prefer user_id for one person."},
+                "person": {"type": "string", "description": "The name as typed; nicknames and small typos are fine."},
                 "user_id": {"type": "integer", "description": "One person, from resolve_entity."},
                 "facility_id": {"type": "integer"},
                 "source": {"type": "string", "enum": list(attendance.SOURCES)},

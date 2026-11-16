@@ -38,14 +38,20 @@ ok("  and the general search with their own id is ruled out",
    "search_service_requests with their own id answers a different question" in flat_tools)
 ok("the old rule sending everyone's workload to the search is gone",
    "counting someone's assigned work is search_service_requests" not in flat_tools)
-ok("  another named person's day or jobs is person_schedule, after resolve_entity",
-   "Another named person's day or jobs" in flat_tools and "then person_schedule with that user_id" in flat_tools
-   and '"jobs" means both' in flat_tools)
+ok("  another named person's day or jobs is person_schedule, called once with the name as typed",
+   "Another named person's day or jobs" in flat_tools and "called once with the name exactly as typed in person" in flat_tools
+   and "do not look the person up first" in flat_tools
+   and '"jobs" and "what is assigned" mean all three' in flat_tools and "technician schedules from the Calendar" in flat_tools)
+ok("\"Where is SAM\": today's jobs with their facilities, and where they checked in",
+   '"Where is SAM"' in flat_tools and "never say there is no location information" in flat_tools)
+ok("after asking which person, the same tool is called again and the question answered",
+   "call the same tool again with that name, and answer the original question" in flat_tools)
 ok("  and the asker's own work is still my_schedule", "their own work is my_schedule" in flat_tools)
 
 # "Has Sultan marked attendance today?"
-ok("one person's attendance: resolve_entity, then search_attendance with user_id; ask if several match",
-   "search_attendance with that user_id" in flat_tools and "If several people match, ask which" in flat_tools)
+ok("one person's attendance: search_attendance with the name as typed; ask if several could be meant",
+   "is search_attendance with the name as typed in person" in flat_tools
+   and "If a tool says several people could be meant, ask which" in flat_tools)
 ok("  answered on that person's own clock, with their day and place",
    "on that person's own clock" in flat_tools and "Today in Karachi" in flat_tools)
 ok("  no check-in is not absent: leave and last check-in are repeated",
