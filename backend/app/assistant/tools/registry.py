@@ -365,10 +365,15 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         module="service-requests",
         description=(
             "Find or count service requests by facility, assigned technician, "
-            "status or priority. For anything described as open, active or "
+            "status, priority or date. For anything described as open, active or "
             "completed, use status_group rather than listing statuses by hand: "
             "'open' means different things on different screens and the groups "
-            "match them exactly. Read total_count for 'how many' questions."
+            "match them exactly. Read total_count for 'how many' questions. "
+            "A date range needs date_basis: 'scheduled' is the day the work is "
+            "booked for (\"what is John doing on the 16th\", \"jobs for "
+            "tomorrow\"); 'created' is when requests were raised (\"what came in "
+            "last week\"). Not for the person asking about their own work or "
+            "day: that is my_schedule."
         ),
         parameters={
             "type": "object",
@@ -392,6 +397,15 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
                 "priority": {"type": "string", "enum": _values(Priority)},
                 "date_from": _DATE,
                 "date_to": _DATE,
+                "date_basis": {
+                    "type": "string",
+                    "enum": ["scheduled", "created"],
+                    "description": (
+                        "Required with a date range. scheduled = the day the work is "
+                        "booked for (the request's Preferred Date / Time); created = "
+                        "when the request was raised."
+                    ),
+                },
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
             },
         },
@@ -565,8 +579,8 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "'how many technicians are there', 'who are the admins', 'list "
             "active staff at facility X'. Returns total and active separately, "
             "plus a per-role breakdown. This counts PEOPLE, not their work: for "
-            "someone's assigned workload use search_service_requests with "
-            "assigned_technician_id."
+            "another person's assigned workload use search_service_requests with "
+            "assigned_technician_id; for the asker's own, my_schedule."
         ),
         parameters={
             "type": "object",

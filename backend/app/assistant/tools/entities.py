@@ -542,6 +542,10 @@ def service_request_detail(
     )
 
 
+# What a service request's date range is measured on.
+_SERVICE_DATE_BASES = ("scheduled", "created")
+
+
 def search_service_requests(
     ctx: ToolContext,
     facility_id: Optional[int] = None,
@@ -551,15 +555,34 @@ def search_service_requests(
     priority: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    date_basis: Optional[str] = None,
     limit: int = 25,
 ) -> ToolResult:
-    """Find service requests by facility, technician, status or priority.
+    """Find service requests by facility, technician, status, priority or date.
 
     Prefer ``status_group`` over listing statuses by hand: "open" is ambiguous
     in this product, and the group names map to exactly what each screen shows.
+
+    A request has two dates that answer different questions: when it was
+    raised, and the day it is booked for (its Preferred Date / Time). "What is
+    John doing on the 16th" is the booked date; "what came in last week" is
+    the raised date. Mixing them up answers a different question with a
+    confident wrong number, so a date range must say which it means.
     """
     ctx.require_module("service-requests")
     validate_date_range(date_from, date_to)
+    basis = (date_basis or "").strip().lower() or None
+    if basis is not None and basis not in _SERVICE_DATE_BASES:
+        raise ToolInputError(
+            "'{}' is not a valid date_basis. Valid values: {}".format(date_basis, ", ".join(_SERVICE_DATE_BASES))
+        )
+    if (date_from or date_to) and basis is None:
+        raise ToolInputError(
+            "Say which date the range is for: date_basis 'scheduled' for the day the work "
+            "is booked for (\"on the 16th\", \"for tomorrow\", \"this week's jobs\"), or "
+            "'created' for when requests were raised (\"what came in last week\"). For the "
+            "person asking about their own day, my_schedule answers it directly."
+        )
     ctx.apply_statement_timeout()
     take = clamp_limit(limit)
 
@@ -598,13 +621,18 @@ def search_service_requests(
         query = query.filter(ServiceRequest.priority == priority)
 
     start, end = datetime_bounds(date_from, date_to)
+    date_column = ServiceRequest.preferred_datetime if basis == "scheduled" else ServiceRequest.created_at
     if start is not None:
-        query = query.filter(ServiceRequest.created_at >= start)
+        query = query.filter(date_column >= start)
     if end is not None:
-        query = query.filter(ServiceRequest.created_at < end)
+        query = query.filter(date_column < end)
 
     total = query.count()
-    rows = query.order_by(ServiceRequest.created_at.desc()).limit(take).all()
+    ordering = (
+        [ServiceRequest.preferred_datetime.asc(), ServiceRequest.id.asc()]
+        if basis == "scheduled" else [ServiceRequest.created_at.desc()]
+    )
+    rows = query.order_by(*ordering).limit(take).all()
     facility_names = _facility_names(ctx, {r.facility_id for r in rows})
     tech_names = _user_names(ctx, {r.assigned_technician_id for r in rows if r.assigned_technician_id})
 
@@ -616,10 +644,19 @@ def search_service_requests(
         "facility_name": facility_names.get(row.facility_id),
         "assigned_technician_name": tech_names.get(row.assigned_technician_id),
         "created_at": row.created_at.isoformat() if row.created_at else None,
+        # The day the work is booked for (the request's Preferred Date / Time).
+        "scheduled_for": row.preferred_datetime.isoformat() if row.preferred_datetime else None,
         "route": _deep_link("/service-requests", search=row.request_number),
     } for row in rows]
 
     notes: list[str] = []
+    if basis == "scheduled":
+        notes.append(
+            "Dates are the day each request is booked for (its Preferred Date / Time). "
+            "Requests with no booked date are not counted."
+        )
+    elif basis == "created":
+        notes.append("Dates are when each request was raised, not the day it is booked for.")
     if group_note:
         notes.append(group_note)
         # "Open" differs between the module and the dashboard, so when either
@@ -655,6 +692,7 @@ def search_service_requests(
             "priority": priority,
             "date_from": date_from.isoformat() if date_from else None,
             "date_to": date_to.isoformat() if date_to else None,
+            "date_basis": basis,
         },
         notes=notes,
     )
