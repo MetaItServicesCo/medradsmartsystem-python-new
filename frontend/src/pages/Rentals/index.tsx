@@ -2826,6 +2826,14 @@ const Rentals = () => {
               helperText={selectedRentalPart ? `${selectedPartRemaining} available` : undefined}
             />
             <NumericField showZero label={`Rate / ${agreementForm.billing_frequency}`} value={itemDraft.rental_rate} onChange={val => setItemDraft(prev => ({ ...prev, rental_rate: val }))} />
+            <TextField
+              label="Unit Price"
+              value={selectedRentalPart ? money(selectedRentalPart.unit_price) : ''}
+              InputProps={{ readOnly: true }}
+              inputProps={{ 'data-selected-part-price': true }}
+              helperText="From parts inventory"
+              placeholder="Select a product"
+            />
             <TextField label="Condition" value={itemDraft.item_condition || ''} InputProps={{ readOnly: true }} helperText="From parts inventory" placeholder={selectedRentalPart ? '—' : 'Select a product'} />
             <NumericField showZero label="Shipping & Packing" value={itemDraft.shipping_fee} onChange={val => setItemDraft(prev => ({ ...prev, shipping_fee: val }))} />
             <NumericField showZero label="Delivery & Setup" value={itemDraft.setup_fee} onChange={val => setItemDraft(prev => ({ ...prev, setup_fee: val }))} />

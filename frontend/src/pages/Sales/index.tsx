@@ -394,6 +394,8 @@ const Sales = () => {
   const [selectedPart, setSelectedPart] = useState<SalesPart | null>(null)
   const [selectedPartQty, setSelectedPartQty] = useState(1)
   const [selectedPartShipping, setSelectedPartShipping] = useState(0)
+  // The selected part's price, shown as soon as it is chosen; it is what the line is priced at.
+  const [selectedPartPrice, setSelectedPartPrice] = useState(0)
   const [selectedPartSetup, setSelectedPartSetup] = useState(0)
   const [selectedPartLabor, setSelectedPartLabor] = useState(0)
   const [selectedPartCondition, setSelectedPartCondition] = useState('New')
@@ -930,6 +932,7 @@ const Sales = () => {
     setSalesDocumentMode(mode)
     setEditingQuotation(null)
     setSelectedPart(null)
+    setSelectedPartPrice(0)
     setQuotationForm(emptyQuotation())
     setAddressParts(emptyAddressParts())
     setTradeInEnabled(false)
@@ -948,6 +951,7 @@ const Sales = () => {
     setSalesDocumentMode(quotation.document_kind === 'direct_invoice' ? 'invoice' : 'quotation')
     setEditingQuotation(quotation)
     setSelectedPart(null)
+    setSelectedPartPrice(0)
     setAddressParts({ street: quotation.customer_address || '', city: '', state: '', zip: '' })
     setQuotationForm({
       facility_id: quotation.facility_id,
@@ -1031,7 +1035,7 @@ const Sales = () => {
           item_kind: 'product',
           is_default: prev.quotation_type === 'standard',
           quantity: selectedPartQty,
-          unit_price: Number(part.unit_price || 0),
+          unit_price: Number(selectedPartPrice || 0),
           shipping_fee: selectedPartShipping,
           setup_fee: selectedPartSetup,
           labor_fee: selectedPartLabor,
@@ -1041,6 +1045,7 @@ const Sales = () => {
       ],
     }))
     setSelectedPart(null)
+    setSelectedPartPrice(0)
     setSelectedPartQty(1)
     setSelectedPartShipping(0)
     setSelectedPartSetup(0)
@@ -2473,7 +2478,10 @@ const Sales = () => {
               <PartSearchAutocomplete<SalesPart>
                 label="Part assigned for sale"
                 value={selectedPart}
-                onChange={setSelectedPart}
+                onChange={part => {
+                  setSelectedPart(part)
+                  setSelectedPartPrice(Number(part?.unit_price || 0))
+                }}
                 fetchParts={fetchSalesParts}
                 queryKey="sales-parts-picker"
                 icon={<Inventory2Icon fontSize="small" />}
@@ -2506,6 +2514,15 @@ const Sales = () => {
               helperText={selectedPart
                 ? `${selectedPartRemaining} more available`
                 : ' '}
+            />
+            <NumericField
+              showZero
+              label="Unit Price"
+              value={selectedPartPrice}
+              onChange={setSelectedPartPrice}
+              disabled={!selectedPart}
+              helperText={selectedPart ? 'From the part; change it if needed' : 'Select a part'}
+              data-selected-part-price
             />
             <NumericField showZero label="Shipping & Packing" value={selectedPartShipping} onChange={setSelectedPartShipping} />
             <NumericField showZero label="Delivery & Setup" value={selectedPartSetup} onChange={setSelectedPartSetup} />
