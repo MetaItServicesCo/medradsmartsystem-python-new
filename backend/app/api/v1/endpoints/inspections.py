@@ -176,6 +176,15 @@ class InspectionTechnicianUpdate(BaseModel):
     inspector_id: Optional[int] = None
 
 
+class BatchAssetSelection(BaseModel):
+    """Assets chosen in a batch, by their inspection ids."""
+    inspection_ids: list[int] = Field(min_length=1, max_length=1000)
+
+
+class BatchAssetTechnicianUpdate(BatchAssetSelection):
+    inspector_id: Optional[int] = None
+
+
 class InspectionDetailsUpdate(BaseModel):
     scheduled_date: Optional[datetime] = None
     inspection_frequency: Optional[str] = None
@@ -865,6 +874,116 @@ def _load_batch_for_update(db: Session, batch_id: int, current_user: User) -> In
         raise HTTPException(status_code=404, detail="Inspection batch not found")
     require_facility_access(db, current_user, batch.facility_id)
     return batch
+
+
+WORKABLE_STATUSES = (InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS)
+
+
+def _selected_batch_assets(batch: InspectionBatch, inspection_ids: list[int]) -> list[Inspection]:
+    """The chosen assets, each of which must be in this batch."""
+    wanted = list(dict.fromkeys(inspection_ids))
+    by_id = {item.id: item for item in batch.inspections}
+    missing = [item_id for item_id in wanted if item_id not in by_id]
+    if missing:
+        raise HTTPException(status_code=404, detail="One or more chosen assets are not in this batch")
+    return [by_id[item_id] for item_id in wanted]
+
+
+def _batch_invoice_exists(db: Session, batch: InspectionBatch) -> bool:
+    """An invoice for the batch, or for any asset in it (the rule that also stops deleting it)."""
+    inspection_ids = [item.id for item in batch.inspections]
+    return db.query(Invoice.id).filter(
+        or_(
+            Invoice.inspection_batch_id == batch.id,
+            Invoice.inspection_id.in_(inspection_ids) if inspection_ids else false(),
+        )
+    ).first() is not None
+
+
+def _require_assets_removable(db: Session, batch: InspectionBatch, assets: list[Inspection]) -> None:
+    """Assets leave a batch only while it is being worked and before anything is invoiced."""
+    if batch.status not in WORKABLE_STATUSES:
+        raise HTTPException(status_code=400, detail="Assets can only be removed from an upcoming or in-progress batch")
+    if any(item.status == InspectionStatus.COMPLETED for item in assets):
+        raise HTTPException(status_code=400, detail="Completed assets cannot be removed from a batch")
+    if _batch_invoice_exists(db, batch):
+        raise HTTPException(status_code=409, detail="This batch has an invoice, so assets cannot be removed from it")
+
+
+def _delete_batch(db: Session, batch: InspectionBatch, current_user: User, extra_technicians: set[int] = frozenset()) -> dict[str, Any]:
+    """Delete the batch and whatever asset inspections remain in it, tell its
+    technicians, and commit. The callers have checked that it may go."""
+    inspection_ids = [item.id for item in batch.inspections]
+    technician_ids = (
+        {item.inspector_id for item in batch.inspections if item.inspector_id}
+        | ({batch.inspector_id} if batch.inspector_id else set())
+        | set(extra_technicians)
+    )
+    facility = db.query(Facility).filter(Facility.id == batch.facility_id).first()
+    for inspection in batch.inspections:
+        log_activity(db, "inspections", inspection.id, "DELETE_WITH_BATCH", current_user, {
+            "batch_id": batch.id,
+            "batch_number": batch.batch_number,
+            "equipment_id": inspection.equipment_id,
+            "inventory_part_id": inspection.inventory_part_id,
+            "status": _value(inspection.status),
+        })
+    log_activity(db, "inspection_batches", batch.id, "DELETE", current_user, {
+        "batch_number": batch.batch_number,
+        "facility_id": batch.facility_id,
+        "status": _value(batch.status),
+        "asset_count": len(inspection_ids),
+        "inspection_ids": inspection_ids,
+    })
+    for technician_id in technician_ids:
+        _tell_technician(db, technician_id, current_user, f"Inspection cancelled: {batch.batch_number}",
+                         f"The inspection batch at {facility.name if facility else 'the facility'} was deleted.")
+    batch_id, batch_number = batch.id, batch.batch_number
+    db.delete(batch)
+    db.commit()
+    return {"detail": f"{batch_number} deleted", "id": batch_id, "batch_number": batch_number,
+            "deleted_inspections": len(inspection_ids), "deleted": True}
+
+
+def _remove_batch_assets(db: Session, batch: InspectionBatch, assets: list[Inspection], current_user: User) -> Any:
+    """Take the assets out of the batch. Its last asset going deletes the batch."""
+    removed_technicians = {item.inspector_id for item in assets if item.inspector_id}
+    for inspection in assets:
+        log_activity(db, "inspections", inspection.id, "REMOVE_BATCH_ASSET", current_user,
+                     {"batch_id": batch.id, "equipment_id": inspection.equipment_id})
+        db.delete(inspection)
+    db.flush()
+    db.expire(batch, ["inspections"])
+    if not batch.inspections:
+        return _delete_batch(db, batch, current_user, removed_technicians)
+    _sync_batch_status(batch)
+    db.commit()
+    db.refresh(batch)
+    return get_inspection_batch(batch.id, db, current_user)
+
+
+def _give_batch_to(db: Session, batch: InspectionBatch, inspector_id: Optional[int], current_user: User) -> None:
+    """The batch, and every asset in it not yet completed or closed, to one technician."""
+    now = datetime.utcnow()
+    previous = batch.inspector_id
+    batch.inspector_id = inspector_id
+    batch.updated_at = now
+    changed = 0
+    for inspection in batch.inspections:
+        if inspection.status not in WORKABLE_STATUSES:
+            continue
+        if inspection.inspector_id != inspector_id:
+            inspection.inspector_id = inspector_id
+            inspection.updated_at = now
+            log_activity(db, "inspections", inspection.id, "CHANGE_TECHNICIAN", current_user,
+                         {"inspector_id": inspector_id, "batch_id": batch.id})
+            changed += 1
+    log_activity(db, "inspection_batches", batch.id, "CHANGE_TECHNICIAN", current_user,
+                 {"before": previous, "after": inspector_id, "assets_changed": changed})
+    if inspector_id and inspector_id != previous:
+        facility = db.query(Facility).filter(Facility.id == batch.facility_id).first()
+        _tell_technician(db, inspector_id, current_user, f"Inspection assigned: {batch.batch_number}",
+                         f"{len(batch.inspections)} asset(s) at {facility.name if facility else 'the facility'}.")
 
 
 def _sync_batch_status(batch: Optional[InspectionBatch]) -> None:
@@ -2383,30 +2502,78 @@ def remove_asset_from_inspection_batch(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     require_module_permission(current_user, "inspections", "delete")
-
-    batch = db.query(InspectionBatch).options(joinedload(InspectionBatch.inspections)).filter(InspectionBatch.id == batch_id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Inspection batch not found")
-    require_facility_access(db, current_user, batch.facility_id)
-
-    inspection = db.query(Inspection).filter(Inspection.id == inspection_id, Inspection.batch_id == batch.id).first()
+    batch = _load_batch_for_update(db, batch_id, current_user)
+    inspection = next((item for item in batch.inspections if item.id == inspection_id), None)
     if not inspection:
         raise HTTPException(status_code=404, detail="Batch asset inspection not found")
-    if inspection.status == InspectionStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail="Completed assets cannot be removed from a batch")
+    _require_assets_removable(db, batch, [inspection])
+    return _remove_batch_assets(db, batch, [inspection], current_user)
 
-    log_activity(db, "inspections", inspection.id, "REMOVE_BATCH_ASSET", current_user, {"batch_id": batch.id, "equipment_id": inspection.equipment_id})
-    db.delete(inspection)
-    db.flush()
-    db.expire(batch, ["inspections"])
-    if batch.inspections:
-        _sync_batch_status(batch)
-    else:
-        batch.status = InspectionStatus.IN_PROGRESS
-        batch.completed_at = None
-        batch.updated_at = datetime.utcnow()
+
+@router.post("/batches/{batch_id}/assets/remove")
+def remove_assets_from_inspection_batch(
+    batch_id: int,
+    payload: BatchAssetSelection,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Take the chosen assets out of the batch, all or none. Removing every
+    asset deletes the batch."""
+    require_module_permission(current_user, "inspections", "delete")
+    batch = _load_batch_for_update(db, batch_id, current_user)
+    assets = _selected_batch_assets(batch, payload.inspection_ids)
+    if any(item.status == InspectionStatus.CLOSED for item in assets):
+        raise HTTPException(status_code=400, detail="Closed assets cannot be removed with others; remove them one by one")
+    _require_assets_removable(db, batch, assets)
+    return _remove_batch_assets(db, batch, assets, current_user)
+
+
+@router.patch("/batches/{batch_id}/assets/technician")
+def change_inspection_batch_assets_technician(
+    batch_id: int,
+    payload: BatchAssetTechnicianUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Give the chosen assets to a technician. Choosing every asset still to be
+    done gives the whole batch, exactly as changing the batch's technician does."""
+    require_module_permission(current_user, "inspections", "edit")
+    batch = _load_batch_for_update(db, batch_id, current_user)
+    if batch.status not in WORKABLE_STATUSES:
+        raise HTTPException(status_code=400, detail="Only upcoming or in-progress batches can change technician")
+    assets = _selected_batch_assets(batch, payload.inspection_ids)
+    if any(item.status not in WORKABLE_STATUSES for item in assets):
+        raise HTTPException(status_code=400, detail="Completed or closed assets keep their technician")
+    _assignable_technician(db, payload.inspector_id, batch.facility_id)
+
+    workable = {item.id for item in batch.inspections if item.status in WORKABLE_STATUSES}
+    if {item.id for item in assets} == workable:
+        _give_batch_to(db, batch, payload.inspector_id, current_user)
+        db.commit()
+        return get_inspection_batch(batch.id, db, current_user)
+
+    now = datetime.utcnow()
+    changed = 0
+    for inspection in assets:
+        if inspection.inspector_id == payload.inspector_id:
+            continue
+        inspection.inspector_id = payload.inspector_id
+        inspection.updated_at = now
+        log_activity(db, "inspections", inspection.id, "CHANGE_TECHNICIAN", current_user,
+                     {"inspector_id": payload.inspector_id, "batch_id": batch.id})
+        changed += 1
+    batch.updated_at = now
+    log_activity(db, "inspection_batches", batch.id, "CHANGE_ASSET_TECHNICIANS", current_user, {
+        "inspector_id": payload.inspector_id,
+        "inspection_ids": [item.id for item in assets],
+        "assets_changed": changed,
+    })
+    if payload.inspector_id and changed:
+        facility = db.query(Facility).filter(Facility.id == batch.facility_id).first()
+        # One message for all of them, not one per asset.
+        _tell_technician(db, payload.inspector_id, current_user, f"Inspection assigned: {batch.batch_number}",
+                         f"{changed} asset(s) at {facility.name if facility else 'the facility'}.")
     db.commit()
-    db.refresh(batch)
     return get_inspection_batch(batch.id, db, current_user)
 
 
@@ -2638,30 +2805,10 @@ def change_inspection_batch_technician(
     yet completed or closed. Each asset can still be changed on its own."""
     require_module_permission(current_user, "inspections", "edit")
     batch = _load_batch_for_update(db, batch_id, current_user)
-    if batch.status not in (InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS):
+    if batch.status not in WORKABLE_STATUSES:
         raise HTTPException(status_code=400, detail="Only upcoming or in-progress batches can change technician")
     _assignable_technician(db, payload.inspector_id, batch.facility_id)
-
-    now = datetime.utcnow()
-    previous = batch.inspector_id
-    batch.inspector_id = payload.inspector_id
-    batch.updated_at = now
-    changed = 0
-    for inspection in batch.inspections:
-        if inspection.status not in (InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS):
-            continue
-        if inspection.inspector_id != payload.inspector_id:
-            inspection.inspector_id = payload.inspector_id
-            inspection.updated_at = now
-            log_activity(db, "inspections", inspection.id, "CHANGE_TECHNICIAN", current_user,
-                         {"inspector_id": payload.inspector_id, "batch_id": batch.id})
-            changed += 1
-    log_activity(db, "inspection_batches", batch.id, "CHANGE_TECHNICIAN", current_user,
-                 {"before": previous, "after": payload.inspector_id, "assets_changed": changed})
-    if payload.inspector_id and payload.inspector_id != previous:
-        facility = db.query(Facility).filter(Facility.id == batch.facility_id).first()
-        _tell_technician(db, payload.inspector_id, current_user, f"Inspection assigned: {batch.batch_number}",
-                         f"{len(batch.inspections)} asset(s) at {facility.name if facility else 'the facility'}.")
+    _give_batch_to(db, batch, payload.inspector_id, current_user)
     db.commit()
     return get_inspection_batch(batch.id, db, current_user)
 
@@ -2685,40 +2832,9 @@ def delete_inspection_batch(
             status_code=400,
             detail=f"{len(completed)} asset(s) in this batch are completed, so it cannot be deleted. Remove the other assets one by one instead.",
         )
-    inspection_ids = [item.id for item in batch.inspections]
-    invoiced = db.query(Invoice.id).filter(
-        or_(
-            Invoice.inspection_batch_id == batch.id,
-            Invoice.inspection_id.in_(inspection_ids) if inspection_ids else false(),
-        )
-    ).first()
-    if invoiced:
+    if _batch_invoice_exists(db, batch):
         raise HTTPException(status_code=409, detail="This batch has an invoice, so it cannot be deleted")
-
-    technician_ids = {item.inspector_id for item in batch.inspections if item.inspector_id} | ({batch.inspector_id} if batch.inspector_id else set())
-    facility = db.query(Facility).filter(Facility.id == batch.facility_id).first()
-    for inspection in batch.inspections:
-        log_activity(db, "inspections", inspection.id, "DELETE_WITH_BATCH", current_user, {
-            "batch_id": batch.id,
-            "batch_number": batch.batch_number,
-            "equipment_id": inspection.equipment_id,
-            "inventory_part_id": inspection.inventory_part_id,
-            "status": _value(inspection.status),
-        })
-    log_activity(db, "inspection_batches", batch.id, "DELETE", current_user, {
-        "batch_number": batch.batch_number,
-        "facility_id": batch.facility_id,
-        "status": _value(batch.status),
-        "asset_count": len(inspection_ids),
-        "inspection_ids": inspection_ids,
-    })
-    for technician_id in technician_ids:
-        _tell_technician(db, technician_id, current_user, f"Inspection cancelled: {batch.batch_number}",
-                         f"The inspection batch at {facility.name if facility else 'the facility'} was deleted.")
-    batch_number = batch.batch_number
-    db.delete(batch)
-    db.commit()
-    return {"detail": f"{batch_number} deleted", "id": batch_id, "batch_number": batch_number, "deleted_inspections": len(inspection_ids)}
+    return _delete_batch(db, batch, current_user)
 
 
 @router.post("/generate-upcoming", status_code=status.HTTP_201_CREATED)

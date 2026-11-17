@@ -47,7 +47,6 @@ import {
   addInspectionBatchAsset,
   addInspectionBatchExistingAssets,
   closeInspection as closeScheduledInspection,
-  changeInspectionBatchTechnician,
   setInspectionBatchTravelCost,
   closeInspectionBatch,
   deleteInspectionBatch,
@@ -64,6 +63,9 @@ import {
   generateInspectionInvoice,
   generateUpcomingInspections,
   removeInspectionBatchAsset,
+  removeInspectionBatchAssets,
+  changeInspectionBatchAssetsTechnician,
+  isDeletedBatch,
   reopenInspection,
   rescheduleInspectionBatch,
   scheduleInspections,
@@ -1055,7 +1057,8 @@ const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
 
 // The batch window's columns, in the order of the inventory record's Equipment Description:
 // Asset #, Make, Model, Modality, Sub-Modality, Tier, Description, Serial, then Technician, Status, Actions.
-const BATCH_ASSET_COLUMN_WIDTHS = ['8%', '8%', '9%', '9%', '11%', '6%', '13%', '10%', '10%', '9%', '7%']
+// A fixed column for the selection checkbox, then the columns as they were.
+const BATCH_ASSET_COLUMN_WIDTHS = ['44px', '8%', '8%', '9%', '9%', '11%', '6%', '13%', '10%', '10%', '9%', '7%']
 
 const Inspections = () => {
   const pageSize = 10
@@ -1140,10 +1143,13 @@ const Inspections = () => {
   const [upcomingBatchAnchor, setUpcomingBatchAnchor] = useState<HTMLElement | null>(null)
   // The technician a new inspection is given: the person creating it, unless another is chosen.
   const [createTechnicianId, setCreateTechnicianId] = useState<number | ''>('')
-  const [batchTechOpen, setBatchTechOpen] = useState(false)
   const [travelCostOpen, setTravelCostOpen] = useState(false)
   const [travelCostValue, setTravelCostValue] = useState('')
-  const [batchTechId, setBatchTechId] = useState<number | ''>('')
+  // Assets chosen in the open batch, for changing their technician or removing them together.
+  const [chosenAssetIds, setChosenAssetIds] = useState<number[]>([])
+  const [chosenTechOpen, setChosenTechOpen] = useState(false)
+  const [chosenTechId, setChosenTechId] = useState<number | ''>('')
+  const [chosenRemoveOpen, setChosenRemoveOpen] = useState(false)
   const [deleteBatchTarget, setDeleteBatchTarget] = useState<InspectionBatch | null>(null)
   const [upcomingBatchItem, setUpcomingBatchItem] = useState<InspectionBatch | null>(null)
   const [rescheduleBatch, setRescheduleBatch] = useState<InspectionBatch | null>(null)
@@ -1161,6 +1167,8 @@ const Inspections = () => {
   // from Hidden forms and happens straight off the menu.
   const [removingForm, setRemovingForm] = useState<InspectionFormOption | null>(null)
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
+  // A selection belongs to one batch: opening another starts with nothing selected.
+  useEffect(() => { setChosenAssetIds([]) }, [selectedBatchId])
   const [report, setReport] = useState<any>(null)
   const [partSearch, setPartSearch] = useState('')
   const [testEquipmentSearch, setTestEquipmentSearch] = useState('')
@@ -1755,14 +1763,43 @@ const Inspections = () => {
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection batch'),
   })
 
-  const batchTechMut = useMutation({
-    mutationFn: ({ id, inspectorId }: { id: number; inspectorId: number | null }) => changeInspectionBatchTechnician(id, inspectorId),
-    onSuccess: (batch) => {
-      toast.success(`${batch.batch_number} given to ${batch.inspector_name || 'no technician'}`)
-      setBatchTechOpen(false)
+  // Removing a batch's last asset deletes the batch: close it and say so.
+  const afterBatchAssetsRemoved = (result: Awaited<ReturnType<typeof removeInspectionBatchAssets>>, count: number) => {
+    setChosenAssetIds([])
+    setChosenRemoveOpen(false)
+    queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+    queryClient.invalidateQueries({ queryKey: ['inspections'] })
+    queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+    if (isDeletedBatch(result)) {
+      setSelectedBatchId(null)
+      toast.success(`${result.batch_number} had no assets left, so it was deleted`)
+      return
+    }
+    toast.success(count === 1 ? 'Asset removed from batch' : `${count} assets removed from batch`)
+    focusRecord(`inspection-batch-${result.id}`, result.batch_number, {
+      message: count === 1 ? 'Asset removed from this inspection batch.' : `${count} assets removed from this inspection batch.`,
+      announce: true,
+      query: { tab: result.status === 'completed' ? 3 : 2 },
+    })
+  }
+
+  const chosenTechMut = useMutation({
+    mutationFn: ({ batchId, ids, inspectorId }: { batchId: number; ids: number[]; inspectorId: number | null }) =>
+      changeInspectionBatchAssetsTechnician(batchId, ids, inspectorId),
+    onSuccess: (_batch, variables) => {
+      toast.success(`${variables.ids.length} asset${variables.ids.length === 1 ? '' : 's'} given to ${
+        batchTechnicians.find(user => user.id === variables.inspectorId)?.full_name || 'no technician'}`)
+      setChosenTechOpen(false)
+      setChosenAssetIds([])
       refreshInspectionQueries()
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not change the technician'),
+  })
+
+  const chosenRemoveMut = useMutation({
+    mutationFn: ({ batchId, ids }: { batchId: number; ids: number[] }) => removeInspectionBatchAssets(batchId, ids),
+    onSuccess: (result, variables) => afterBatchAssetsRemoved(result, variables.ids.length),
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not remove the assets from the batch'),
   })
 
   const travelCostMut = useMutation({
@@ -1995,17 +2032,7 @@ const Inspections = () => {
 
   const removeBatchAssetMut = useMutation({
     mutationFn: ({ batchId, inspectionId }: { batchId: number; inspectionId: number }) => removeInspectionBatchAsset(batchId, inspectionId),
-    onSuccess: (batch) => {
-      toast.success('Asset removed from batch')
-      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
-      queryClient.invalidateQueries({ queryKey: ['inspections'] })
-      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
-      focusRecord(`inspection-batch-${batch.id}`, batch.batch_number, {
-        message: 'Asset removed from this inspection batch.',
-        announce: true,
-        query: { tab: batch.status === 'completed' ? 3 : 2 },
-      })
-    },
+    onSuccess: (result) => afterBatchAssetsRemoved(result, 1),
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not remove asset from batch'),
   })
 
@@ -4572,6 +4599,76 @@ const Inspections = () => {
       : Number(selectedBatch.batch_invoice.amount_paid || 0) > 0 || selectedBatch.batch_invoice.status === 'paid'
         ? 'A payment has been recorded on the batch invoice, so its travel cost is fixed.'
         : ''
+  // An asset can be chosen while its batch is being worked and it is not completed or closed.
+  const batchWorkable = Boolean(selectedBatch && (selectedBatch.status === 'upcoming' || selectedBatch.status === 'in_progress'))
+  const choosableAssets = batchWorkable && (canEditInspections || canDeleteInspections)
+    ? (selectedBatch?.assets || []).filter(asset => asset.status === 'upcoming' || asset.status === 'in_progress')
+    : []
+  const choosableIds = choosableAssets.map(asset => asset.id)
+  const chosenAssets = choosableAssets.filter(asset => chosenAssetIds.includes(asset.id))
+  const allChosen = choosableIds.length > 0 && chosenAssets.length === choosableIds.length
+  const toggleChosenAsset = (id: number) => setChosenAssetIds(current => (
+    current.includes(id) ? current.filter(item => item !== id) : [...current, id]
+  ))
+  const toggleAllChosen = () => setChosenAssetIds(allChosen ? [] : choosableIds)
+  // Removing is not possible once the batch has an invoice (as for deleting it).
+  const batchRemovalBlocked = !batchWorkable
+    ? 'Assets can only be removed from an upcoming or in-progress batch'
+    : selectedBatch?.batch_invoice || (selectedBatch?.assets || []).some(asset => asset.invoice)
+      ? 'This batch has an invoice, so assets cannot be removed from it'
+      : ''
+  const inProgressChosen = chosenAssets.filter(asset => asset.status === 'in_progress').length
+  // Technicians across the batch's assets: one name, or "Mixed technicians".
+  const assetTechnicianNames = Array.from(new Set((selectedBatch?.assets || []).map(asset => asset.inspector_name || '').filter(Boolean)))
+  const batchTechnicianLabel = assetTechnicianNames.length > 1 ? 'Mixed technicians' : (selectedBatch?.inspector_name || assetTechnicianNames[0] || '—')
+
+  const chosenBar = chosenAssets.length > 0 && selectedBatch ? (
+    <Box
+      data-chosen-bar
+      sx={{
+        display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', px: 1.5, py: 1,
+        borderRadius: '14px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE',
+      }}
+    >
+      <Typography sx={{ fontWeight: 900, color: '#4C1D95', mr: 'auto', fontSize: 14 }}>
+        {chosenAssets.length} selected{allChosen ? ' (all)' : ''}
+      </Typography>
+      {canEditInspections && (
+        <Button
+          size="small"
+          variant="contained"
+          startIcon={<PersonIcon />}
+          onClick={() => {
+            const current = new Set(chosenAssets.map(asset => asset.inspector_id).filter(Boolean))
+            setChosenTechId(current.size === 1 ? Number([...current][0]) : '')
+            setChosenTechOpen(true)
+          }}
+          sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+        >
+          Change Technician
+        </Button>
+      )}
+      {canDeleteInspections && (
+        <Tooltip title={batchRemovalBlocked}>
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              disabled={Boolean(batchRemovalBlocked)}
+              onClick={() => setChosenRemoveOpen(true)}
+              sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+            >
+              Remove from Batch
+            </Button>
+          </span>
+        </Tooltip>
+      )}
+      <Button size="small" onClick={() => setChosenAssetIds([])} sx={{ textTransform: 'none', fontWeight: 800 }}>Clear</Button>
+    </Box>
+  ) : null
+
   const batchToolbar = selectedBatch && canInitiateInspections ? (
     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end', ...(batchOnPhone ? { justifyContent: 'stretch', mb: 1.5, '& > span, & > .MuiButton-root': { flex: '1 1 auto' }, '& > span > .MuiButton-root': { width: '100%' }, '& > .MuiChip-root': { flexBasis: '100%', justifyContent: 'flex-start', width: 'fit-content', maxWidth: '100%' } } : {}) }}>
       {selectedBatchBillingApproved && (
@@ -4607,17 +4704,6 @@ const Inspections = () => {
             </Button>
           </span>
         </Tooltip>
-      )}
-      {canEditInspections && (selectedBatch.status === 'upcoming' || selectedBatch.status === 'in_progress') && (
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<PersonIcon />}
-          onClick={() => { setBatchTechId(selectedBatch.inspector_id || ''); setBatchTechOpen(true) }}
-          sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
-        >
-          Change Technician
-        </Button>
       )}
       <Tooltip
         title={selectedBatchBillingApproved ? 'The approved batch invoice protects this inspection scope from further asset additions.' : ''}
@@ -5285,10 +5371,33 @@ const Inspections = () => {
                     <Box sx={{ width: 26, height: 26, borderRadius: '50%', bgcolor: '#F4F1FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <PersonIcon sx={{ fontSize: '0.95rem' }} />
                     </Box>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedBatch.inspector_name || '—'}</Typography>
+                    <Typography data-batch-technician sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{batchTechnicianLabel}</Typography>
                   </Box>
                 </Card>
               </Box>
+
+              {choosableIds.length > 0 && (batchOnPhone || choosableIds.length < (selectedBatch.assets || []).length) && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  {/* On a phone the cards have no header row, so Select all sits here. */}
+                  {batchOnPhone && <FormControlLabel
+                    data-select-all
+                    control={(
+                      <Checkbox
+                        size="small"
+                        checked={allChosen}
+                        indeterminate={chosenAssets.length > 0 && !allChosen}
+                        onChange={toggleAllChosen}
+                      />
+                    )}
+                    label={<Typography sx={{ fontWeight: 800, fontSize: 14, color: '#334155' }}>Select all ({choosableIds.length})</Typography>}
+                    sx={{ mr: 0 }}
+                  />}
+                  {choosableIds.length < (selectedBatch.assets || []).length && (
+                    <Typography sx={{ color: '#94A3B8', fontSize: 12.5, fontWeight: 700 }}>Completed and closed assets cannot be selected.</Typography>
+                  )}
+                </Box>
+              )}
+              {chosenBar}
 
               {batchOnPhone ? (
                 <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: '1fr', [PHONE_ON_ITS_SIDE]: { gridTemplateColumns: '1fr 1fr' } }}>
@@ -5302,8 +5411,18 @@ const Inspections = () => {
                       </Box>
                     )
                     return (
-                      <Card key={asset.id} data-batch-asset={asset.id} sx={{ p: 1.25, borderRadius: '12px', border: '1px solid #EEF0F6', boxShadow: 'none', display: 'grid', gap: 0.5, alignContent: 'start' }}>
+                      <Card key={asset.id} data-batch-asset={asset.id} sx={{ p: 1.25, borderRadius: '12px', border: chosenAssetIds.includes(asset.id) ? '1px solid #A78BFA' : '1px solid #EEF0F6', bgcolor: chosenAssetIds.includes(asset.id) ? '#FAF7FF' : undefined, boxShadow: 'none', display: 'grid', gap: 0.5, alignContent: 'start' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                          {choosableIds.length > 0 && (
+                            <Checkbox
+                              size="small"
+                              sx={{ p: 0.5, ml: -0.5 }}
+                              disabled={!choosableIds.includes(asset.id)}
+                              checked={chosenAssetIds.includes(asset.id)}
+                              onChange={() => toggleChosenAsset(asset.id)}
+                              inputProps={{ 'aria-label': `Select ${asset.asset_tag || asset.part_number || asset.inspection_number}` }}
+                            />
+                          )}
                           <Typography onClick={() => openBatchAsset(asset, selectedBatch)} sx={{ color: '#7161D8', fontWeight: 900, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', cursor: 'pointer', overflowWrap: 'anywhere', minWidth: 0 }}>
                             {asset.asset_tag || asset.part_number || '-'}
                           </Typography>
@@ -5339,6 +5458,8 @@ const Inspections = () => {
                     minWidth: { xs: 1080, lg: 0 },
                     '& .MuiTableCell-root': { px: 0.75, overflow: 'hidden' },
                     '& .MuiTableCell-root:first-of-type': { pl: 2 },
+                    // The selection checkbox needs no extra room on its left.
+                    '& .MuiTableCell-root.MuiTableCell-paddingCheckbox': { pl: 0.5, pr: 0 },
                     '& .MuiTableCell-root:last-of-type': { pr: 1.5 },
                     '& .MuiTableCell-head': { whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
                   }}
@@ -5348,6 +5469,18 @@ const Inspections = () => {
                   </colgroup>
                   <TableHead>
                     <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                      <TableCell padding="checkbox">
+                        {choosableIds.length > 0 && (
+                          <Checkbox
+                            size="small"
+                            data-select-all
+                            checked={allChosen}
+                            indeterminate={chosenAssets.length > 0 && !allChosen}
+                            onChange={toggleAllChosen}
+                            inputProps={{ 'aria-label': 'Select all assets that can be changed' }}
+                          />
+                        )}
+                      </TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Make</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Model</TableCell>
@@ -5370,7 +5503,19 @@ const Inspections = () => {
                           recordKey={`inspection-${asset.id}`}
                           recordLabel={asset.inspection_number}
                           hover
+                          selected={chosenAssetIds.includes(asset.id)}
                         >
+                          <TableCell padding="checkbox">
+                            {choosableIds.length > 0 && (
+                              <Checkbox
+                                size="small"
+                                disabled={!choosableIds.includes(asset.id)}
+                                checked={chosenAssetIds.includes(asset.id)}
+                                onChange={() => toggleChosenAsset(asset.id)}
+                                inputProps={{ 'aria-label': `Select ${asset.asset_tag || asset.part_number || asset.inspection_number}` }}
+                              />
+                            )}
+                          </TableCell>
                           <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color="#7161D8" fontWeight={900} onClick={() => openBatchAsset(asset, selectedBatch)} /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.make} fallback="—" /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.model} fallback="—" /></TableCell>
@@ -5502,7 +5647,8 @@ const Inspections = () => {
         </MenuItem>
         {canDeleteInspections && assetActionItem?.status !== 'completed' && (
           <MenuItem
-            disabled={removeBatchAssetMut.isPending}
+            disabled={removeBatchAssetMut.isPending || Boolean(batchRemovalBlocked)}
+            title={batchRemovalBlocked || undefined}
             onClick={() => {
               if (selectedBatch && assetActionItem) {
                 removeBatchAssetMut.mutate({ batchId: selectedBatch.id, inspectionId: assetActionItem.id })
@@ -7171,18 +7317,18 @@ const Inspections = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={batchTechOpen} onClose={() => !batchTechMut.isPending && setBatchTechOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+      <Dialog open={chosenTechOpen} onClose={() => !chosenTechMut.isPending && setChosenTechOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-          Change Technician for the Batch
+          Change Technician
           <Typography sx={{ mt: 0.5, color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
-            {selectedBatch?.batch_number} · {selectedBatch?.asset_count || 0} asset{selectedBatch?.asset_count === 1 ? '' : 's'}
+            {selectedBatch?.batch_number} · {chosenAssets.length} asset{chosenAssets.length === 1 ? '' : 's'}{allChosen ? ' (all)' : ''}
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
           <SearchableSelect<number>
             label="Technician"
-            value={batchTechId}
-            onChange={setBatchTechId}
+            value={chosenTechId}
+            onChange={setChosenTechId}
             options={batchTechnicians.map(user => ({
               value: user.id,
               label: user.full_name || user.username,
@@ -7190,19 +7336,54 @@ const Inspections = () => {
               keywords: `${user.username} ${user.email} ${user.role}`,
             }))}
             placeholder="Search technician name, username, or email"
-            helperText="The batch and every asset not yet completed go to this technician. Completed assets keep who did them."
+            helperText={allChosen
+              ? 'The batch and every asset not yet completed go to this technician. Completed assets keep who did them.'
+              : 'Only the selected assets change. The others keep their technician.'}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setBatchTechOpen(false)} disabled={batchTechMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button onClick={() => setChosenTechOpen(false)} disabled={chosenTechMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => selectedBatch && batchTechMut.mutate({ id: selectedBatch.id, inspectorId: batchTechId ? Number(batchTechId) : null })}
-            disabled={!canEditInspections || batchTechMut.isPending}
-            startIcon={batchTechMut.isPending ? <CircularProgress size={18} color="inherit" /> : <PersonIcon />}
+            data-chosen-tech-save
+            onClick={() => selectedBatch && chosenTechMut.mutate({
+              batchId: selectedBatch.id,
+              ids: chosenAssets.map(asset => asset.id),
+              inspectorId: chosenTechId ? Number(chosenTechId) : null,
+            })}
+            disabled={!canEditInspections || chosenTechMut.isPending || !chosenAssets.length}
+            startIcon={chosenTechMut.isPending ? <CircularProgress size={18} color="inherit" /> : <PersonIcon />}
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
           >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={chosenRemoveOpen} onClose={() => !chosenRemoveMut.isPending && setChosenRemoveOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Remove {chosenAssets.length} Asset{chosenAssets.length === 1 ? '' : 's'}?
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography data-chosen-remove-text sx={{ color: '#475569', fontWeight: 650, lineHeight: 1.65 }}>
+            {chosenAssets.length} asset{chosenAssets.length === 1 ? '' : 's'} will be removed from {selectedBatch?.batch_number}. The assets stay in inventory.
+            {inProgressChosen > 0 ? ` ${inProgressChosen} ${inProgressChosen === 1 ? 'is' : 'are'} in progress: what was entered on ${inProgressChosen === 1 ? 'it' : 'them'} is deleted.` : ''}
+            {chosenAssets.length === (selectedBatch?.assets || []).length ? ` This removes every asset, so ${selectedBatch?.batch_number} is deleted.` : ''}
+            {' '}This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setChosenRemoveOpen(false)} disabled={chosenRemoveMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            data-chosen-remove-confirm
+            onClick={() => selectedBatch && chosenRemoveMut.mutate({ batchId: selectedBatch.id, ids: chosenAssets.map(asset => asset.id) })}
+            disabled={!canDeleteInspections || chosenRemoveMut.isPending || !chosenAssets.length}
+            startIcon={chosenRemoveMut.isPending ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Remove
           </Button>
         </DialogActions>
       </Dialog>

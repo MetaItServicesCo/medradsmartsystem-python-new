@@ -610,11 +610,45 @@ export const addInspectionBatchExistingAssets = async (
   return res.data
 }
 
+/** Removing a batch's last asset deletes the batch: then this is what comes back. */
+export interface DeletedInspectionBatch {
+  deleted: true
+  id: number
+  batch_number: string
+  deleted_inspections: number
+  detail: string
+}
+
+export const isDeletedBatch = (result: InspectionBatch | DeletedInspectionBatch): result is DeletedInspectionBatch =>
+  (result as DeletedInspectionBatch).deleted === true
+
 export const removeInspectionBatchAsset = async (
   batchId: number,
   inspectionId: number
-): Promise<InspectionBatch> => {
+): Promise<InspectionBatch | DeletedInspectionBatch> => {
   const res = await apiClient.delete(`/inspections/batches/${batchId}/assets/${inspectionId}`)
+  return res.data
+}
+
+/** Take the chosen assets out of a batch, all or none. Removing every asset deletes the batch. */
+export const removeInspectionBatchAssets = async (
+  batchId: number,
+  inspectionIds: number[],
+): Promise<InspectionBatch | DeletedInspectionBatch> => {
+  const res = await apiClient.post(`/inspections/batches/${batchId}/assets/remove`, { inspection_ids: inspectionIds })
+  return res.data
+}
+
+/** Give the chosen assets to a technician; choosing every asset still to be done gives the whole batch. */
+export const changeInspectionBatchAssetsTechnician = async (
+  batchId: number,
+  inspectionIds: number[],
+  inspectorId: number | null,
+): Promise<InspectionBatch> => {
+  const res = await apiClient.patch(`/inspections/batches/${batchId}/assets/technician`, {
+    inspection_ids: inspectionIds,
+    inspector_id: inspectorId,
+  })
   return res.data
 }
 
