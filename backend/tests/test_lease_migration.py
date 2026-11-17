@@ -47,18 +47,24 @@ spec = importlib.util.spec_from_file_location(
     "lease_migration", ROOT / "alembic" / "versions" / "c7d1e5a9b3f2_lease_to_own.py")
 migration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(migration)
+# A later migration: a draft may be saved before its product or terms are chosen.
+drafts_spec = importlib.util.spec_from_file_location(
+    "drafts_migration", ROOT / "alembic" / "versions" / "f2a7c9d4e1b3_drafts_saved_as_they_are.py")
+drafts_migration = importlib.util.module_from_spec(drafts_spec)
+drafts_spec.loader.exec_module(drafts_migration)
 
 
-def run(fn, engine):
+def run(fn, engine, module=None):
+    module = module or migration
     with engine.begin() as conn:
         ctx = MigrationContext.configure(conn)
         op = Operations(ctx)
-        original = migration.op
-        migration.op = op
+        original = module.op
+        module.op = op
         try:
             fn()
         finally:
-            migration.op = original
+            module.op = original
 
 
 def family(column_type) -> str:
@@ -82,6 +88,7 @@ print()
 print("It creates the three tables")
 print("-" * 72)
 run(migration.upgrade, engine)
+run(drafts_migration.upgrade, engine, drafts_migration)
 present = set(sa.inspect(engine).get_table_names())
 for table in LEASE_TABLES:
     ok("{} exists".format(table), table in present)

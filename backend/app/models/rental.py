@@ -97,8 +97,9 @@ class Rental(Base):
     delivery_zip = Column(String, nullable=True)
     billing_frequency = Column(SQLEnum(BillingFrequency), nullable=False)
     security_deposit = Column(Numeric(10, 2), nullable=False)
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
+    # Empty only on a draft saved before its term was entered; required to go live.
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
     status = Column(SQLEnum(RentalStatus), default=RentalStatus.ACTIVE)
     terms_and_conditions = Column(Text, nullable=True)
     history = Column(JSON, nullable=True)

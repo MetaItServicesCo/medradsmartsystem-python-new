@@ -247,6 +247,9 @@ def _recurring_invoice_amounts(rental: Rental, period_index: int, *, include_con
 
 def effective_period_count(rental: Rental) -> int:
     """Number of billable periods, bounded by commitment and agreement end."""
+    if rental.start_date is None or rental.end_date is None:
+        # Only a draft saved before its term was entered: nothing to bill yet.
+        return 0
     if _freq(rental) == "custom":
         return max(1, int(rental.committed_periods or 1))
     count = 0

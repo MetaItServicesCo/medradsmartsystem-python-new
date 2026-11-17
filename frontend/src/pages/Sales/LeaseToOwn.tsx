@@ -65,6 +65,9 @@ const usd = (value?: string | number | null) => {
   return number.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 }
 
+/** A figure a draft has not been priced for yet shows as a dash, never $0.00. */
+const figure = (value?: string | null) => (value == null ? '—' : usd(value))
+
 const errorText = (error: unknown, fallback: string) => {
   const detail = (error as any)?.response?.data?.detail
   if (typeof detail === 'string') return detail
@@ -111,9 +114,9 @@ function LeaseFormDialog({ open, editing, onClose, onSaved }: {
         customer_phone: editing.customer_phone ?? '', customer_address: editing.customer_address ?? '',
         facility_id: editing.facility_id, part_id: editing.part_id ?? 0, quantity: editing.quantity,
         unit_cash_price: editing.unit_cash_price, markup_percent: editing.markup_percent,
-        down_payment: editing.down_payment, installment_count: editing.installment_count,
+        down_payment: editing.down_payment, installment_count: editing.installment_count ?? 12,
         frequency: editing.frequency, first_due_date: editing.first_due_date ?? nextMonth(),
-        tax_rate_percent: editing.tax_rate_percent, grace_days: editing.grace_days,
+        tax_rate_percent: editing.tax_rate_percent ?? '8.25', grace_days: editing.grace_days,
         late_fee_amount: editing.late_fee_amount, default_after_missed: editing.default_after_missed,
         invoice_lead_days: editing.invoice_lead_days, notes: editing.notes ?? '',
       })
@@ -167,14 +170,16 @@ function LeaseFormDialog({ open, editing, onClose, onSaved }: {
       return editing ? updateLease(editing.id, payload) : createLease(payload)
     },
     onSuccess: lease => {
-      toast.success(editing ? 'Agreement updated' : `Draft ${lease.agreement_number} created`)
+      if (lease.draft_issues?.length) {
+        // Saved as it is; it is sent once complete.
+        toast.info(`Draft ${lease.agreement_number} saved. Before it can be sent: ${lease.draft_issues.join(' ')}`)
+      } else {
+        toast.success(editing ? 'Agreement updated' : `Draft ${lease.agreement_number} created`)
+      }
       onSaved(lease)
     },
     onError: error => toast.error(errorText(error, 'Could not save the agreement')),
   })
-
-  const canSave = form.customer_name.trim() && form.customer_email.includes('@') && form.part_id > 0
-    && preview && !previewError
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
@@ -352,7 +357,8 @@ function LeaseFormDialog({ open, editing, onClose, onSaved }: {
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
-        <Button variant="contained" disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
+        {/* A draft saves however much is filled in; sending it needs it complete. */}
+        <Button variant="contained" disabled={save.isPending} onClick={() => save.mutate()} data-lease-save>
           {save.isPending ? 'Saving…' : editing ? 'Save changes' : 'Create draft'}
         </Button>
       </DialogActions>
@@ -408,6 +414,8 @@ function LeaseDetailDialog({ leaseId, onClose, onEdit }: {
 
   const open = lease?.status ?? ''
   const busy = send.isPending || collect.isPending || buyout.isPending || withdraw.isPending || cancel.isPending
+  // A draft saved before it was complete is finished in Edit before it can go out.
+  const incomplete = Boolean(lease?.draft_issues?.length)
 
   return (
     <Dialog open={leaseId != null} onClose={onClose} maxWidth="lg" fullWidth>
@@ -434,17 +442,22 @@ function LeaseDetailDialog({ leaseId, onClose, onEdit }: {
                 The customer overpaid {usd(lease.overpayment_amount)} during their buyout. Refund it from Billing.
               </Alert>
             )}
+            {Boolean(lease.draft_issues?.length) && (
+              <Alert severity="warning" data-lease-draft-issues>
+                This draft is not complete, so it cannot be sent yet. {lease.draft_issues!.join(' ')}
+              </Alert>
+            )}
             {lease.card_cleanup_pending && (
               <Alert severity="info">A replaced card is still being removed at Square; it can no longer be charged.</Alert>
             )}
 
             <Grid container spacing={2}>
               {[
-                ['Item', `${lease.quantity} × ${lease.item_description}`],
-                ['Cash price', usd(lease.cash_price)],
-                ['Lease price', `${usd(lease.lease_price)} (${lease.markup_percent}% markup)`],
-                ['Payments', `${lease.installments_paid} of ${lease.installment_count} × ${usd(lease.regular_installment)}`],
-                ['Total of payments', usd(lease.total_of_payments)],
+                ['Item', lease.item_description ? `${lease.quantity} × ${lease.item_description}` : '—'],
+                ['Cash price', figure(lease.cash_price)],
+                ['Lease price', lease.lease_price == null ? '—' : `${usd(lease.lease_price)} (${lease.markup_percent}% markup)`],
+                ['Payments', lease.regular_installment == null ? '—' : `${lease.installments_paid} of ${lease.installment_count} × ${usd(lease.regular_installment)}`],
+                ['Total of payments', figure(lease.total_of_payments)],
                 ['Outstanding now', usd(lease.amount_outstanding)],
                 ['Card', lease.card ? `${lease.card.brand ?? 'Card'} •••• ${lease.card.last4}${lease.auto_charge ? ' · auto-charge on' : ''}` : 'None saved'],
                 ['Signed', lease.signed_at ? `${lease.signed_by_name} · ${new Date(lease.signed_at).toLocaleString()}` : 'Not yet'],
@@ -533,12 +546,12 @@ function LeaseDetailDialog({ leaseId, onClose, onEdit }: {
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           {open === 'draft' && <Button onClick={() => onEdit(lease)} disabled={busy}>Edit</Button>}
           {(open === 'draft' || (open === 'sent' && !lease.signed_at)) && (
-            <Button startIcon={<LinkIcon />} disabled={busy} onClick={() => send.mutate(false)}>
+            <Button startIcon={<LinkIcon />} disabled={busy || incomplete} onClick={() => send.mutate(false)}>
               Share Link Only
             </Button>
           )}
           {(open === 'draft' || (open === 'sent' && !lease.signed_at)) && (
-            <Button variant="contained" startIcon={<SendIcon />} disabled={busy} onClick={() => send.mutate(true)}>
+            <Button variant="contained" startIcon={<SendIcon />} disabled={busy || incomplete} onClick={() => send.mutate(true)}>
               {open === 'draft' ? 'Send to customer' : 'Resend link'}
             </Button>
           )}
@@ -656,11 +669,18 @@ export default function LeaseToOwn() {
                 <TableRow key={lease.id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelected(lease.id)}>
                   <TableCell sx={{ fontWeight: 700 }}>{lease.agreement_number}</TableCell>
                   <TableCell>{lease.customer_name}</TableCell>
-                  <TableCell>{lease.quantity} × {lease.item_description}</TableCell>
-                  <TableCell>{lease.installments_paid} / {lease.installment_count}</TableCell>
-                  <TableCell align="right">{usd(lease.regular_installment)}</TableCell>
+                  <TableCell>{lease.item_description ? `${lease.quantity} × ${lease.item_description}` : '—'}</TableCell>
+                  <TableCell>{lease.installment_count == null ? '—' : `${lease.installments_paid} / ${lease.installment_count}`}</TableCell>
+                  <TableCell align="right">{figure(lease.regular_installment)}</TableCell>
                   <TableCell>{lease.next_due_date ?? '—'}</TableCell>
-                  <TableCell><StageChip stage={lease.stage} /></TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <StageChip stage={lease.stage} />
+                      {Boolean(lease.draft_issues?.length) && (
+                        <Chip size="small" label="Incomplete" color="warning" variant="outlined" data-incomplete-draft />
+                      )}
+                    </Box>
+                  </TableCell>
                 </TableRow>
               ))}
               {!isLoading && !rows.length && (

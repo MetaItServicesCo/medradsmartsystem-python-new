@@ -6,7 +6,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -111,9 +111,14 @@ class SalesSecondaryRecipientIn(BaseModel):
     email: EmailStr
 
 
+def _blank_to_none(value: Any) -> Any:
+    """An empty email box is no email, not an invalid one."""
+    return None if isinstance(value, str) and not value.strip() else value
+
+
 class SalesQuotationCreate(BaseModel):
     facility_id: Optional[int] = None
-    customer_name: str
+    customer_name: str = ""
     customer_email: Optional[EmailStr] = None
     customer_phone: Optional[str] = None
     customer_address: Optional[str] = None
@@ -125,7 +130,12 @@ class SalesQuotationCreate(BaseModel):
     primary_recipient_user_id: Optional[int] = None
     additional_recipient_user_ids: list[int] = Field(default_factory=list)
     secondary_recipients: list[SalesSecondaryRecipientIn] = Field(default_factory=list, max_length=25)
-    items: list[SalesQuotationItemIn]
+    items: list[SalesQuotationItemIn] = Field(default_factory=list)
+    # "Save as Draft": saved as it is - no customer, address, part or stock
+    # needed yet. Everything is checked when it is sent or converted.
+    save_as_draft: bool = False
+
+    blank_email_is_none = field_validator("customer_email", mode="before")(_blank_to_none)
 
 
 class SalesDirectInvoiceCreate(SalesQuotationCreate):
@@ -149,6 +159,10 @@ class SalesQuotationUpdate(BaseModel):
     additional_recipient_user_ids: Optional[list[int]] = None
     secondary_recipients: Optional[list[SalesSecondaryRecipientIn]] = Field(default=None, max_length=25)
     items: Optional[list[SalesQuotationItemIn]] = None
+    # "Save as Draft" on an unsent quotation: saved as it is, as when creating one.
+    save_as_draft: bool = False
+
+    blank_email_is_none = field_validator("customer_email", mode="before")(_blank_to_none)
 
 
 class SalesDirectInvoiceUpdate(SalesQuotationUpdate):
@@ -1029,8 +1043,12 @@ def _validate_quotation_item_stock(
     db: Session,
     items: list[SalesQuotationItemIn],
     current_user: User,
+    *,
+    check_availability: bool = True,
 ) -> dict[int, InventoryPart]:
-    """Validate combined quantities across every line for each Sales SKU."""
+    """Validate combined quantities across every line for each Sales SKU.
+
+    A draft is saved without the availability check; sending it checks again."""
     product_items = [
         item
         for item in items
@@ -1059,6 +1077,8 @@ def _validate_quotation_item_stock(
                 detail="A product is required for every sales option",
             )
 
+    if not check_availability:
+        return parts_by_id
     reserved_by_part = _active_reserved_quantity_map(db, set(parts_by_id))
     required_by_part: dict[int, int] = {}
     for item in product_items:
@@ -1308,15 +1328,57 @@ def _accept_quotation_selection(
     return accepted_lines
 
 
-def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotationItemIn], current_user: User) -> None:
-    if not items:
+# What a save records in the history: the latest one says whether the
+# quotation was last saved through "Save as Draft", as it is.
+SAVED_AS_DRAFT = "saved_as_draft"
+_SAVE_ACTIONS = {"created", "updated", SAVED_AS_DRAFT}
+
+
+def _last_saved_as_draft(quotation: SalesQuotation) -> bool:
+    saves = [entry.get("action") for entry in quotation.history or [] if entry.get("action") in _SAVE_ACTIONS]
+    return bool(saves) and saves[-1] == SAVED_AS_DRAFT
+
+
+def _require_complete_draft(quotation: SalesQuotation, doing: str) -> None:
+    """A quotation last saved through "Save as Draft" may be incomplete. Before
+    it is sent or converted it needs what the quotation form requires: the
+    customer, their phone and address, and at least one part. Any other
+    quotation is sent and converted exactly as before."""
+    if quotation.status not in {"draft", "pending"} or (quotation.document_kind or "quotation") == "direct_invoice":
+        return
+    if not _last_saved_as_draft(quotation):
+        return
+    missing = []
+    if quotation.facility_id is None and not (quotation.customer_name or "").strip():
+        missing.append("the customer name")
+    if not (quotation.customer_phone or "").strip():
+        missing.append("the customer phone")
+    if not (quotation.customer_address or "").strip():
+        missing.append("the customer address")
+    if not quotation.line_items:
+        missing.append("at least one sales part")
+    if missing:
+        listed = missing[0] if len(missing) == 1 else ", ".join(missing[:-1]) + " and " + missing[-1]
+        raise HTTPException(status_code=400, detail=f"This draft is not complete. Before {doing} it, add {listed}.")
+
+
+def _apply_items(
+    db: Session,
+    quotation: SalesQuotation,
+    items: list[SalesQuotationItemIn],
+    current_user: User,
+    *,
+    draft: bool = False,
+) -> None:
+    """The quotation's lines. A draft may have none yet, and its stock is checked when sent."""
+    if not items and not draft:
         raise HTTPException(status_code=400, detail="At least one sales part is required")
     if quotation.quotation_type not in QUOTE_TYPES:
         raise HTTPException(status_code=400, detail="Quotation type must be Standard, Choice Single, or Choice Multiple")
     if quotation.converted_invoice_id:
         raise HTTPException(status_code=409, detail="An invoiced quotation cannot be changed")
 
-    parts_by_id = _validate_quotation_item_stock(db, items, current_user)
+    parts_by_id = _validate_quotation_item_stock(db, items, current_user, check_availability=not draft)
     quotation.line_items.clear()
     selected_lines: list[SalesQuotationLineItem] = []
     default_product_count = 0
@@ -1778,6 +1840,7 @@ def update_direct_invoice(
             "paid_status",
             "due_date",
             "quotation_type",
+            "save_as_draft",
         },
     )
     for field, value in update_data.items():
@@ -1867,7 +1930,7 @@ def create_quotation(
         work_order=_next_number(db, SalesQuotation, "work_order", "WO"),
         facility_id=payload.facility_id,
         created_by_id=current_user.id,
-        customer_name=payload.customer_name,
+        customer_name=(payload.customer_name or "").strip() if payload.save_as_draft else payload.customer_name,
         customer_email=str(payload.customer_email) if payload.customer_email else None,
         customer_phone=payload.customer_phone,
         customer_address=payload.customer_address,
@@ -1881,6 +1944,8 @@ def create_quotation(
         history=[],
     )
     _append_history(quotation, "created", current_user)
+    if payload.save_as_draft:
+        _append_history(quotation, SAVED_AS_DRAFT, current_user)
     db.add(quotation)
     db.flush()
     _sync_quotation_recipients(
@@ -1890,7 +1955,7 @@ def create_quotation(
         payload.additional_recipient_user_ids,
         payload.secondary_recipients,
     )
-    _apply_items(db, quotation, payload.items, current_user)
+    _apply_items(db, quotation, payload.items, current_user, draft=payload.save_as_draft)
     log_activity(db, "sales_quotations", quotation.id, "CREATE", current_user, {"work_order": quotation.work_order})
     db.commit()
     db.refresh(quotation)
@@ -1939,7 +2004,7 @@ def update_quotation(
             ),
         )
 
-    changed_fields = set(payload.model_fields_set) - {"status", "paid_status"}
+    changed_fields = set(payload.model_fields_set) - {"status", "paid_status", "save_as_draft"}
     if quotation.status not in {"draft", "pending"} and (
         payload.items is not None
         or changed_fields
@@ -1956,14 +2021,18 @@ def update_quotation(
             "primary_recipient_user_id",
             "additional_recipient_user_ids",
             "secondary_recipients",
+            "save_as_draft",
         },
     )
+    saving_draft = payload.save_as_draft and quotation.status in {"draft", "pending"}
     for field, value in update_data.items():
         if field == "customer_email" and value is not None:
             value = str(value)
+        if field == "customer_name" and value is None and saving_draft:
+            value = ""
         setattr(quotation, field, value)
     if payload.items is not None:
-        _apply_items(db, quotation, payload.items, current_user)
+        _apply_items(db, quotation, payload.items, current_user, draft=saving_draft)
     else:
         _apply_quotation_pricing(
             quotation,
@@ -1984,6 +2053,8 @@ def update_quotation(
         )
     quotation.updated_at = datetime.utcnow()
     _append_history(quotation, "updated", current_user, update_data)
+    if saving_draft:
+        _append_history(quotation, SAVED_AS_DRAFT, current_user)
     log_activity(db, "sales_quotations", quotation.id, "UPDATE", current_user, update_data)
     db.commit()
     db.refresh(quotation)
@@ -2125,6 +2196,7 @@ def send_quotation(
         or quotation.status in {"accepted", "completed", "cancelled", "declined"}
     ):
         raise HTTPException(status_code=409, detail="This sales document can no longer be sent")
+    _require_complete_draft(quotation, "sending")
     _validate_saved_quotation_stock(db, quotation)
 
     if is_direct_invoice:
@@ -2340,6 +2412,7 @@ def convert_to_invoice(
 
     if quotation.converted_invoice:
         return _invoice_response(quotation.converted_invoice)
+    _require_complete_draft(quotation, "converting")
 
     selection_channel = (
         (payload.selection_channel or "internal")

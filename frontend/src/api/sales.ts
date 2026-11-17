@@ -317,6 +317,8 @@ export interface SalesQuotationPayload {
   additional_recipient_user_ids?: number[]
   secondary_recipients?: SalesSecondaryRecipient[]
   due_date?: string | null
+  /** "Save as Draft": saved as it is; everything is checked when it is sent or converted. */
+  save_as_draft?: boolean
 }
 
 export interface SalesQuotationDelivery extends SalesQuotation {

@@ -215,6 +215,22 @@ const statusChip = (value: string) => {
   return map[value] || { bg: '#F3F4F6', color: '#374151' }
 }
 
+/** A draft saved before it was complete: it is finished before it is activated. */
+const isIncompleteDraft = (rental: Rental) => (
+  rental.status === 'draft'
+  && (
+    (Boolean(rental.facility_id) && !rental.customer_user_id)
+    || !(rental.customer_name || '').trim()
+    || !(rental.customer_email || '').trim()
+    || !(rental.customer_phone || '').trim()
+    || !(rental.customer_address || '').trim()
+    || !(rental.items || []).length
+    || !rental.committed_periods
+    || !rental.start_date
+    || !rental.end_date
+  )
+)
+
 const RentalStatusChip = ({ value, label }: { value: string; label?: string }) => {
   const colors = statusChip(value)
   const display = label || value.replace(/_/g, ' ')
@@ -1028,7 +1044,7 @@ const Rentals = () => {
   const saveAgreementMut = useMutation({
     mutationFn: async (mode: 'draft' | 'live') => {
       if (!editingAgreement) return createRental({ ...buildAgreementCreatePayload(), save_as_draft: mode === 'draft' })
-      const updated = await updateRental(editingAgreement.id, buildAgreementUpdatePayload())
+      const updated = await updateRental(editingAgreement.id, { ...buildAgreementUpdatePayload(), save_as_draft: mode === 'draft' })
       return editingAgreement.status === 'draft' && mode === 'live' ? activateRental(updated.id) : updated
     },
     onSuccess: (rental, mode) => {
@@ -1416,6 +1432,11 @@ const Rentals = () => {
   }
 
   const submitAgreement = (mode: 'draft' | 'live' = 'live') => {
+    // A draft is saved however much is filled in; activating it checks everything.
+    if (mode === 'draft') {
+      saveAgreementMut.mutate(mode)
+      return
+    }
     if (agreementForm.facility_id && !agreementForm.customer_user_id) {
       return toast.error('Select an attached facility admin, manager, or client')
     }
@@ -1699,8 +1720,9 @@ const Rentals = () => {
   // calculations for invoice conversion
   const durationDays = useMemo(() => {
     if (!convertAgreement) return 0
-    const end = convertAgreement.actual_return_date ? new Date(convertAgreement.actual_return_date) : new Date(convertAgreement.end_date)
-    const start = new Date(convertAgreement.start_date)
+    // Only a live agreement is converted, and a live agreement always has its dates.
+    const end = convertAgreement.actual_return_date ? new Date(convertAgreement.actual_return_date) : new Date(convertAgreement.end_date as string)
+    const start = new Date(convertAgreement.start_date as string)
     const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
     return diff < 1 ? 1 : diff
   }, [convertAgreement])
@@ -2058,6 +2080,7 @@ const Rentals = () => {
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, flexDirection: 'column' }}>
                     <RentalStatusChip value={item.status} />
                     {item.is_overdue && <RentalStatusChip value="overdue" />}
+                    {isIncompleteDraft(item) && <RentalStatusChip value="pending" label="Incomplete" />}
                   </Box>
                 </TableCell>
                 <TableCell align="right">

@@ -203,6 +203,27 @@ const statusChip = (value: string) => {
   return map[value] || { bg: '#F3F4F6', color: '#374151' }
 }
 
+/** Whether the quotation's latest save was "Save as Draft" (as the server records it). */
+const lastSavedAsDraft = (history: unknown) => {
+  const saves = (Array.isArray(history) ? history : [])
+    .map((entry: any) => entry?.action)
+    .filter(action => action === 'created' || action === 'updated' || action === 'saved_as_draft')
+  return saves[saves.length - 1] === 'saved_as_draft'
+}
+
+/** A quotation saved as a draft before it was complete: it is finished before it is sent. */
+const isIncompleteDraft = (quotation: Pick<SalesQuotation, 'status' | 'document_kind' | 'facility_id' | 'customer_name' | 'customer_phone' | 'customer_address' | 'line_items' | 'history'>) => (
+  quotation.status === 'draft'
+  && quotation.document_kind !== 'direct_invoice'
+  && lastSavedAsDraft(quotation.history)
+  && (
+    (!quotation.facility_id && !(quotation.customer_name || '').trim())
+    || !(quotation.customer_phone || '').trim()
+    || !(quotation.customer_address || '').trim()
+    || !(quotation.line_items || []).length
+  )
+)
+
 const SalesStatusChip = ({ value, label }: { value: string; label?: string }) => {
   const colors = statusChip(value)
   const display = label || value.replace(/_/g, ' ')
@@ -705,8 +726,8 @@ const Sales = () => {
           ? await updateDirectSalesInvoice(editingQuotation.converted_invoice_id, { ...quotationForm, quotation_type: 'standard' })
           : await createDirectSalesInvoice({ ...quotationForm, quotation_type: 'standard' })
         : editingQuotation
-        ? await updateSalesQuotation(editingQuotation.id, quotationForm)
-        : await createSalesQuotation(quotationForm)
+        ? await updateSalesQuotation(editingQuotation.id, { ...quotationForm, save_as_draft: action === 'draft' })
+        : await createSalesQuotation({ ...quotationForm, save_as_draft: action === 'draft' })
       const delivered = action === 'draft'
         ? quotation
         : await sendSalesQuotation(quotation.id, 30, action === 'send')
@@ -1102,6 +1123,13 @@ const Sales = () => {
   }
 
   const submitQuotation = (action: 'draft' | 'send' | 'link') => {
+    // A quotation draft is saved however much is filled in: sending it (here or
+    // from the list) checks everything. A direct invoice's draft is already an
+    // invoice in Billing, so it keeps every check.
+    if (action === 'draft' && salesDocumentMode !== 'invoice') {
+      saveQuotationMut.mutate(action)
+      return
+    }
     if (quotationForm.facility_id) {
       if (!quotationForm.primary_recipient_user_id) return toast.error('Select a primary facility recipient')
     } else {
@@ -1616,6 +1644,7 @@ const Sales = () => {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.55, flexWrap: 'wrap', minWidth: 0 }}>
                     <SalesStatusChip value={item.status} />
                     {item.revision > 1 && <SalesStatusChip value="viewed" label={`Rev ${item.revision}`} />}
+                    {isIncompleteDraft(item) && <SalesStatusChip value="changes_requested" label="Incomplete" />}
                   </Box>
                   {item.status === 'in_progress' && (
                     <Box sx={{ mt: 0.75, maxWidth: 128 }}>

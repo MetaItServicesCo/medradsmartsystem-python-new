@@ -48,12 +48,14 @@ export interface LeaseSummary {
   customer_name: string
   customer_email: string
   facility_id: number | null
-  item_description: string
+  item_description: string | null
   item_part_number: string | null
   quantity: number
-  total_of_payments: string
-  regular_installment: string
-  installment_count: number
+  total_of_payments: string | null
+  regular_installment: string | null
+  installment_count: number | null
+  /** A draft saved before it was complete: what it still needs before it can be sent. */
+  draft_issues?: string[]
   installments_paid: number
   frequency: LeaseFrequency
   next_due_date: string | null
@@ -73,16 +75,16 @@ export interface LeaseDetail extends LeaseSummary {
   revision: number
   customer_phone: string | null
   customer_address: string | null
-  unit_cash_price: string
-  cash_price: string
+  unit_cash_price: string | null
+  cash_price: string | null
   markup_percent: string
   markup_amount: string
-  lease_price: string
+  lease_price: string | null
   down_payment: string
   down_payment_tax: string
   down_payment_total: string
-  tax_rate_percent: string
-  total_tax: string
+  tax_rate_percent: string | null
+  total_tax: string | null
   first_due_date: string | null
   grace_days: number
   late_fee_amount: string

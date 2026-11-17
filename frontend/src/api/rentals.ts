@@ -155,8 +155,9 @@ export interface Rental {
   shipping_fee: number
   setup_fee: number
   item_condition: string | null
-  start_date: string
-  end_date: string
+  /** Empty only on a draft saved before its term was entered. */
+  start_date: string | null
+  end_date: string | null
   actual_return_date: string | null
   status: RentalStatus
   initial_condition: string | null
@@ -426,7 +427,8 @@ export const activateRental = async (id: number): Promise<Rental> => {
 
 export const updateRental = async (
   id: number,
-  data: Partial<RentalPayload> & { status?: string }
+  /** save_as_draft: a draft saved as it is; activating it checks everything. */
+  data: Partial<RentalPayload> & { status?: string; save_as_draft?: boolean }
 ): Promise<Rental> => {
   const res = await apiClient.put(`/rentals/${id}`, data)
   return res.data

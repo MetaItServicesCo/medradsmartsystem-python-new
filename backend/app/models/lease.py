@@ -54,24 +54,25 @@ class LeaseAgreement(Base):
     part_id = Column(Integer, ForeignKey("inventory_parts.id", ondelete="SET NULL"), nullable=True, index=True)
     quantity = Column(Integer, nullable=False, default=1)
     item_part_number = Column(String, nullable=True)
-    item_description = Column(Text, nullable=False)
-    unit_cash_price = Column(Numeric(12, 2), nullable=False)
+    # Empty only on a draft saved before its product or terms were chosen.
+    item_description = Column(Text, nullable=True)
+    unit_cash_price = Column(Numeric(12, 2), nullable=True)
 
     # The disclosed terms. Every money figure here comes from lease_math, and
     # terms_snapshot holds the full schedule exactly as the customer saw it.
-    cash_price = Column(Numeric(12, 2), nullable=False)
+    cash_price = Column(Numeric(12, 2), nullable=True)
     markup_percent = Column(Numeric(6, 2), nullable=False, default=0)
     markup_amount = Column(Numeric(12, 2), nullable=False, default=0)
-    lease_price = Column(Numeric(12, 2), nullable=False)
+    lease_price = Column(Numeric(12, 2), nullable=True)
     down_payment = Column(Numeric(12, 2), nullable=False, default=0)
     down_payment_tax = Column(Numeric(12, 2), nullable=False, default=0)
-    tax_rate_percent = Column(Numeric(5, 2), nullable=False)
-    installment_count = Column(Integer, nullable=False)
+    tax_rate_percent = Column(Numeric(5, 2), nullable=True)
+    installment_count = Column(Integer, nullable=True)
     frequency = Column(String(20), nullable=False, default="monthly")
-    first_due_date = Column(Date, nullable=False)
-    regular_installment = Column(Numeric(12, 2), nullable=False)
-    total_tax = Column(Numeric(12, 2), nullable=False)
-    total_of_payments = Column(Numeric(12, 2), nullable=False)
+    first_due_date = Column(Date, nullable=True)
+    regular_installment = Column(Numeric(12, 2), nullable=True)
+    total_tax = Column(Numeric(12, 2), nullable=True)
+    total_of_payments = Column(Numeric(12, 2), nullable=True)
     terms_snapshot = Column(JSON, nullable=True)
 
     # Collection policy, set per agreement.

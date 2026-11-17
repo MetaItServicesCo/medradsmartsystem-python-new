@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
@@ -47,14 +47,20 @@ def _raise(exc: svc.LeaseError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
+def _blank_to_none(value: Any) -> Any:
+    return None if isinstance(value, str) and not value.strip() else value
+
+
 class LeaseIn(BaseModel):
-    customer_name: str = Field(min_length=1, max_length=200)
-    customer_email: str = Field(min_length=3, max_length=254)
+    """A draft, saved however much of it is filled in. A complete one is priced
+    as it always has been; sending checks that it is complete."""
+    customer_name: str = Field("", max_length=200)
+    customer_email: str = Field("", max_length=254)
     customer_phone: Optional[str] = Field(None, max_length=40)
     customer_address: Optional[str] = Field(None, max_length=1000)
     facility_id: Optional[int] = None
     customer_user_id: Optional[int] = None
-    part_id: int
+    part_id: Optional[int] = None
     quantity: int = Field(1, ge=1, le=1000)
     # No max_digits here: Pydantic 2.5 rejects that constraint on an Optional
     # Decimal, and an import error in this module would stop the whole API
@@ -62,9 +68,9 @@ class LeaseIn(BaseModel):
     unit_cash_price: Optional[Decimal] = Field(None, gt=0)
     markup_percent: Decimal = Field(Decimal("0"), ge=0, max_digits=6, decimal_places=2)
     down_payment: Decimal = Field(Decimal("0"), ge=0, max_digits=12, decimal_places=2)
-    installment_count: int = Field(ge=1, le=120)
+    installment_count: Optional[int] = Field(None, ge=1, le=120)
     frequency: str = "monthly"
-    first_due_date: date
+    first_due_date: Optional[date] = None
     tax_rate_percent: Decimal = Field(svc.DEFAULT_TAX_RATE, ge=0, max_digits=5, decimal_places=2)
     grace_days: int = Field(5, ge=0, le=60)
     late_fee_amount: Decimal = Field(Decimal("25.00"), ge=0, max_digits=10, decimal_places=2)
@@ -72,8 +78,13 @@ class LeaseIn(BaseModel):
     invoice_lead_days: int = Field(7, ge=0, le=30)
     notes: Optional[str] = Field(None, max_length=4000)
 
+    blank_is_none = field_validator("first_due_date", "installment_count", "part_id", mode="before")(_blank_to_none)
+
     def to_input(self) -> svc.LeaseInput:
-        return svc.LeaseInput(**self.model_dump())
+        data = self.model_dump()
+        # No product chosen yet arrives as 0 from the form.
+        data["part_id"] = data["part_id"] or None
+        return svc.LeaseInput(**data)
 
 
 class QuoteIn(BaseModel):

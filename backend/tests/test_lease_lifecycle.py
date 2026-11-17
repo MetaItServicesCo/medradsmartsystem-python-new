@@ -133,18 +133,37 @@ ok("the item is snapshotted", a.item_part_number == "MON-500" and a.item_descrip
 ok("the offered terms are kept as evidence", len(a.terms_snapshot["installments"]) == 12)
 ok("drafting takes no stock", db.get(InventoryPart, part.id).quantity_on_hand == 3)
 
-ok("more than is in stock is refused", raises(
-    lambda: svc.create_agreement(db, lease_input(part.id, quantity=4), staff), 409))
+# A draft is saved however it is filled in; what is wrong stops it being sent.
+over = svc.create_agreement(db, lease_input(part.id, quantity=4), staff)
+db.commit()
+ok("more than is in stock is still saved as a draft, priced", over.status == "draft" and over.total_of_payments is not None)
+ok("  but refused when sent: the stock is checked then", raises(lambda: svc.send_agreement(db, over, staff), 409))
+db.rollback()
 service_part = InventoryPart(part_number="SVC-1", part_type="service", description="Labour",
                              unit_price=D("100"), condition="new", quantity_on_hand=99, status="active")
 db.add(service_part)
 db.commit()
 ok("a part Sales would not sell cannot be leased", raises(
     lambda: svc.create_agreement(db, lease_input(service_part.id), staff), 404))
-ok("terms that cannot be offered are a 422", raises(
-    lambda: svc.create_agreement(db, lease_input(part.id, down_payment=D("20000")), staff), 422))
-ok("a missing email is a 422", raises(
-    lambda: svc.create_agreement(db, lease_input(part.id, customer_email="nope"), staff), 422))
+unpriced = svc.create_agreement(db, lease_input(part.id, down_payment=D("20000")), staff)
+db.commit()
+ok("terms that cannot be offered are saved unpriced, with no schedule",
+   unpriced.total_of_payments is None and unpriced.terms_snapshot is None and not unpriced.installments)
+ok("  saying why", svc.draft_issues(unpriced) == ["The down payment must be less than the cash price."],
+   str(svc.draft_issues(unpriced)))
+ok("  and refused when sent", raises(lambda: svc.send_agreement(db, unpriced, staff), 409))
+db.rollback()
+no_email = svc.create_agreement(db, lease_input(part.id, customer_email="nope"), staff)
+db.commit()
+ok("a missing email: saved, and it is what the draft still needs",
+   svc.draft_issues(no_email) == ["Enter a valid customer email; it is where the agreement is sent."],
+   str(svc.draft_issues(no_email)))
+ok("  refused when sent", raises(lambda: svc.send_agreement(db, no_email, staff), 409))
+db.rollback()
+fixed = svc.update_draft(db, no_email, lease_input(part.id), staff)
+db.commit()
+ok("completing it prices it exactly as a complete draft", fixed.total_of_payments == D("12448.78")
+   and len(fixed.installments) == 12 and svc.draft_issues(fixed) == [])
 
 svc.update_draft(db, a, lease_input(part.id, installment_count=6), staff)
 db.commit()
@@ -375,8 +394,11 @@ db.flush()
 db.add(SalesInventoryReservation(quotation_id=quote_row.id, invoice_id=held.id, part_id=part.id,
                                  quantity=3, status="active"))
 db.commit()
-ok("stock held by an accepted Sales quotation cannot be leased", raises(
-    lambda: svc.create_agreement(db, lease_input(part.id), staff), 409))
+held_draft = svc.create_agreement(db, lease_input(part.id), staff)
+db.commit()
+ok("stock held by an accepted Sales quotation cannot be leased: refused when sent",
+   raises(lambda: svc.send_agreement(db, held_draft, staff), 409))
+db.rollback()
 
 print()
 print("Saved cards")

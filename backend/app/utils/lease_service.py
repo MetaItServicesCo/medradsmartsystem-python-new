@@ -66,16 +66,17 @@ class LeaseError(Exception):
 
 @dataclass(frozen=True)
 class LeaseInput:
-    """Everything staff choose when drafting an agreement."""
+    """Everything staff choose when drafting an agreement. A draft may be
+    saved before the product, installments or first due date are chosen."""
     customer_name: str
     customer_email: str
-    part_id: int
+    part_id: Optional[int]
     quantity: int
     markup_percent: Decimal
     down_payment: Decimal
-    installment_count: int
+    installment_count: Optional[int]
     frequency: str
-    first_due_date: date
+    first_due_date: Optional[date]
     unit_cash_price: Optional[Decimal] = None   # defaults to the catalogue price
     tax_rate_percent: Decimal = DEFAULT_TAX_RATE
     grace_days: int = 5
@@ -264,16 +265,117 @@ def _apply_terms(db: Session, agreement: LeaseAgreement, data: LeaseInput, part:
     return quote
 
 
+def _missing_inputs(customer_name: Optional[str], customer_email: Optional[str], part_id: Optional[int],
+                    installment_count: Optional[int], first_due_date: Optional[date]) -> list[str]:
+    missing = []
+    if not (customer_name or "").strip():
+        missing.append("Enter the customer's name.")
+    if "@" not in (customer_email or ""):
+        missing.append("Enter a valid customer email; it is where the agreement is sent.")
+    if not part_id:
+        missing.append("Choose the product.")
+    if not installment_count:
+        missing.append("Enter the number of installments.")
+    if first_due_date is None:
+        missing.append("Enter the first payment due date.")
+    return missing
+
+
+def _save_terms(db: Session, agreement: LeaseAgreement, data: LeaseInput) -> None:
+    """Price the draft when it is complete, exactly as before; otherwise keep
+    what was entered, unpriced, until it is."""
+    part = leasable_part(db, data.part_id) if data.part_id else None
+    if part is not None and not _missing_inputs(
+        data.customer_name, data.customer_email, data.part_id, data.installment_count, data.first_due_date,
+    ):
+        try:
+            _apply_terms(db, agreement, data, part)
+            return
+        except LeaseError as exc:
+            if exc.status_code != 422:
+                raise
+    _keep_entered(db, agreement, data, part)
+
+
+def _keep_entered(db: Session, agreement: LeaseAgreement, data: LeaseInput, part: Optional[InventoryPart]) -> None:
+    """An incomplete draft: what was entered, and no figures until it is complete."""
+    agreement.facility_id = data.facility_id
+    agreement.customer_user_id = data.customer_user_id
+    agreement.customer_name = (data.customer_name or "").strip()
+    agreement.customer_email = (data.customer_email or "").strip()
+    agreement.customer_phone = (data.customer_phone or "").strip() or None
+    agreement.customer_address = (data.customer_address or "").strip() or None
+    agreement.part_id = part.id if part else None
+    agreement.quantity = int(data.quantity or 1)
+    agreement.item_part_number = part.part_number if part else None
+    agreement.item_description = part.description if part else None
+    agreement.unit_cash_price = (
+        money(data.unit_cash_price) if data.unit_cash_price is not None
+        else (money(part.unit_price) if part else None)
+    )
+    agreement.markup_percent = Decimal(str(data.markup_percent or 0))
+    agreement.down_payment = money(data.down_payment)
+    agreement.tax_rate_percent = Decimal(str(data.tax_rate_percent)) if data.tax_rate_percent is not None else None
+    agreement.installment_count = int(data.installment_count) if data.installment_count else None
+    agreement.frequency = data.frequency or "monthly"
+    agreement.first_due_date = data.first_due_date
+    agreement.grace_days = int(data.grace_days)
+    agreement.late_fee_amount = money(data.late_fee_amount)
+    agreement.default_after_missed = int(data.default_after_missed)
+    agreement.invoice_lead_days = int(data.invoice_lead_days)
+    agreement.notes = (data.notes or "").strip() or None
+    # Not priced yet.
+    agreement.cash_price = None
+    agreement.markup_amount = ZERO
+    agreement.lease_price = None
+    agreement.down_payment_tax = ZERO
+    agreement.regular_installment = None
+    agreement.total_tax = None
+    agreement.total_of_payments = None
+    agreement.terms_snapshot = None
+    if agreement.id is not None and agreement.installments:
+        for previous in list(agreement.installments):
+            db.delete(previous)
+        agreement.installments = []
+        db.flush()
+    else:
+        agreement.installments = []
+
+
+def draft_issues(agreement: LeaseAgreement) -> list[str]:
+    """What an unpriced draft still needs before it can be sent; empty for one
+    that is priced, and for anything past draft."""
+    if agreement.status != "draft" or agreement.total_of_payments is not None:
+        return []
+    missing = _missing_inputs(agreement.customer_name, agreement.customer_email, agreement.part_id,
+                              agreement.installment_count, agreement.first_due_date)
+    if missing:
+        return missing
+    cash = money(agreement.unit_cash_price) * int(agreement.quantity or 1) if agreement.unit_cash_price is not None else ZERO
+    problems = _validate_policy(LeaseInput(
+        customer_name=agreement.customer_name, customer_email=agreement.customer_email, part_id=agreement.part_id,
+        quantity=agreement.quantity, markup_percent=agreement.markup_percent, down_payment=agreement.down_payment,
+        installment_count=agreement.installment_count, frequency=agreement.frequency,
+        first_due_date=agreement.first_due_date, grace_days=agreement.grace_days,
+        late_fee_amount=agreement.late_fee_amount, default_after_missed=agreement.default_after_missed,
+        invoice_lead_days=agreement.invoice_lead_days,
+    )) + validate_terms(LeaseTerms(
+        cash_price=cash, markup_percent=Decimal(str(agreement.markup_percent or 0)),
+        down_payment=money(agreement.down_payment), installment_count=int(agreement.installment_count),
+        tax_rate_percent=Decimal(str(agreement.tax_rate_percent if agreement.tax_rate_percent is not None else 0)),
+        frequency=agreement.frequency, first_due_date=agreement.first_due_date,
+    ))
+    return problems or ["Open the draft and save it again to price its terms."]
+
+
 def create_agreement(db: Session, data: LeaseInput, actor: User) -> LeaseAgreement:
-    part = leasable_part(db, data.part_id)
-    if int(data.quantity) > _part_available(db, part):
-        raise LeaseError(
-            "Only {} unit(s) of {} are available right now.".format(_part_available(db, part), part.part_number),
-            409,
-        )
+    """A new draft, saved however much of it is filled in. Stock is checked
+    when it is sent, against the stock of that moment."""
     agreement = LeaseAgreement(status="draft", revision=1, created_by_id=actor.id, history=[])
-    _apply_terms(db, agreement, data, part)
-    append_history(agreement, "created", actor, {"total_of_payments": str(agreement.total_of_payments)})
+    _save_terms(db, agreement, data)
+    append_history(agreement, "created", actor, {
+        "total_of_payments": str(agreement.total_of_payments) if agreement.total_of_payments is not None else None,
+    })
     assign_unique_number(db, agreement, "agreement_number", prefix=AGREEMENT_PREFIX)
     return agreement
 
@@ -281,8 +383,7 @@ def create_agreement(db: Session, data: LeaseInput, actor: User) -> LeaseAgreeme
 def update_draft(db: Session, agreement: LeaseAgreement, data: LeaseInput, actor: User) -> LeaseAgreement:
     if agreement.status != "draft":
         raise LeaseError("Only a draft can be edited. Cancel and redraft to change sent terms.", 409)
-    part = leasable_part(db, data.part_id)
-    _apply_terms(db, agreement, data, part)
+    _save_terms(db, agreement, data)
     agreement.revision = int(agreement.revision or 1) + 1
     append_history(agreement, "edited", actor, {"revision": agreement.revision})
     db.flush()
@@ -310,6 +411,9 @@ def send_agreement(db: Session, agreement: LeaseAgreement, actor: User, *, email
         raise LeaseError("This agreement can no longer be sent.", 409)
     if agreement.signed_at:
         raise LeaseError("This agreement has already been signed.", 409)
+    issues = draft_issues(agreement)
+    if issues:
+        raise LeaseError("This draft is not complete. Before sending it: " + " ".join(issues), 409)
     part = leasable_part(db, agreement.part_id)
     available = _part_available(db, part)
     if int(agreement.quantity) > available:

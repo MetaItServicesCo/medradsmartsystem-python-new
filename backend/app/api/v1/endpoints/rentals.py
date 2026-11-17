@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -102,6 +102,15 @@ RENTAL_CUSTOMER_ROLES = {
 }
 
 
+def _draft_customer_phone(submitted_phone: Optional[str], linked_user_phone: Optional[str] = None) -> str:
+    """A draft's phone: the one entered, else the selected user's, else none yet."""
+    for candidate in (submitted_phone, linked_user_phone):
+        value = str(candidate or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _resolve_rental_customer_phone(
     submitted_phone: Optional[str],
     linked_user_phone: Optional[str] = None,
@@ -167,12 +176,19 @@ class RentalSecondaryRecipientIn(BaseModel):
     email: EmailStr
 
 
+def _blank_to_none(value: Any) -> Any:
+    """An empty box is nothing entered, not an invalid value."""
+    return None if isinstance(value, str) and not value.strip() else value
+
+
 class RentalCreate(BaseModel):
     facility_id: Optional[int] = None
     customer_user_id: Optional[int] = None
-    customer_name: str
-    customer_email: EmailStr
-    customer_phone: str
+    # Required to create a live agreement (checked in create_rental); a draft
+    # may be saved before any of them is known.
+    customer_name: str = ""
+    customer_email: Optional[EmailStr] = None
+    customer_phone: Optional[str] = None
     secondary_recipients: list[RentalSecondaryRecipientIn] = Field(default_factory=list, max_length=25)
     # Legacy single-line address is still accepted; structured parts (preferred) compose it.
     customer_address: Optional[str] = None
@@ -182,8 +198,8 @@ class RentalCreate(BaseModel):
     delivery_zip: Optional[str] = None
     billing_frequency: BillingFrequency
     security_deposit: Decimal = Decimal("0")
-    start_date: date
-    end_date: date
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     terms_and_conditions: Optional[str] = None
     # Multiple rented items (preferred). The legacy single-item fields below are a
     # fallback so the pre-migration client keeps working during the transition.
@@ -206,11 +222,19 @@ class RentalCreate(BaseModel):
     discount_invoice_number: Optional[int] = None
     discount_continue: bool = False
     discount_requires_card: bool = True
-    # Save without going live: no stock reserved, no invoice, not billed.
+    # Save without going live: no stock reserved, no invoice, not billed - and
+    # saved as it is, however much is filled in. Activating it checks everything.
     save_as_draft: bool = False
+
+    blank_email_is_none = field_validator("customer_email", mode="before")(_blank_to_none)
+    blank_dates_are_none = field_validator("start_date", "end_date", mode="before")(_blank_to_none)
 
 
 class RentalUpdate(BaseModel):
+    # "Save as Draft" on a draft: saved as it is, as when creating one.
+    save_as_draft: bool = False
+    # An empty date box is no date (a draft may not have one yet).
+    blank_dates_are_none = field_validator("start_date", "end_date", mode="before")(_blank_to_none)
     facility_id: Optional[int] = None
     customer_user_id: Optional[int] = None
     customer_name: Optional[str] = None
@@ -958,6 +982,33 @@ def _stock_delta(old: dict[int, int], new: dict[int, int]) -> dict[int, int]:
         if change:
             delta[part_id] = change
     return delta
+
+
+def _require_complete_draft(rental: Rental) -> None:
+    """A draft may have been saved with anything missing. Before it goes live it
+    needs what the agreement form requires to create one."""
+    missing = []
+    if rental.facility_id is not None and rental.customer_user_id is None:
+        missing.append("the facility admin, manager or client it is for")
+    if not (rental.customer_name or "").strip():
+        missing.append("the customer name")
+    if not (rental.customer_email or "").strip():
+        missing.append("the customer email")
+    if not (rental.customer_phone or "").strip():
+        missing.append("the customer phone")
+    if not (rental.customer_address or "").strip():
+        missing.append("the delivery address")
+    if not rental.items:
+        missing.append("at least one rental product")
+    if not rental.committed_periods or rental.committed_periods < 1:
+        missing.append("the committed billing periods")
+    if rental.start_date is None:
+        missing.append("the start date")
+    if rental.end_date is None:
+        missing.append("the end date")
+    if missing:
+        listed = missing[0] if len(missing) == 1 else ", ".join(missing[:-1]) + " and " + missing[-1]
+        raise HTTPException(status_code=400, detail=f"This draft is not complete. Before activating it, add {listed}.")
 
 
 def _require_not_draft(rental: Rental, action: str) -> None:
@@ -2075,7 +2126,14 @@ def create_rental(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     _require_internal_rental_operator(current_user)
-    _validate_billing_term(payload.start_date, payload.end_date, payload.billing_frequency, payload.committed_periods)
+    draft = payload.save_as_draft
+    if not draft:
+        # Required, as they always have been, to create a live agreement.
+        if payload.customer_email is None:
+            raise HTTPException(status_code=422, detail="Customer email is required")
+        if payload.start_date is None or payload.end_date is None:
+            raise HTTPException(status_code=422, detail="The agreement start and end dates are required")
+        _validate_billing_term(payload.start_date, payload.end_date, payload.billing_frequency, payload.committed_periods)
     discount_invoice_number = (
         payload.discount_invoice_number
         if payload.discount_invoice_number is not None
@@ -2085,14 +2143,16 @@ def create_rental(
             else None
         )
     )
-    _validate_discount_schedule(
-        payload.discount_type,
-        payload.discount_value,
-        payload.discount_application_mode,
-        discount_invoice_number,
-        payload.committed_periods,
-    )
-    items_in = _resolve_create_items(payload)
+    if not draft:
+        _validate_discount_schedule(
+            payload.discount_type,
+            payload.discount_value,
+            payload.discount_application_mode,
+            discount_invoice_number,
+            payload.committed_periods,
+        )
+    # A draft may have no product yet.
+    items_in = _resolve_create_items(payload) if not draft or payload.items or payload.part_id else []
     item_rows = _build_rental_items(db, current_user, items_in)
     _apply_legacy_agreement_deposit(item_rows, payload.security_deposit)
     facility, customer_user = _resolve_rental_customer(
@@ -2101,10 +2161,11 @@ def create_rental(
         payload.facility_id,
         payload.customer_user_id,
     )
+    entered_email = str(payload.customer_email) if payload.customer_email else ""
     secondary_recipients = _normalize_secondary_recipients(
         db,
         facility.id if facility else None,
-        customer_user.email if customer_user else str(payload.customer_email),
+        customer_user.email if customer_user else entered_email,
         payload.secondary_recipients,
     )
 
@@ -2113,7 +2174,7 @@ def create_rental(
         payload.delivery_street, payload.delivery_city, payload.delivery_state, payload.delivery_zip,
         fallback=payload.customer_address,
     )
-    if not delivery_address:
+    if not delivery_address and not draft:
         raise HTTPException(status_code=422, detail="A delivery address is required")
     rental = Rental(
         rental_number=_next_number(db, Rental, "rental_number", "RNT"),
@@ -2121,13 +2182,17 @@ def create_rental(
         facility_id=facility.id if facility else None,
         customer_user_id=customer_user.id if customer_user else None,
         customer_name=customer_user.full_name if customer_user else payload.customer_name,
-        customer_email=customer_user.email if customer_user else str(payload.customer_email),
-        customer_phone=_resolve_rental_customer_phone(
-            payload.customer_phone,
-            customer_user.phone if customer_user else None,
+        customer_email=customer_user.email if customer_user else entered_email,
+        customer_phone=(
+            _draft_customer_phone(payload.customer_phone, customer_user.phone if customer_user else None)
+            if draft
+            else _resolve_rental_customer_phone(
+                payload.customer_phone,
+                customer_user.phone if customer_user else None,
+            )
         ),
         secondary_recipients=secondary_recipients,
-        customer_address=delivery_address,
+        customer_address=delivery_address or "",
         delivery_street=(payload.delivery_street or "").strip() or None,
         delivery_city=(payload.delivery_city or "").strip() or None,
         delivery_state=(payload.delivery_state or "").strip() or None,
@@ -2221,9 +2286,15 @@ def activate_rental(
     _require_rental_facility_access(db, current_user, rental)
     if rental.status != RentalStatus.DRAFT:
         raise HTTPException(status_code=409, detail="Only a draft rental agreement can be activated")
-    if not rental.items:
-        raise HTTPException(status_code=400, detail="At least one rental item is required")
+    _require_complete_draft(rental)
     _validate_billing_term(rental.start_date, rental.end_date, rental.billing_frequency, rental.committed_periods)
+    _validate_discount_schedule(
+        rental.discount_type,
+        rental.discount_value,
+        rental.discount_application_mode or "single_invoice",
+        rental.discount_invoice_number,
+        rental.committed_periods,
+    )
 
     _apply_stock_delta(db, _required_stock_from_rows(rental.items))
     rental.status = RentalStatus.ACTIVE
@@ -2265,12 +2336,21 @@ def update_rental(
         raise HTTPException(status_code=404, detail="Rental agreement not found")
 
     _require_rental_facility_access(db, current_user, rental)
+    saving_draft = payload.save_as_draft and rental.status == RentalStatus.DRAFT
 
     resolved_start = payload.start_date if payload.start_date is not None else rental.start_date
     resolved_end = payload.end_date if payload.end_date is not None else rental.end_date
     resolved_frequency = payload.billing_frequency if payload.billing_frequency is not None else rental.billing_frequency
     resolved_committed = payload.committed_periods if "committed_periods" in payload.model_fields_set else rental.committed_periods
-    _validate_billing_term(resolved_start, resolved_end, resolved_frequency, resolved_committed)
+    if not saving_draft:
+        # Only a draft saved as a draft may leave a date empty; clearing one
+        # anywhere else is refused, as an empty date always has been.
+        cleared = {"start_date", "end_date"} & {
+            name for name in payload.model_fields_set if getattr(payload, name) is None
+        }
+        if cleared or resolved_start is None or resolved_end is None:
+            raise HTTPException(status_code=422, detail="The agreement start and end dates are required")
+        _validate_billing_term(resolved_start, resolved_end, resolved_frequency, resolved_committed)
 
     resolved_discount_type = payload.discount_type if "discount_type" in payload.model_fields_set else rental.discount_type
     resolved_discount_value = payload.discount_value if "discount_value" in payload.model_fields_set else rental.discount_value
@@ -2291,15 +2371,16 @@ def update_rental(
             else rental.discount_apply_after_periods
         )
         resolved_discount_invoice = int(legacy_after) + 1 if legacy_after is not None else None
-    _validate_discount_schedule(
-        resolved_discount_type,
-        resolved_discount_value,
-        resolved_discount_mode,
-        resolved_discount_invoice,
-        resolved_committed,
-    )
+    if not saving_draft:
+        _validate_discount_schedule(
+            resolved_discount_type,
+            resolved_discount_value,
+            resolved_discount_mode,
+            resolved_discount_invoice,
+            resolved_committed,
+        )
 
-    update_data = payload.model_dump(exclude_unset=True, exclude={"items", "secondary_recipients"})
+    update_data = payload.model_dump(exclude_unset=True, exclude={"items", "secondary_recipients", "save_as_draft"})
 
     # Going live reserves stock and raises the first invoice, so it has its own
     # action; a status edit must never skip that or turn live work into a draft.
@@ -2366,10 +2447,19 @@ def update_rental(
                 customer_user.phone,
             )
     if "customer_phone" in update_data:
-        update_data["customer_phone"] = _resolve_rental_customer_phone(update_data["customer_phone"])
+        update_data["customer_phone"] = (
+            _draft_customer_phone(update_data["customer_phone"])
+            if saving_draft
+            else _resolve_rental_customer_phone(update_data["customer_phone"])
+        )
+    if saving_draft:
+        # Columns that always hold text: nothing entered is stored as empty.
+        for field in ("customer_name", "customer_email", "customer_address"):
+            if field in update_data and update_data[field] is None:
+                update_data[field] = ""
     # Replace the item set (and reconcile reserved stock) when items are supplied.
     if payload.items is not None:
-        if not payload.items:
+        if not payload.items and not saving_draft:
             raise HTTPException(status_code=400, detail="At least one rental item is required")
         new_rows = _build_rental_items(db, current_user, payload.items)
         _apply_legacy_agreement_deposit(
@@ -2404,7 +2494,8 @@ def update_rental(
         if composed:
             rental.customer_address = composed
 
-    if {"start_date", "end_date", "billing_frequency", "committed_periods"} & set(update_data):
+    # A draft still without its dates has no billing dates yet.
+    if {"start_date", "end_date", "billing_frequency", "committed_periods"} & set(update_data) and rental.start_date and rental.end_date:
         next_period = int(rental.periods_billed or 0) + 1
         rental.next_bill_date = (
             billing_period_date(rental, next_period)

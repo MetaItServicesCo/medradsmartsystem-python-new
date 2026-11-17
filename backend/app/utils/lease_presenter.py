@@ -19,6 +19,11 @@ def _money_str(value: Any) -> str:
     return str(money(value))
 
 
+def _figure(value: Any) -> Optional[str]:
+    """A priced figure; none on a draft not yet priced (never shown as $0.00)."""
+    return None if value is None else str(money(value))
+
+
 def _invoice_brief(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     if invoice is None:
         return None
@@ -52,9 +57,11 @@ def lease_summary(agreement: LeaseAgreement) -> dict[str, Any]:
         "item_description": agreement.item_description,
         "item_part_number": agreement.item_part_number,
         "quantity": agreement.quantity,
-        "total_of_payments": _money_str(agreement.total_of_payments),
-        "regular_installment": _money_str(agreement.regular_installment),
+        "total_of_payments": _figure(agreement.total_of_payments),
+        "regular_installment": _figure(agreement.regular_installment),
         "installment_count": agreement.installment_count,
+        # A draft saved before it was complete: what it still needs before it can be sent.
+        "draft_issues": svc.draft_issues(agreement),
         "installments_paid": paid,
         "frequency": agreement.frequency,
         "next_due_date": next_due.due_date.isoformat() if next_due else None,
@@ -78,16 +85,16 @@ def lease_detail(agreement: LeaseAgreement, *, staff: bool) -> dict[str, Any]:
         "revision": agreement.revision,
         "customer_phone": agreement.customer_phone,
         "customer_address": agreement.customer_address,
-        "unit_cash_price": _money_str(agreement.unit_cash_price),
-        "cash_price": _money_str(agreement.cash_price),
+        "unit_cash_price": _figure(agreement.unit_cash_price),
+        "cash_price": _figure(agreement.cash_price),
         "markup_percent": str(agreement.markup_percent),
         "markup_amount": _money_str(agreement.markup_amount),
-        "lease_price": _money_str(agreement.lease_price),
+        "lease_price": _figure(agreement.lease_price),
         "down_payment": _money_str(agreement.down_payment),
         "down_payment_tax": _money_str(agreement.down_payment_tax),
         "down_payment_total": _money_str(money(agreement.down_payment) + money(agreement.down_payment_tax)),
-        "tax_rate_percent": str(agreement.tax_rate_percent),
-        "total_tax": _money_str(agreement.total_tax),
+        "tax_rate_percent": str(agreement.tax_rate_percent) if agreement.tax_rate_percent is not None else None,
+        "total_tax": _figure(agreement.total_tax),
         "first_due_date": agreement.first_due_date.isoformat() if agreement.first_due_date else None,
         "grace_days": agreement.grace_days,
         "late_fee_amount": _money_str(agreement.late_fee_amount),

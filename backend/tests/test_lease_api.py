@@ -188,17 +188,32 @@ ok("  priced by the server", lease["total_of_payments"] == "12448.78")
 ok("  with its schedule", len(lease["installments"]) == 12)
 ok("  and staff-only detail", "history" in lease and "authorizations" in lease)
 
-for bad, why in ((dict(installment_count=0), "zero installments"),
-                 (dict(down_payment="20000"), "a down payment over the price"),
-                 (dict(customer_email="x"), "a bad email"),
-                 (dict(quantity=99), "more than is in stock")):
+r = client.post("/api/v1/leases", json=PAYLOAD | {"installment_count": 0})
+ok("zero installments is refused", r.status_code == 422, "{} {}".format(r.status_code, r.text[:100]))
+
+# A draft is saved however much of it is filled in, or however wrong: what is
+# wrong stops it being sent, and says so.
+r = client.post("/api/v1/leases", json={})
+empty = r.json()
+ok("an empty draft is saved", r.status_code == 201 and empty["status"] == "draft"
+   and empty["total_of_payments"] is None and empty["installments"] == [], r.text[:200])
+ok("  and lists what it still needs", len(empty["draft_issues"]) == 5
+   and "Choose the product." in empty["draft_issues"], str(empty.get("draft_issues")))
+r = client.post("/api/v1/leases/{}/send".format(empty["id"]))
+ok("  it cannot be sent", r.status_code == 409 and "not complete" in r.json()["detail"], r.text[:200])
+for bad, why, reason in ((dict(down_payment="20000"), "a down payment over the price", "down payment must be less"),
+                         (dict(customer_email="x"), "a bad email", "valid customer email"),
+                         (dict(quantity=99), "more than is in stock", "available")):
     r = client.post("/api/v1/leases", json=PAYLOAD | bad)
-    ok("{} is refused".format(why), r.status_code in (409, 422), "{} {}".format(r.status_code, r.text[:100]))
+    ok("{}: still saved as a draft".format(why), r.status_code == 201 and r.json()["status"] == "draft", r.text[:120])
+    sent = client.post("/api/v1/leases/{}/send".format(r.json()["id"]))
+    ok("  but it is refused when sent, and says why", sent.status_code == 409 and reason in sent.json()["detail"],
+       "{} {}".format(sent.status_code, sent.text[:160]))
 
 r = client.put("/api/v1/leases/{}".format(LID), json=PAYLOAD | {"installment_count": 6})
 ok("a draft can be edited", r.status_code == 200 and len(r.json()["installments"]) == 6, r.text[:120])
 r = client.get("/api/v1/leases", params={"search": "St. Mary"})
-ok("it is found by customer", r.status_code == 200 and r.json()["total"] == 1)
+ok("it is found by customer", r.status_code == 200 and LID in [item["id"] for item in r.json()["items"]])
 r = client.get("/api/v1/leases", params={"status": "nonsense"})
 ok("an unknown status filter is a 422", r.status_code == 422)
 r = client.get("/api/v1/leases/999999")
