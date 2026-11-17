@@ -65,6 +65,7 @@ from app.utils.payment_proofs import (
     REVIEWABLE_EXTRACTION_STATUSES,
     card_claim_details,
     delete_payment_proof_file,
+    has_document,
     is_card_claim,
     load_payment_proof,
     normalize_non_card_method,
@@ -1101,6 +1102,8 @@ def download_payment_proof(
     _require_payment_proof_access(db, current_user, proof)
     if is_card_claim(proof):
         raise HTTPException(status_code=404, detail="A card payment claim has no document")
+    if not has_document(proof):
+        raise HTTPException(status_code=404, detail="This payment was reported with its reference number only; there is no document")
     data = load_payment_proof(proof)
     safe_name = "".join(
         character for character in proof.original_filename
@@ -1131,6 +1134,8 @@ def retry_payment_proof_ocr(
         raise HTTPException(status_code=404, detail="Payment proof not found")
     if proof.status != "pending_verification":
         raise HTTPException(status_code=409, detail="Only a pending payment proof can be reprocessed")
+    if not has_document(proof) and not is_card_claim(proof):
+        raise HTTPException(status_code=409, detail="This payment was reported with its reference number only; there is no document to read")
     if proof.extraction_status in {"queued", "processing"}:
         return payment_proof_response(proof, include_ocr_text=True)
 
@@ -1206,7 +1211,7 @@ def approve_payment_proof(
         current_user,
         "APR",
     )
-    if proof.submitted_by_id != current_user.id:
+    if proof.submitted_by_id is not None and proof.submitted_by_id != current_user.id:
         create_notification(
             db,
             user_id=proof.submitted_by_id,
@@ -1261,7 +1266,7 @@ def reject_payment_proof(
             current_user,
             "REJ",
         )
-        if proof.submitted_by_id != current_user.id:
+        if proof.submitted_by_id is not None and proof.submitted_by_id != current_user.id:
             create_notification(
                 db,
                 user_id=proof.submitted_by_id,

@@ -199,7 +199,13 @@ class PaymentProof(Base):
         nullable=True,
         index=True,
     )
-    submitted_by_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    # Who sent it, signed in. Empty only for a proof sent through an invoice
+    # link, which records the payer's own name and email below instead.
+    submitted_by_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True)
+    submitted_via = Column(String(20), nullable=True)  # "payment_link"; empty when signed in
+    payer_name = Column(String(200), nullable=True)
+    payer_email = Column(String(320), nullable=True)
+    payer_reference = Column(String(100), nullable=True)  # cheque or transaction number the payer gave
     payment_method = Column(String(40), nullable=False, index=True)
     claimed_amount = Column(Numeric(10, 2), nullable=False)
     notes = Column(Text, nullable=True)

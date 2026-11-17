@@ -6,11 +6,19 @@ import {
 } from '@mui/material'
 import { toast } from 'react-toastify'
 import { fetchServiceInvoiceShareOptions, shareServiceInvoice } from '@/api/serviceRequests'
+import { fetchInspectionInvoiceShareOptions, shareInspectionInvoice } from '@/api/inspectionInvoiceLinks'
 
 export interface ServiceInvoiceShareTarget {
   invoiceId: number
   invoiceNumber: string
   channel: 'email' | 'link'
+  /** Which invoice it is: a service invoice unless said otherwise. */
+  kind?: 'service' | 'inspection'
+}
+
+const SHARE = {
+  service: { options: fetchServiceInvoiceShareOptions, share: shareServiceInvoice },
+  inspection: { options: fetchInspectionInvoiceShareOptions, share: shareInspectionInvoice },
 }
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
@@ -21,7 +29,7 @@ const problem = (error: any, fallback: string) => {
 }
 
 /**
- * Send a service invoice by email, or copy its link to send any other way.
+ * Send a service or inspection invoice by email, or copy its link to send any other way.
  * A facility with users: confirm which one receives it. A facility with none:
  * the sender is asked for an address.
  */
@@ -32,10 +40,12 @@ const ServiceInvoiceShareDialog = ({ target, onClose }: { target: ServiceInvoice
   const [link, setLink] = useState('')
   const [copied, setCopied] = useState(false)
   const isEmail = target?.channel === 'email'
+  const kind = target?.kind ?? 'service'
+  const api = SHARE[kind]
 
   const options = useQuery({
-    queryKey: ['service-invoice-share-options', target?.invoiceId],
-    queryFn: () => fetchServiceInvoiceShareOptions(target!.invoiceId),
+    queryKey: kind === 'service' ? ['service-invoice-share-options', target?.invoiceId] : ['inspection-invoice-share-options', target?.invoiceId],
+    queryFn: () => api.options(target!.invoiceId),
     enabled: Boolean(target && isEmail),
     staleTime: 0,
   })
@@ -45,6 +55,10 @@ const ServiceInvoiceShareDialog = ({ target, onClose }: { target: ServiceInvoice
 
   const refresh = () => {
     if (!target) return
+    if (kind === 'inspection') {
+      queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
+      return
+    }
     queryClient.invalidateQueries({ queryKey: ['service-invoice-document', target.invoiceId] })
     queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] })
   }
@@ -60,7 +74,7 @@ const ServiceInvoiceShareDialog = ({ target, onClose }: { target: ServiceInvoice
   }
 
   const issueLink = useMutation({
-    mutationFn: () => shareServiceInvoice(target!.invoiceId, { channel: 'link' }),
+    mutationFn: () => api.share(target!.invoiceId, { channel: 'link' }),
     onSuccess: (result) => {
       setLink(result.share_url)
       refresh()
@@ -69,7 +83,7 @@ const ServiceInvoiceShareDialog = ({ target, onClose }: { target: ServiceInvoice
   })
 
   const sendEmail = useMutation({
-    mutationFn: () => shareServiceInvoice(target!.invoiceId, hasUsers
+    mutationFn: () => api.share(target!.invoiceId, hasUsers
       ? { channel: 'email', recipient_user_id: Number(userId) }
       : { channel: 'email', email: email.trim() }),
     onSuccess: (result) => {
@@ -113,7 +127,7 @@ const ServiceInvoiceShareDialog = ({ target, onClose }: { target: ServiceInvoice
               <>
                 <Typography sx={{ color: '#475569' }}>
                   {copied ? 'The link is copied. Send it by text, chat or any other way.' : 'Copy this link and send it by text, chat or any other way.'}
-                  {' '}Anyone with it can view this invoice and pay the balance. Nobody was emailed.
+                  {' '}Anyone with it can view this invoice and pay the balance, by card, ACH, MBMTS ACH or cheque. Nobody was emailed.
                 </Typography>
                 <TextField label="Payment link" value={link} fullWidth InputProps={{ readOnly: true }} onFocus={event => event.target.select()} />
               </>

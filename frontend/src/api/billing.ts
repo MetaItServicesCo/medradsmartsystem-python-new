@@ -40,8 +40,15 @@ export interface PaymentProof {
   extraction_confidence?: number | null
   mismatch_flags: string[]
   requires_manual_review: boolean
-  submitted_by_id: number
+  /** Empty for a payment reported through an invoice link: the payer is not a user. */
+  submitted_by_id: number | null
   submitted_by_name?: string | null
+  /** "payment_link" when the customer reported it through the invoice's link. */
+  submitted_via?: string | null
+  payer_name?: string | null
+  payer_email?: string | null
+  /** The cheque or transaction number the payer gave. */
+  payer_reference?: string | null
   reviewed_by_id?: number | null
   reviewed_by_name?: string | null
   reviewed_at?: string | null

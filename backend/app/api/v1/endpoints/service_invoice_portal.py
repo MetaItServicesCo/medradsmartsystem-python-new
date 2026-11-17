@@ -2,8 +2,8 @@
 
 The same options as sales and rental - email it, or copy the link to send any
 other way - available only once the invoice is approved for billing. Whoever
-holds the link can view the invoice and pay the balance by Square, and nothing
-else. An invoice whose approval is withdrawn stops being shown or payable until
+holds the link can view the invoice and pay the balance by Square, or report an
+ACH, MBMTS ACH or cheque payment for staff to check, and nothing else. An invoice whose approval is withdrawn stops being shown or payable until
 it is approved again.
 
 The link token is derived from a stored nonce, so the same link can be shown
@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Callable, Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload, object_session, selectinload
@@ -53,6 +53,7 @@ from app.utils.invoice_approval import (
     scope_invoice_approval_visibility,
 )
 from app.utils.invoice_ledger import record_payment_delta, record_status_change
+from app.utils.invoice_link_payments import link_payment_options, pending_payment, report_link_payment
 from app.utils.notifications import create_notifications, notify_admins
 from app.utils.payment_idempotency import (
     get_or_create_operation,
@@ -379,6 +380,7 @@ def _public_response(invoice: Invoice) -> dict[str, Any]:
         "square_payment": square,
         "card_fee_amount": f"{_money(invoice.card_fee_amount):.2f}",
         **card_charge(balance).as_dict(),
+        **link_payment_options(object_session(invoice), invoice),
     }
 
 
@@ -412,6 +414,40 @@ def pay_public_service_invoice(
     return _take_square_payment(db, invoice, payload, _public_response)
 
 
+@router.post("/public/service-invoices/{token}/payment-proof")
+async def report_public_service_invoice_payment(
+    token: str,
+    request: Request,
+    payment_method: str = Form(...),
+    amount: str = Form(...),
+    payer_name: str = Form(...),
+    payer_email: Optional[str] = Form(None),
+    reference_number: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    proof_file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+) -> Any:
+    """An ACH, MBMTS ACH or cheque payment, for Billing to check before it counts."""
+    enforce_rate_limit(
+        bucket="public-invoice-payment-proof",
+        identity=public_payment_identity(request, token),
+        limit=10,
+        window_seconds=600,
+    )
+    return await report_link_payment(
+        db,
+        load_invoice=lambda: _invoice_by_token(db, token, for_update=True),
+        respond=_public_response,
+        payment_method=payment_method,
+        amount=amount,
+        payer_name=payer_name,
+        payer_email=payer_email,
+        reference=reference_number,
+        notes=notes,
+        proof_file=proof_file,
+    )
+
+
 def _take_square_payment(
     db: Session,
     invoice: Invoice,
@@ -431,6 +467,8 @@ def _take_square_payment(
     if invoice.status == InvoiceStatus.PAID:
         return respond(invoice)
     if service_payment_in_review(db, invoice):
+        raise HTTPException(status_code=409, detail=SERVICE_PAYMENT_IN_REVIEW)
+    if invoice.invoice_type != InvoiceType.SERVICE and pending_payment(db, invoice) == SERVICE_PAYMENT_IN_REVIEW:
         raise HTTPException(status_code=409, detail=SERVICE_PAYMENT_IN_REVIEW)
     balance = max(_money(invoice.balance_due), _money(0))
     if balance <= 0:
@@ -555,9 +593,10 @@ def _take_square_payment(
     # money is taken and stays on record; someone needs to look at it.
     overpaid = _money(invoice.amount_paid) > _money(invoice.total_amount)
     needs_attention = previous_status == InvoiceStatus.CANCELLED or overpaid
+    kind = "Service" if invoice.invoice_type == InvoiceType.SERVICE else "Inspection"
     notify_admins(
         db,
-        title="Service payment needs attention" if needs_attention else "Service payment completed",
+        title=f"{kind} payment needs attention" if needs_attention else f"{kind} payment completed",
         message=(
             f"{payer} paid ${square_amount:.2f} through Square for {invoice.invoice_number}"
             + (", but the invoice was cancelled or reduced while the card was being charged. Please review it."

@@ -811,6 +811,47 @@ export interface PublicServiceInvoice {
     currency: string
     sdk_url: string
   } | null
+  /** Paying other than by card: ACH, MBMTS ACH or Cheque, checked by Billing before it counts. */
+  other_methods?: LinkPaymentMethod[]
+  can_report_payment?: boolean
+}
+
+export interface LinkPaymentMethod {
+  value: 'ach' | 'mbmts_ach' | 'cheque'
+  label: string
+}
+
+/** What a customer reports through an invoice link: a proof file, its reference number, or both. */
+export interface LinkPaymentReport {
+  payment_method: LinkPaymentMethod['value']
+  amount: string
+  payer_name: string
+  payer_email?: string
+  reference_number?: string
+  notes?: string
+  proof_file?: File | null
+}
+
+export const linkPaymentForm = (report: LinkPaymentReport): FormData => {
+  const form = new FormData()
+  form.append('payment_method', report.payment_method)
+  form.append('amount', report.amount)
+  form.append('payer_name', report.payer_name)
+  if (report.payer_email) form.append('payer_email', report.payer_email)
+  if (report.reference_number) form.append('reference_number', report.reference_number)
+  if (report.notes) form.append('notes', report.notes)
+  if (report.proof_file) form.append('proof_file', report.proof_file)
+  return form
+}
+
+export const reportPublicServiceInvoicePayment = async (
+  token: string,
+  report: LinkPaymentReport,
+): Promise<PublicServiceInvoice> => {
+  const res = await apiClient.post(`/public/service-invoices/${token}/payment-proof`, linkPaymentForm(report), {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
 }
 
 export const fetchServiceInvoiceDocument = async (invoiceId: number): Promise<ServiceInvoiceDocument> => {

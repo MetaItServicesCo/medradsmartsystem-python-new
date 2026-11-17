@@ -56,11 +56,14 @@ def invoice_payment_evidence_response(
     for proof in getattr(invoice, "payment_proofs", None) or []:
         if proof.invoice_transaction_id:
             proof_transaction_ids.add(int(proof.invoice_transaction_id))
-        # A card payment a customer reported has no document, only the card it named.
+        # A card payment a customer reported has no document, only the card it
+        # named; a cheque or ACH payment reported through an invoice link may
+        # have only its reference number.
         has_file = bool(getattr(proof, "stored_filename", True))
+        card_claim = not has_file and proof.payment_method == "credit_card"
         item = {
             "id": f"proof-{proof.id}",
-            "evidence_type": "uploaded_proof" if has_file else "card_payment_claim",
+            "evidence_type": "uploaded_proof" if has_file else "card_payment_claim" if card_claim else "reported_payment",
             "status": proof.status,
             "amount": proof.claimed_amount,
             "currency": "USD",
@@ -68,13 +71,15 @@ def invoice_payment_evidence_response(
             "reference_number": (
                 proof.invoice_transaction.reference_number
                 if getattr(proof, "invoice_transaction", None)
-                else None
+                else getattr(proof, "payer_reference", None)
             ),
             "card_brand": getattr(proof, "card_brand", None),
             "card_last4": getattr(proof, "card_last4", None),
             "occurred_at": proof.reviewed_at or proof.created_at,
             "submitted_at": proof.created_at,
-            "submitted_by_name": _name(getattr(proof, "submitted_by", None)),
+            "submitted_by_name": _name(getattr(proof, "submitted_by", None)) or (
+                f"{proof.payer_name} (invoice link)" if getattr(proof, "payer_name", None) else None
+            ),
             "reviewed_at": proof.reviewed_at,
             "reviewed_by_name": _name(getattr(proof, "reviewed_by", None)),
             "proof_id": proof.id if has_file else None,

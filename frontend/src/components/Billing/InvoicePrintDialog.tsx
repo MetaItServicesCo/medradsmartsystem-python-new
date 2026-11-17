@@ -395,7 +395,8 @@ const documentLabel = (type: PrintDocumentType, primaryLabel = 'Invoice') => {
   return primaryLabel
 }
 
-const buildPrintableHtml = (
+/** The invoice document as Billing prints it. Also used by an invoice's customer link page. */
+export const buildPrintableHtml = (
   invoice: PrintableInvoice,
   type: PrintDocumentType,
   lineItems: PrintableLineItem[],

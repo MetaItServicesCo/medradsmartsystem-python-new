@@ -1868,8 +1868,8 @@ const Billing = () => {
             Print
           </MenuItem>
         )}
-        {/* Service invoices go out only once approved for billing, and only while there is a balance. */}
-        {actionItem && canApproveBilling && serviceInvoiceId(actionItem) != null && actionItem.balance > 0 && String(actionItem.status) !== 'cancelled' && (
+        {/* Service and inspection invoices go out only once approved for billing, and only while there is a balance. */}
+        {actionItem && canApproveBilling && (serviceInvoiceId(actionItem) != null || actionItem.source === 'inspection') && actionItem.balance > 0 && String(actionItem.status) !== 'cancelled' && (
           [
             { channel: 'email' as const, label: 'Send Invoice via Email', icon: <EmailOutlinedIcon fontSize="small" sx={{ color: '#2563EB' }} /> },
             { channel: 'link' as const, label: 'Copy Link', icon: <LinkIcon fontSize="small" sx={{ color: '#2563EB' }} /> },
@@ -1879,7 +1879,12 @@ const Billing = () => {
               sx={ACTION_MENU_ITEM}
               disabled={actionItem.billingApprovalStatus !== 'approved'}
               onClick={() => {
-                setShareTarget({ invoiceId: actionItem.id, invoiceNumber: actionItem.number, channel: option.channel })
+                setShareTarget({
+                  invoiceId: actionItem.id,
+                  invoiceNumber: actionItem.number,
+                  channel: option.channel,
+                  kind: actionItem.source === 'inspection' ? 'inspection' : 'service',
+                })
                 closeActions()
               }}
             >
@@ -2111,6 +2116,8 @@ const Billing = () => {
                   ['Memo', proof.extracted_data?.memo],
                 ].filter((detail): detail is [string, string] => Boolean(detail[1]))
                 const cardClaim = Boolean(proof.is_card_claim)
+                // A cheque or ACH payment reported through the invoice link with its reference number only.
+                const referenceOnly = !cardClaim && !proof.file_url
                 const extractionReady = ['completed', 'failed', 'not_applicable'].includes(proof.extraction_status || 'completed')
                 return (
                   <Card key={proof.id} variant="outlined" sx={{ p: 2, borderRadius: '16px', borderColor: proof.mismatch_flags.length ? '#F59E0B88' : '#CBD5E1' }}>
@@ -2123,6 +2130,11 @@ const Billing = () => {
                         <Typography sx={{ color: '#64748B', fontSize: 12, mt: 0.5 }}>
                           Submitted by {proof.submitted_by_name || `User #${proof.submitted_by_id}`} on {formatDate(proof.created_at)}
                         </Typography>
+                        {proof.submitted_via === 'payment_link' && (proof.payer_reference || proof.payer_email) && (
+                          <Typography sx={{ color: '#475569', fontSize: 12, mt: 0.25, fontWeight: 700 }} data-link-proof-details>
+                            {[proof.payer_reference ? `Reference ${proof.payer_reference}` : '', proof.payer_email || ''].filter(Boolean).join(' · ')}
+                          </Typography>
+                        )}
                         {proof.reviewed_at && (
                           <Typography sx={{ color: '#64748B', fontSize: 12, mt: 0.25 }}>
                             Reviewed by {proof.reviewed_by_name || 'Admin'} on {formatDate(proof.reviewed_at)}
@@ -2138,7 +2150,16 @@ const Billing = () => {
                         }}
                       />
                     </Box>
-                    {cardClaim ? (
+                    {referenceOnly ? (
+                      <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '12px', bgcolor: '#FFFBEB', border: '1px solid #F59E0B55', display: 'grid', gap: 0.5 }} data-reference-only>
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#334155' }}>
+                          Reported through the invoice link with its {proof.payment_method === 'cheque' ? 'cheque' : 'reference'} number only: {proof.payer_reference || '-'}. No document was attached.
+                        </Typography>
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#B45309' }}>
+                          No money has been recorded. Approve only after finding this payment in the bank account or holding the cheque.
+                        </Typography>
+                      </Box>
+                    ) : cardClaim ? (
                       <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '12px', bgcolor: '#FFFBEB', border: '1px solid #F59E0B55', display: 'grid', gap: 0.5 }}>
                         <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#334155' }}>
                           Card reported: {proof.card_last4 ? `${proof.card_brand || 'Card'} ending ${proof.card_last4}` : 'no card details given'}
@@ -2246,7 +2267,7 @@ const Billing = () => {
                       </Typography>
                     ) : null}
                     <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
-                      {!cardClaim && (
+                      {!cardClaim && !referenceOnly && (
                         <Button
                           variant="outlined"
                           startIcon={<VisibilityOutlinedIcon />}
@@ -2258,7 +2279,7 @@ const Billing = () => {
                       )}
                       {proof.status === 'pending_verification' && (
                         <>
-                          {!cardClaim && (
+                          {!cardClaim && !referenceOnly && (
                             <Button
                               variant="outlined"
                               startIcon={<RestartAltIcon />}

@@ -474,6 +474,9 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     if not invoice:
         return None
     data = {c.name: getattr(invoice, c.name) for c in invoice.__table__.columns}
+    # What the customer's link is made from stays on the server.
+    data.pop("public_link_nonce", None)
+    data.pop("public_link_hash", None)
     data["invoice_type"] = _value(data.get("invoice_type"))
     data["status"] = _value(data.get("status"))
     data["facility_name"] = invoice.facility.name if invoice.facility else None
@@ -3392,6 +3395,87 @@ def generate_inspection_batch_invoice(
     }
 
 
+def _inspection_invoice_load_options(include_details: bool) -> list[Any]:
+    load_options = [
+        joinedload(Invoice.facility),
+        joinedload(Invoice.approved_for_billing_by),
+        selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
+        joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
+        joinedload(Invoice.inspection).joinedload(Inspection.equipment),
+        joinedload(Invoice.inspection).joinedload(Inspection.inspector),
+    ]
+    if include_details:
+        load_options.extend([
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.inventory_part)
+            .joinedload(InventoryPart.tier),
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.equipment)
+            .joinedload(Equipment.tier),
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.facility)
+            .joinedload(Facility.tier),
+        ])
+    else:
+        load_options.append(joinedload(Invoice.inspection_batch))
+    return load_options
+
+
+def _prepare_inspection_invoices(db: Session, invoices: list[Invoice], include_details: bool) -> None:
+    batch_counts = _batch_counts(
+        db,
+        [invoice.inspection_batch_id for invoice in invoices if invoice.inspection_batch_id],
+    )
+    for invoice in invoices:
+        if invoice.inspection_batch_id:
+            invoice._batch_asset_count = batch_counts.get(
+                invoice.inspection_batch_id, {}
+            ).get("total", 0)
+            invoice._batch_items = (
+                _batch_invoice_items_for_listing(invoice)
+                if include_details
+                else _stored_batch_invoice_items(invoice.notes)
+            )
+
+
+def _inspection_invoice_listing_item(invoice: Invoice) -> dict[str, Any]:
+    """One inspection invoice as Billing lists and prints it."""
+    return {
+        **_invoice_response(invoice),
+        "inspection_number": invoice.inspection.inspection_number if invoice.inspection else None,
+        "inspection_batch_number": invoice.inspection_batch.batch_number if invoice.inspection_batch else None,
+        "batch_asset_count": getattr(invoice, "_batch_asset_count", None),
+        "batch_items": getattr(invoice, "_batch_items", []),
+        "inventory_part_name": (
+            _part_name(invoice.inspection.inventory_part)
+            if invoice.inspection and invoice.inspection.inventory_part
+            else _equipment_name(invoice.inspection.equipment)
+            if invoice.inspection and invoice.inspection.equipment
+            else f"{getattr(invoice, '_batch_asset_count', 0)} asset inspection batch"
+            if invoice.inspection_batch
+            else None
+        ),
+        "inspector_name": invoice.inspection.inspector.full_name if invoice.inspection and invoice.inspection.inspector else None,
+    }
+
+
+def inspection_invoice_detail(db: Session, invoice_id: int) -> Optional[dict[str, Any]]:
+    """One inspection invoice in full, as Billing shows it when opened."""
+    invoice = (
+        db.query(Invoice)
+        .options(*_inspection_invoice_load_options(True))
+        .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.INSPECTION)
+        .first()
+    )
+    if invoice is None:
+        return None
+    _prepare_inspection_invoices(db, [invoice], True)
+    return _inspection_invoice_listing_item(invoice)
+
+
 @router.get("/quotations")
 def list_inspection_quotations(
     db: Session = Depends(get_db),
@@ -3494,73 +3578,16 @@ def list_inspection_quotations(
 
     total = query.count()
     include_details = invoice_id is not None
-    load_options = [
-        joinedload(Invoice.facility),
-        joinedload(Invoice.approved_for_billing_by),
-        selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
-        joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
-        joinedload(Invoice.inspection).joinedload(Inspection.equipment),
-        joinedload(Invoice.inspection).joinedload(Inspection.inspector),
-    ]
-    if include_details:
-        load_options.extend([
-            selectinload(Invoice.inspection_batch)
-            .selectinload(InspectionBatch.inspections)
-            .joinedload(Inspection.inventory_part)
-            .joinedload(InventoryPart.tier),
-            selectinload(Invoice.inspection_batch)
-            .selectinload(InspectionBatch.inspections)
-            .joinedload(Inspection.equipment)
-            .joinedload(Equipment.tier),
-            selectinload(Invoice.inspection_batch)
-            .selectinload(InspectionBatch.inspections)
-            .joinedload(Inspection.facility)
-            .joinedload(Facility.tier),
-        ])
-    else:
-        load_options.append(joinedload(Invoice.inspection_batch))
     invoices = (
-        query.options(*load_options)
+        query.options(*_inspection_invoice_load_options(include_details))
         .order_by(Invoice.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
-    batch_counts = _batch_counts(
-        db,
-        [invoice.inspection_batch_id for invoice in invoices if invoice.inspection_batch_id],
-    )
-    for invoice in invoices:
-        if invoice.inspection_batch_id:
-            invoice._batch_asset_count = batch_counts.get(
-                invoice.inspection_batch_id, {}
-            ).get("total", 0)
-            invoice._batch_items = (
-                _batch_invoice_items_for_listing(invoice)
-                if include_details
-                else _stored_batch_invoice_items(invoice.notes)
-            )
+    _prepare_inspection_invoices(db, invoices, include_details)
     return {
-        "items": [
-            {
-                **_invoice_response(invoice),
-                "inspection_number": invoice.inspection.inspection_number if invoice.inspection else None,
-                "inspection_batch_number": invoice.inspection_batch.batch_number if invoice.inspection_batch else None,
-                "batch_asset_count": getattr(invoice, "_batch_asset_count", None),
-                "batch_items": getattr(invoice, "_batch_items", []),
-                "inventory_part_name": (
-                    _part_name(invoice.inspection.inventory_part)
-                    if invoice.inspection and invoice.inspection.inventory_part
-                    else _equipment_name(invoice.inspection.equipment)
-                    if invoice.inspection and invoice.inspection.equipment
-                    else f"{getattr(invoice, '_batch_asset_count', 0)} asset inspection batch"
-                    if invoice.inspection_batch
-                    else None
-                ),
-                "inspector_name": invoice.inspection.inspector.full_name if invoice.inspection and invoice.inspection.inspector else None,
-            }
-            for invoice in invoices
-        ],
+        "items": [_inspection_invoice_listing_item(invoice) for invoice in invoices],
         "total": total,
         "skip": skip,
         "limit": limit,

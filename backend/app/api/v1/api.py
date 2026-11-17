@@ -31,6 +31,7 @@ from app.api.v1.endpoints import (
     tracking,
     tracking_screen,
     service_invoice_portal,
+    inspection_invoice_portal,
     reports,
     billing,
     square_webhooks,
@@ -53,6 +54,7 @@ api_router.include_router(audit.router, prefix="/audit-logs", tags=["audit-logs"
 api_router.include_router(service_requests.router, prefix="/service-requests", tags=["service-requests"])
 # Its own paths: the service invoice document, sending it, and paying through its link.
 api_router.include_router(service_invoice_portal.router, tags=["service-requests"])
+api_router.include_router(inspection_invoice_portal.router, tags=["inspections"])
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
 # Its own prefix, so nothing that already answers under /inventory changes.
 api_router.include_router(

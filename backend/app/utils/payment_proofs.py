@@ -56,8 +56,26 @@ CARD_CLAIM_BRANDS = {
 REVIEWABLE_EXTRACTION_STATUSES = frozenset({"completed", "failed", CARD_CLAIM_EXTRACTION_STATUS})
 
 
+# A cheque or ACH payment reported through an invoice link with only its
+# reference number: no document, nothing to read, and not a card claim.
+PAYMENT_LINK = "payment_link"
+
+
 def is_card_claim(proof: PaymentProof) -> bool:
-    return not proof.stored_filename
+    return not proof.stored_filename and proof.payment_method == CARD_CLAIM_METHOD
+
+
+def has_document(proof: PaymentProof) -> bool:
+    return bool(proof.stored_filename)
+
+
+def submitter_name(proof: PaymentProof) -> Optional[str]:
+    """Who sent it: the signed-in user, or the name a payer gave on the link."""
+    if proof.submitted_by is not None:
+        return proof.submitted_by.full_name
+    if proof.payer_name:
+        return f"{proof.payer_name} (invoice link)"
+    return None
 
 
 def card_claim_details(card_brand: Optional[str], card_last4: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -714,14 +732,18 @@ def payment_proof_response(proof: PaymentProof, *, include_ocr_text: bool = Fals
         "mismatch_flags": proof.mismatch_flags or [],
         "requires_manual_review": proof.requires_manual_review,
         "submitted_by_id": proof.submitted_by_id,
-        "submitted_by_name": proof.submitted_by.full_name if proof.submitted_by else None,
+        "submitted_by_name": submitter_name(proof),
+        "submitted_via": proof.submitted_via,
+        "payer_name": proof.payer_name,
+        "payer_email": proof.payer_email,
+        "payer_reference": proof.payer_reference,
         "reviewed_by_id": proof.reviewed_by_id,
         "reviewed_by_name": proof.reviewed_by.full_name if proof.reviewed_by else None,
         "reviewed_at": proof.reviewed_at,
         "review_notes": proof.review_notes,
         "invoice_transaction_id": proof.invoice_transaction_id,
         "quotation_payment_id": proof.quotation_payment_id,
-        "file_url": None if is_card_claim(proof) else f"/api/v1/billing/payment-proofs/{proof.id}/file",
+        "file_url": f"/api/v1/billing/payment-proofs/{proof.id}/file" if has_document(proof) else None,
         "is_card_claim": is_card_claim(proof),
         "card_brand": proof.card_brand,
         "card_last4": proof.card_last4,
