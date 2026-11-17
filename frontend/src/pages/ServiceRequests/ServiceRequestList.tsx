@@ -82,6 +82,7 @@ const SERVICE_SEARCH_FIELDS = [
   { value: 'equipment', label: 'Equipment' },
   { value: 'priority', label: 'Priority' },
   { value: 'status', label: 'Status' },
+  { value: 'technician', label: 'Technician' },
   { value: 'requester', label: 'Created By' },
   { value: 'created', label: 'Created' },
 ]

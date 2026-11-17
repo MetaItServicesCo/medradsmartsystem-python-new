@@ -1064,6 +1064,7 @@ def list_service_requests(
     search_term = normalize_list_search(search)
     if search_term:
         requester = aliased(User)
+        technician = aliased(User)
         normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
         search_by_field = {
             "request_number": [contains_ci(ServiceRequest.request_number, search_term)],
@@ -1083,7 +1084,15 @@ def list_service_requests(
                 contains_ci(ServiceRequest.requested_by_name, search_term),
             ],
             "created": [value_contains_ci(ServiceRequest.created_at, search_term)],
+            # The assigned technician, as the list shows them; "Unassigned" finds those with none.
+            "technician": [
+                contains_ci(technician.full_name, search_term),
+                contains_ci(technician.username, search_term),
+                contains_ci(technician.email, search_term),
+            ],
         }
+        if "unassigned".startswith(search_term.strip().lower()) and len(search_term.strip()) >= 3:
+            search_by_field["technician"].append(ServiceRequest.assigned_technician_id.is_(None))
         created_bounds = parsed_date_bounds(search_term)
         if created_bounds:
             search_by_field["created"].append(and_(
@@ -1096,6 +1105,7 @@ def list_service_requests(
             .outerjoin(Facility, ServiceRequest.facility_id == Facility.id)
             .outerjoin(Equipment, ServiceRequest.equipment_id == Equipment.id)
             .outerjoin(requester, ServiceRequest.requester_id == requester.id)
+            .outerjoin(technician, ServiceRequest.assigned_technician_id == technician.id)
             .filter(or_(*search_predicates))
         )
     if date_from:
