@@ -1,5 +1,6 @@
 import { fetchFacility, type Facility } from '@/api/facilities'
 import { fetchInspectionBatch } from '@/api/inspections'
+import { canvasValuesFromGrid } from '@/utils/gridToCanvas'
 
 // Presentation only. The report copies the customer rental-agreement look
 // (CustomerDocumentUI palette + gradient divider + rounded cards + status chips)
@@ -371,10 +372,37 @@ const answerRowHtml = (label: unknown, value: unknown): string => {
   return text ? `<tr><td class="k">${esc(text)}</td>${answer}</tr>` : `<tr>${answer}</tr>`
 }
 
+const hasFormLayout = (schema: any): boolean =>
+  Boolean(schema && typeof schema === 'object'
+    && (Array.isArray(schema.custom_grid?.cells) || (Array.isArray(schema.canvas_form?.elements) && schema.canvas_form.elements.length)))
+
+// The form this report was filled in on. Report Activity lets the technician
+// pick the default form, the asset's attached form, any saved form or a
+// customised one, and saves a copy of the form it used with the report
+// (form_data.form_template.schema). That copy is what the answers belong to:
+// the asset's attached form, or the saved template edited since, can have
+// other fields. Reports saved without a copy (the migrated ones) use the
+// report's own form template, and only failing that the asset's attached form.
+// The single-report endpoint sends the template as `form_schema`, the
+// inspections and batch endpoints as `form_template_schema`.
+const reportFormSchema = (inspection: InspectionReportLike): any => {
+  const data = reportData(inspection)
+  const saved = data.form_template?.schema
+  if (hasFormLayout(saved)) return saved
+  if (Array.isArray(data.custom_grid?.cells)) return { title: data.form_template?.name, custom_grid: data.custom_grid }
+  const template = inspection.form_schema || inspection.form_template_schema
+  if (hasFormLayout(template)) return template
+  return inspection.attached_form_schema || template || null
+}
+
+// The report screen shows a canvas form in place of any grid, so a schema
+// carrying both prints only the canvas.
+const hasCanvasForm = (schema: any): boolean =>
+  Array.isArray(schema?.canvas_form?.elements) && schema.canvas_form.elements.length > 0
+
 const customGridHtml = (inspection: InspectionReportLike): string => {
-  // The single-report endpoint sends `form_schema`; the batch endpoint sends the
-  // same schema as `attached_form_schema` / `form_template_schema`. Accept any.
-  const schema = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  const schema = reportFormSchema(inspection)
+  if (hasCanvasForm(schema)) return ''
   const grid = schema?.custom_grid
   if (!grid || !Array.isArray(grid.cells)) return ''
   const values = reportData(inspection).custom_grid_values || {}
@@ -446,7 +474,7 @@ const customGridHtml = (inspection: InspectionReportLike): string => {
 // In the standard report layout those rows are ordinary named measurements.
 const usesBuiltInTable = (inspection: InspectionReportLike) => {
   const data = reportData(inspection)
-  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  const schema: any = reportFormSchema(inspection)
   return Boolean(schema?.custom_grid || schema?.canvas_form?.elements?.length || data.custom_grid || data.formio_form)
 }
 
@@ -542,10 +570,16 @@ const canvasTableAnswersHtml = (element: any, values: Record<string, unknown>): 
 // answer can never run over the next field. Returns '' when the inspection
 // has no canvas form or nothing was answered on it.
 const canvasAnswersHtml = (inspection: InspectionReportLike): string => {
-  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  const schema: any = reportFormSchema(inspection)
   const elements: any[] = Array.isArray(schema?.canvas_form?.elements) ? schema.canvas_form.elements : []
   if (!elements.length) return ''
-  const values: Record<string, unknown> = reportData(inspection).canvas_values || {}
+  // A report filed on the grid a form was later converted from keeps its
+  // answers against the grid; the converted canvas fields share their keys,
+  // which is how the report screen opens them filled.
+  const data = reportData(inspection)
+  const values: Record<string, unknown> = data.canvas_values && typeof data.canvas_values === 'object'
+    ? data.canvas_values
+    : canvasValuesFromGrid(schema.canvas_form, data.custom_grid_values)
   if (!Object.values(values).some(hasAnswer)) return ''
   const rows = elements
     .slice()
@@ -574,10 +608,13 @@ const gridHtml = (inspection: InspectionReportLike) =>
 
 // The custom form's title, as the report screen shows it above the form.
 const customFormTitle = (inspection: InspectionReportLike): string => {
-  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
-  const gridTitle = String(schema?.custom_grid?.title || '').trim()
-  if (gridTitle && gridTitle !== 'Set Title') return gridTitle
-  const canvasTitle = String(schema?.canvas_form?.title || '').trim()
+  const schema: any = reportFormSchema(inspection)
+  if (!hasCanvasForm(schema)) {
+    const gridTitle = String(schema?.custom_grid?.title || '').trim()
+    if (gridTitle && gridTitle !== 'Set Title') return gridTitle
+  }
+  // A canvas form has no title of its own; the screen shows the form's name.
+  const canvasTitle = String(schema?.canvas_form?.title || (hasCanvasForm(schema) ? schema?.title : '') || '').trim()
   return canvasTitle || 'Functional Test'
 }
 

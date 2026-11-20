@@ -353,6 +353,81 @@ ok('a report with no custom form no longer prints an empty "Functional Test" hea
 ok('the blank printable form is unchanged: no heading, standard table',
   hasStandardTable(buildInspectionFormHtml({ name: 'Laser' })) && !buildInspectionFormHtml({ name: 'Laser' }).includes('>Functional Test<'))
 
+// ── The form a report was filled in on is the form that prints ──────────────
+// Report Activity lets the technician use the default form, the asset's
+// attached form, any saved form or a customised one, and saves a copy of the
+// form it used with the report. The printout read the asset's attached form
+// (or the saved template) instead, whose fields the answers don't belong to,
+// so the technician's form printed nothing.
+const gridForm = (title, id, label) => ({ title, custom_grid: { title, columns: 1, cells: [[{ id, type: 'input', label }]] } })
+const attachedForm = gridForm('Attached PM', 'att_1', 'Attached Question')
+const templateForm = gridForm('Template PM', 'tpl_1', 'Template Question')
+const notes = { diagnostics: { summary: 'Passed.' } }
+
+const usedExisting = cePage(print({
+  attached_form_schema: attachedForm, form_template_schema: gridForm('Laser PM', 'ls_1', 'Laser Output'),
+  form_data: { checks: {}, ...notes, custom_grid_values: { ls_1: '4.8 W' },
+    form_template: { id: 9, name: 'Laser PM', source: 'existing', schema: gridForm('Laser PM', 'ls_1', 'Laser Output') } },
+}))
+ok('a saved form picked in Report Activity prints, not the asset\'s attached form',
+  sectionOf(usedExisting, 'Laser PM').includes('Laser Output') && sectionOf(usedExisting, 'Laser PM').includes('4.8 W') && !usedExisting.includes('Attached Question'))
+
+const usedCustom = cePage(print({
+  attached_form_schema: attachedForm, form_template_schema: templateForm,
+  form_data: { checks: {}, ...notes, custom_grid_values: { cu_1: 'Fan replaced' },
+    form_template: { id: 5, name: 'Customized form', source: 'custom', saved_as_template: false, schema: gridForm('Pump Extra', 'cu_1', 'Work Done') } },
+}))
+ok('a customised form not saved to Inspection Forms still prints from the copy kept with the report',
+  sectionOf(usedCustom, 'Pump Extra').includes('Fan replaced') && !usedCustom.includes('Template Question') && !usedCustom.includes('Attached Question'))
+
+const editedSince = cePage(print({
+  form_schema: gridForm('Laser PM', 'renamed', 'New Question'),
+  form_data: { checks: {}, ...notes, custom_grid_values: { ls_1: '4.8 W' },
+    form_template: { id: 9, name: 'Laser PM', source: 'existing', schema: gridForm('Laser PM', 'ls_1', 'Laser Output') } },
+}))
+ok('a form edited after the report was filed still prints the report as filed (Reports module)',
+  sectionOf(editedSince, 'Laser PM').includes('Laser Output') && sectionOf(editedSince, 'Laser PM').includes('4.8 W'))
+
+const canvasUsed = cePage(print({
+  attached_form_schema: attachedForm,
+  form_data: { checks: {}, ...notes, canvas_values: { cv_1: '120/80' }, custom_grid_values: { att_1: 'stale' },
+    form_template: { id: 11, name: 'BP Check', source: 'existing', schema: { title: 'BP Check',
+      custom_grid: attachedForm.custom_grid,
+      canvas_form: { elements: [{ id: 'cv_1', type: 'input', label: 'Pressure', x: 0, y: 0 }] } } } },
+}))
+ok('a canvas form prints its answers under the form\'s name, and its grid does not print as well',
+  sectionOf(canvasUsed, 'BP Check').includes('120/80') && !canvasUsed.includes('Attached Question') && !canvasUsed.includes('stale'))
+
+const migratedNoCopy = cePage(print({
+  attached_form_schema: attachedForm, form_template_schema: templateForm,
+  form_data: { checks: {}, ...notes, custom_grid_values: { tpl_1: 'OK' } },
+}))
+ok('a report with no saved copy prints its own form template before the asset\'s attached form',
+  sectionOf(migratedNoCopy, 'Template PM').includes('Template Question') && sectionOf(migratedNoCopy, 'Template PM').includes('OK'))
+
+const onlyAttached = cePage(print({
+  attached_form_schema: attachedForm,
+  form_data: { checks: {}, ...notes, custom_grid_values: { att_1: 'Yes' } },
+}))
+ok('  and with no form template, the asset\'s attached form, as before', sectionOf(onlyAttached, 'Attached PM').includes('Yes'))
+
+const convertedLater = cePage(print({
+  form_template_schema: { title: 'Defib PM', canvas_form: { elements: [
+    { id: 'g_out', type: 'input', label: 'Energy Output', x: 0, y: 0 },
+    { id: 'g_acc', type: 'checkbox', label: 'Accessories', options: ['Pads', 'Cable'], x: 0, y: 80 },
+  ] } },
+  form_data: { checks: {}, ...notes, custom_grid_values: { g_out: '200 J', g_acc__0: true, g_acc__1: false } },
+}))
+ok('a report filed on a grid form later converted to canvas prints its answers on the canvas fields',
+  sectionOf(convertedLater, 'Defib PM').includes('200 J') && sectionOf(convertedLater, 'Defib PM').includes('Pads') && !sectionOf(convertedLater, 'Defib PM').includes('Cable'))
+
+const batchWithForms = buildInspectionBatchReportHtml({ batch_number: 'INSP-9', assets: [
+  { ...base, id: 7, inspection_number: 'INSP-9-001', asset_name: 'Laser', attached_form_schema: attachedForm,
+    form_data: { checks: {}, ...notes, custom_grid_values: { ls_1: '4.8 W' },
+      form_template: { id: 9, name: 'Laser PM', source: 'existing', schema: gridForm('Laser PM', 'ls_1', 'Laser Output') } } },
+], batch_invoice: null }, null)
+ok('a batch report prints each asset\'s report form the same way', batchWithForms.includes('Laser Output') && batchWithForms.includes('4.8 W') && !batchWithForms.includes('Attached Question'))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)
