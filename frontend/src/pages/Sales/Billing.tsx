@@ -66,6 +66,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
 import { useServiceInvoiceHtml } from './useServiceInvoiceHtml'
+import { rentalTaxForLines } from '@/utils/rentalTax'
 import ServiceInvoiceShareDialog, { type ServiceInvoiceShareTarget } from './ServiceInvoiceShareDialog'
 import CardPaymentPanel from '@/components/Billing/CardPaymentPanel'
 import {
@@ -1060,7 +1061,11 @@ const Billing = () => {
         return updateSalesInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null } as any)
       }
       if (item.source === 'rental') {
-        return updateRentalInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null } as any)
+        return updateRentalInvoice(item.id, {
+          ...commonPayload,
+          payment_method: data.payment_method || null,
+          tax_overridden: Boolean(data.tax_overridden),
+        } as any)
       }
       if (item.source === 'service' && item.billingKind === 'service_invoice') {
         return updateServiceInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null })
@@ -2011,6 +2016,11 @@ const Billing = () => {
           if (editItem) invoiceEditMut.mutate({ item: editItem, data: payload })
         }}
         saving={invoiceEditMut.isPending}
+        // A rental invoice made with its lines: changing them recalculates the
+        // tax by the rental rule, as the server does when it is saved.
+        recalculateTax={editItem?.source === 'rental' && (((editItem.raw as any).line_items || []) as unknown[]).length > 0
+          ? rentalTaxForLines
+          : undefined}
       />
 
       <Dialog open={Boolean(authorizationItem)} onClose={closeAuthorizationDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>

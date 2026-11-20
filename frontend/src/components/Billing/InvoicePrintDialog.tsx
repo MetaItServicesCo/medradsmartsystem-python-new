@@ -206,6 +206,8 @@ export interface PrintableInvoiceEditPayload {
   line_items?: PrintableLineItem[]
   labels?: PrintableInvoiceLabels
   summary_rows?: PrintableInvoiceSummaryRow[]
+  /** The tax was typed in by hand, so it is kept rather than recalculated. */
+  tax_overridden?: boolean
 }
 
 interface InvoicePrintDialogProps {
@@ -236,6 +238,8 @@ interface InvoicePrintDialogProps {
   documentTypeLocked?: boolean
   onSave?: (payload: PrintableInvoiceEditPayload) => void
   saving?: boolean
+  /** When given, changing the lines recalculates the tax with it (unless the tax is typed in). */
+  recalculateTax?: (rows: PrintableLineItem[]) => number
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
@@ -618,8 +622,11 @@ const InvoicePrintDialog = ({
   documentTypeLocked = false,
   onSave,
   saving = false,
+  recalculateTax,
 }: InvoicePrintDialogProps) => {
   const [documentType, setDocumentType] = useState<PrintDocumentType>(initialDocumentType)
+  // Set once the tax is typed in by hand: from then on it is not recalculated.
+  const [taxOverridden, setTaxOverridden] = useState(false)
   const [editForm, setEditForm] = useState({
     customer_name: '',
     customer_email: '',
@@ -673,6 +680,7 @@ const InvoicePrintDialog = ({
     setEditRows(lineItems.map(item => ({ ...item, custom_cells: (item.custom_cells || []).map(cell => ({ ...cell })) })))
     setEditLabels(mergeInvoiceLabels(invoice.labels))
     setEditSummaryRows((invoice.summary_rows || []).map(row => ({ ...row })))
+    setTaxOverridden(false)
     setRowEditor(null)
     setSummaryEditor(null)
     setCustomSummaryEditor(null)
@@ -761,6 +769,7 @@ const InvoicePrintDialog = ({
       notes: editForm.notes || null,
       labels: editLabels,
       summary_rows: editSummaryRows,
+      tax_overridden: taxOverridden,
       line_items: editRows.map(row => ({
         ...row,
         quantity: Number(row.quantity || 0),
@@ -783,11 +792,17 @@ const InvoicePrintDialog = ({
   const synchronizeInvoiceTotals = (rows: PrintableLineItem[], summaryRows: PrintableInvoiceSummaryRow[]) => {
     const subtotal = lineItemsSubtotal(rows)
     const additional = additionalSummaryTotal(summaryRows)
-    setEditForm(prev => ({
-      ...prev,
-      subtotal: subtotal.toFixed(2),
-      total_amount: Math.max(0, subtotal + additional + Number(prev.tax_amount || 0) - Number(prev.discount_amount || 0)).toFixed(2),
-    }))
+    // The tax follows the lines, by the invoice's own rule, unless typed in.
+    const recalculated = recalculateTax && !taxOverridden ? recalculateTax(rows) : null
+    setEditForm(prev => {
+      const tax = recalculated !== null ? recalculated : Number(prev.tax_amount || 0)
+      return {
+        ...prev,
+        subtotal: subtotal.toFixed(2),
+        ...(recalculated !== null ? { tax_amount: recalculated.toFixed(2) } : {}),
+        total_amount: Math.max(0, subtotal + additional + tax - Number(prev.discount_amount || 0)).toFixed(2),
+      }
+    })
   }
 
   const calculatedLineTotal = (row: PrintableLineItem) => Number((
@@ -1383,6 +1398,7 @@ const InvoicePrintDialog = ({
             onClick={() => {
               if (!summaryEditor) return
               updateEditLabel(summaryEditor.labelKey, summaryEditor.label)
+              if (!summaryEditor.readOnly && summaryEditor.valueKey === 'tax_amount') setTaxOverridden(true)
               if (!summaryEditor.readOnly) {
                 setEditForm(prev => {
                   const next = { ...prev, [summaryEditor.valueKey]: summaryEditor.value }

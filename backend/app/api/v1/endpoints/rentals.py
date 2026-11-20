@@ -78,6 +78,7 @@ from app.utils.rental_billing import (
     billing_period_date,
     effective_period_count,
     reprice_unpaid_rental_invoice,
+    rental_tax_for_lines,
     RENTAL_TAX_RATE,
     RENTAL_TAX_FACTOR,
 )
@@ -225,6 +226,8 @@ class RentalCreate(BaseModel):
     # Save without going live: no stock reserved, no invoice, not billed - and
     # saved as it is, however much is filled in. Activating it checks everything.
     save_as_draft: bool = False
+    # Kept open until every item is returned: committed periods are the minimum term.
+    open_ended: bool = False
 
     blank_email_is_none = field_validator("customer_email", mode="before")(_blank_to_none)
     blank_dates_are_none = field_validator("start_date", "end_date", mode="before")(_blank_to_none)
@@ -233,6 +236,7 @@ class RentalCreate(BaseModel):
 class RentalUpdate(BaseModel):
     # "Save as Draft" on a draft: saved as it is, as when creating one.
     save_as_draft: bool = False
+    open_ended: Optional[bool] = None
     # An empty date box is no date (a draft may not have one yet).
     blank_dates_are_none = field_validator("start_date", "end_date", mode="before")(_blank_to_none)
     facility_id: Optional[int] = None
@@ -343,6 +347,9 @@ class RentalInvoiceUpdate(BaseModel):
     line_items: Optional[list[dict[str, Any]]] = None
     labels: Optional[dict[str, Any]] = None
     summary_rows: Optional[list[dict[str, Any]]] = None
+    # Billing typed the tax in themselves: it is kept as typed. Otherwise a
+    # change to the lines recalculates it, as the invoice was first calculated.
+    tax_overridden: bool = False
 
 
 class RentalInvoiceRefundCreate(BaseModel):
@@ -520,6 +527,8 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
     first = items[0] if items else None
     is_overdue = (
         rental.status == RentalStatus.ACTIVE
+        # An open agreement has no end to be past: it is billed until returned.
+        and not rental.open_ended
         and rental.end_date is not None
         and rental.end_date < date.today()
         and any(item.item_status != RentalItemStatus.RETURNED.value for item in items)
@@ -589,6 +598,7 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
             else None
         ),
         "committed_periods": rental.committed_periods,
+        "open_ended": bool(rental.open_ended),
         "periods_billed": rental.periods_billed,
         "next_bill_date": rental.next_bill_date,
         "next_payment": next_payment,
@@ -804,6 +814,19 @@ def _discount_package_response(package: RentalDiscountPackage) -> dict[str, Any]
     }
 
 
+def _invoice_line(item_number: str, description: str, unit_price: Decimal, quantity: int) -> dict[str, Any]:
+    return {
+        "item_number": item_number,
+        "description": description,
+        "quantity": quantity,
+        "unit_price": float(_money(unit_price)),
+        "shipping_fee": 0,
+        "setup_fee": 0,
+        "condition": None,
+        "total_amount": float(_money(unit_price) * quantity),
+    }
+
+
 def _period_count(days: int, freq: str) -> int:
     """Number of billing periods covering `days` for the given frequency."""
     if days < 1:
@@ -982,6 +1005,14 @@ def _stock_delta(old: dict[int, int], new: dict[int, int]) -> dict[int, int]:
         if change:
             delta[part_id] = change
     return delta
+
+
+OPEN_NEEDS_REGULAR_FREQUENCY = "An agreement kept open until returned needs a regular billing frequency, not a custom schedule"
+
+
+def _require_open_frequency(open_ended: Any, frequency: Any) -> None:
+    if open_ended and _frequency_value(frequency) == "custom":
+        raise HTTPException(status_code=422, detail=OPEN_NEEDS_REGULAR_FREQUENCY)
 
 
 def _require_complete_draft(rental: Rental) -> None:
@@ -2134,6 +2165,7 @@ def create_rental(
         if payload.start_date is None or payload.end_date is None:
             raise HTTPException(status_code=422, detail="The agreement start and end dates are required")
         _validate_billing_term(payload.start_date, payload.end_date, payload.billing_frequency, payload.committed_periods)
+        _require_open_frequency(payload.open_ended, payload.billing_frequency)
     discount_invoice_number = (
         payload.discount_invoice_number
         if payload.discount_invoice_number is not None
@@ -2205,6 +2237,7 @@ def create_rental(
         terms_and_conditions=payload.terms_and_conditions,
         auto_charge=bool(payload.auto_charge),
         committed_periods=payload.committed_periods,
+        open_ended=bool(payload.open_ended),
         discount_type=payload.discount_type,
         discount_value=payload.discount_value,
         discount_apply_after_periods=(discount_invoice_number - 1 if discount_invoice_number else None),
@@ -2288,6 +2321,7 @@ def activate_rental(
         raise HTTPException(status_code=409, detail="Only a draft rental agreement can be activated")
     _require_complete_draft(rental)
     _validate_billing_term(rental.start_date, rental.end_date, rental.billing_frequency, rental.committed_periods)
+    _require_open_frequency(rental.open_ended, rental.billing_frequency)
     _validate_discount_schedule(
         rental.discount_type,
         rental.discount_value,
@@ -2351,6 +2385,9 @@ def update_rental(
         if cleared or resolved_start is None or resolved_end is None:
             raise HTTPException(status_code=422, detail="The agreement start and end dates are required")
         _validate_billing_term(resolved_start, resolved_end, resolved_frequency, resolved_committed)
+        _require_open_frequency(
+            payload.open_ended if payload.open_ended is not None else rental.open_ended, resolved_frequency,
+        )
 
     resolved_discount_type = payload.discount_type if "discount_type" in payload.model_fields_set else rental.discount_type
     resolved_discount_value = payload.discount_value if "discount_value" in payload.model_fields_set else rental.discount_value
@@ -2381,6 +2418,8 @@ def update_rental(
         )
 
     update_data = payload.model_dump(exclude_unset=True, exclude={"items", "secondary_recipients", "save_as_draft"})
+    if update_data.get("open_ended", False) is None:
+        update_data.pop("open_ended")
 
     # Going live reserves stock and raises the first invoice, so it has its own
     # action; a status edit must never skip that or turn live work into a draft.
@@ -2495,7 +2534,7 @@ def update_rental(
             rental.customer_address = composed
 
     # A draft still without its dates has no billing dates yet.
-    if {"start_date", "end_date", "billing_frequency", "committed_periods"} & set(update_data) and rental.start_date and rental.end_date:
+    if {"start_date", "end_date", "billing_frequency", "committed_periods", "open_ended"} & set(update_data) and rental.start_date and rental.end_date:
         next_period = int(rental.periods_billed or 0) + 1
         rental.next_bill_date = (
             billing_period_date(rental, next_period)
@@ -2749,6 +2788,114 @@ def return_rental(
     return _rental_response(rental)
 
 
+ONE_TIME_FEES = (
+    # kind, rental item field, invoice line code, description
+    ("shipping", "shipping_fee", "SHIP-PACK", "Shipping & Packing"),
+    ("setup", "setup_fee", "DEL-SETUP", "Delivery & Setup"),
+    ("removal", "removal_fee", "REMOVAL", "Removal & Pickup"),
+    ("labor", "labor_fee", "LABOR", "Labor"),
+)
+
+
+def _final_invoice_plan(db: Session, rental: Rental) -> dict[str, Any]:
+    """What a final invoice may still bill, and what is already on an invoice.
+
+    An agreement billed by schedule has already invoiced its periods and its
+    one-time fees, so its final invoice bills only what is left: periods the
+    equipment was kept beyond those invoiced, and any fee no invoice carries
+    (one left off the first invoice on purpose, to bill on collection). An
+    agreement from before scheduled billing has no such invoices, and is
+    billed for its whole duration exactly as it always was.
+    """
+    items = list(rental.items or [])
+    freq = _frequency_value(rental.billing_frequency)
+    per_period = sum(
+        (_money(item.rental_rate) * Decimal(max(1, int(item.quantity or 1))) for item in items), Decimal("0"),
+    )
+    invoices = (
+        db.query(Invoice)
+        .filter(Invoice.rental_id == rental.id, Invoice.status != InvoiceStatus.CANCELLED)
+        .all()
+    )
+    periods_billed = int(rental.periods_billed or 0)
+    scheduled = periods_billed > 0 or any(invoice.rental_period_number for invoice in invoices)
+    last_day = rental.actual_return_date or (
+        date.today() if rental.open_ended else rental.end_date
+    )
+
+    if not scheduled:
+        days = max(1, (last_day - rental.start_date).days)
+        periods = _period_count(days, freq)
+        return {
+            "scheduled": False,
+            "last_day": last_day,
+            "periods_billed": 0,
+            "periods_covered": periods,
+            "unbilled_periods": periods,
+            "rent_per_period": per_period,
+            "rent": per_period * Decimal(periods),
+            "fees": [
+                {"kind": kind, "code": code, "description": label,
+                 "amount": sum((_money(getattr(item, field)) for item in items), Decimal("0")),
+                 "already_billed": False}
+                for kind, field, code, label in ONE_TIME_FEES
+            ],
+        }
+
+    billed_codes: set[str] = set()
+    for invoice in invoices:
+        for line in editable_line_items(invoice.notes):
+            billed_codes.add(str(line.get("item_number") or "").strip().upper())
+    covered = 0
+    while covered < 1200 and billing_period_date(rental, covered + 1) <= last_day:
+        covered += 1
+    covered = max(covered, 1)
+    unbilled = max(0, covered - periods_billed)
+    return {
+        "scheduled": True,
+        "last_day": last_day,
+        "periods_billed": periods_billed,
+        "periods_covered": covered,
+        "unbilled_periods": unbilled,
+        "rent_per_period": per_period,
+        "rent": per_period * Decimal(unbilled),
+        "fees": [
+            {"kind": kind, "code": code, "description": label,
+             "amount": sum((_money(getattr(item, field)) for item in items), Decimal("0")),
+             "already_billed": code in billed_codes}
+            for kind, field, code, label in ONE_TIME_FEES
+        ],
+    }
+
+
+@router.get("/{rental_id}/final-invoice-preview")
+def final_invoice_preview(
+    rental_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """What Convert to Invoice would bill now, before any extra charges are entered."""
+    _require_internal_rental_operator(current_user)
+    rental = (
+        db.query(Rental)
+        .options(selectinload(Rental.items))
+        .filter(Rental.id == rental_id)
+        .first()
+    )
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    _require_not_draft(rental, "convert it to an invoice")
+    plan = _final_invoice_plan(db, rental)
+    return {
+        **plan,
+        "last_day": plan["last_day"].isoformat() if plan["last_day"] else None,
+        "rent_per_period": str(plan["rent_per_period"]),
+        "rent": str(plan["rent"]),
+        "fees": [{**fee, "amount": str(fee["amount"])} for fee in plan["fees"]],
+    }
+
+
 @router.post("/{rental_id}/convert-to-invoice")
 def convert_to_invoice(
     rental_id: int,
@@ -2795,29 +2942,21 @@ def convert_to_invoice(
         db.commit()
         return _rental_response(rental)
         
-    if rental.converted_invoice:
+    # One final invoice per agreement -- but one Billing cancelled no longer
+    # counts, so the agreement can be finished again.
+    if rental.converted_invoice and rental.converted_invoice.status != InvoiceStatus.CANCELLED:
         return _invoice_response(rental.converted_invoice)
 
-    # Base rental cost = periods covering the rental duration × each item's rate × qty.
-    end_date = rental.actual_return_date if rental.actual_return_date else rental.end_date
-    days = (end_date - rental.start_date).days
-    if days < 1:
-        days = 1
-    freq = _frequency_value(rental.billing_frequency)
-    periods = _period_count(days, freq)
-
+    # Only what no invoice has billed yet: unbilled periods and fees (an
+    # agreement from before scheduled billing is billed whole, as it was).
+    plan = _final_invoice_plan(db, rental)
     items = list(rental.items or [])
-    base_rental_amount = Decimal("0")
-    items_shipping = Decimal("0")
-    items_setup = Decimal("0")
-    items_labor = Decimal("0")
-    items_removal = Decimal("0")
-    for item in items:
-        base_rental_amount += Decimal(periods) * _money(item.rental_rate) * Decimal(max(1, int(item.quantity or 1)))
-        items_shipping += _money(item.shipping_fee)
-        items_setup += _money(item.setup_fee)
-        items_labor += _money(item.labor_fee)
-        items_removal += _money(item.removal_fee)
+    base_rental_amount = plan["rent"]
+    unbilled_fee = {fee["kind"]: (Decimal("0") if fee["already_billed"] else fee["amount"]) for fee in plan["fees"]}
+    items_shipping = unbilled_fee["shipping"]
+    items_setup = unbilled_fee["setup"]
+    items_labor = unbilled_fee["labor"]
+    items_removal = unbilled_fee["removal"]
 
     worked_hours = _money(payload.worked_hours)
     setup_fee = _money(payload.setup_fee) + items_setup
@@ -2835,6 +2974,41 @@ def convert_to_invoice(
     subtotal = base_rental_amount + worked_hours + setup_fee + service_fee + shipping_fee + removal_fee + application_fee + items_labor
     discount_amount = (subtotal * raw_discount / Decimal("100")).quantize(Decimal("0.01")) if payload.discount_type == "percent" else raw_discount
     total_amount = subtotal + tax_amount - discount_amount
+    if plan["scheduled"] and subtotal <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Nothing is left to bill on this agreement: its periods and fees are already invoiced. "
+                "Enter any extra charges to bill them."
+            ),
+        )
+
+    # The lines, with the codes that say what each one is, so the invoice
+    # shows its breakdown and a later edit in Billing can recalculate its tax.
+    final_lines: list[dict[str, Any]] = []
+    unbilled_periods = int(plan["unbilled_periods"])
+    if unbilled_periods > 0:
+        first = int(plan["periods_billed"]) + 1
+        span = "period {}".format(first) if unbilled_periods == 1 else "periods {}-{}".format(first, first + unbilled_periods - 1)
+        for item in items:
+            quantity = max(1, int(item.quantity or 1))
+            if _money(item.rental_rate) > 0:
+                final_lines.append(_invoice_line(
+                    item.part_number or "Rental",
+                    "{} - {} ({})".format(item.part_description or "Rental product", span, _frequency_value(rental.billing_frequency)),
+                    _money(item.rental_rate), quantity * unbilled_periods,
+                ))
+    for code, label, amount in (
+        ("SHIP-PACK", "Shipping & Packing", shipping_fee),
+        ("DEL-SETUP", "Delivery & Setup", setup_fee),
+        ("REMOVAL", "Removal & Pickup", removal_fee),
+        ("LABOR", "Labor", items_labor),
+        ("WORKED-HOURS", "Worked hours", worked_hours),
+        ("SERVICE-FEE", "Service fee", service_fee),
+        ("APP-FEE", "Application fee", application_fee),
+    ):
+        if amount > 0:
+            final_lines.append(_invoice_line(code, label, amount, 1))
 
     # Create Invoice
     invoice = Invoice(
@@ -2861,15 +3035,32 @@ def convert_to_invoice(
         due_date=payload.due_date or date.today() + timedelta(days=30),
         payment_terms="Net 30",
         payment_method=payload.payment_method,
-        notes=payload.notes or f"Rental invoice for agreement {rental.rental_number}.",
+        notes=(
+            compose_invoice_edit_notes(
+                None,
+                payload.notes or f"Final rental invoice for agreement {rental.rental_number}.",
+                {"line_items": final_lines, "labels": {"tax": f"Tax ({RENTAL_TAX_RATE}%)"}},
+            )
+            if plan["scheduled"]
+            else payload.notes or f"Rental invoice for agreement {rental.rental_number}."
+        ),
     )
-    
+
     db.add(invoice)
     db.flush()
     record_invoice_created(db, invoice, current_user, f"Rental invoice created from agreement {rental.rental_number}")
-    
+
     rental.converted_invoice_id = invoice.id
     rental.updated_at = datetime.utcnow()
+    if plan["scheduled"] and int(plan["periods_covered"]) > int(rental.periods_billed or 0):
+        # These periods are now invoiced: the schedule must never bill them again.
+        rental.periods_billed = int(plan["periods_covered"])
+        next_period = rental.periods_billed + 1
+        rental.next_bill_date = (
+            billing_period_date(rental, next_period)
+            if next_period <= effective_period_count(rental)
+            else None
+        )
     
     _append_history(
         rental,
@@ -2882,6 +3073,9 @@ def convert_to_invoice(
             "action": action,
             "discount_type": payload.discount_type,
             "total_amount": str(total_amount),
+            "periods_billed_before": plan["periods_billed"],
+            "unbilled_periods": plan["unbilled_periods"],
+            "fees_already_billed": [fee["kind"] for fee in plan["fees"] if fee["already_billed"]],
         },
     )
     log_activity(db, "rentals", rental.id, "CONVERT_TO_INVOICE", current_user, {"invoice_id": invoice.id})
@@ -2985,6 +3179,23 @@ def list_rental_invoices(
     }
 
 
+def _line_signature(lines: list[dict[str, Any]]) -> list[tuple[str, str, str, str]]:
+    return [
+        (
+            str(line.get("item_number") or "").strip().upper(),
+            str(_money(line.get("quantity"))),
+            str(_money(line.get("unit_price"))),
+            str(_money(line.get("total_amount") if line.get("total_amount") not in (None, "") else line.get("total"))),
+        )
+        for line in lines or []
+    ]
+
+
+def _lines_changed(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> bool:
+    """Whether an edit changed what the invoice charges, line by line."""
+    return _line_signature(before) != _line_signature(after)
+
+
 @router.put("/invoices/{invoice_id}")
 def update_rental_invoice(
     invoice_id: int,
@@ -3019,6 +3230,7 @@ def update_rental_invoice(
     edit_before_line_items = editable_line_items(invoice.notes)
     edit_before_summary_rows = editable_summary_rows(invoice.notes)
     update_data = payload.model_dump(exclude_unset=True)
+    tax_overridden = bool(update_data.pop("tax_overridden", False))
     internal_editor = is_invoice_approver(current_user)
     facility_payer = is_facility_billing_user(current_user)
     if not (internal_editor or facility_payer):
@@ -3068,6 +3280,22 @@ def update_rental_invoice(
         invoice.notes = compose_invoice_edit_notes(invoice.notes, update_data.get("notes"), existing_metadata)
     if "total_amount" not in update_data and any(field in update_data for field in ["subtotal", "tax_amount", "discount_amount"]):
         invoice.total_amount = _money(invoice.subtotal) + _money(invoice.tax_amount) - _money(invoice.discount_amount)
+    # Lines changed in Billing: the tax follows them, by the rule the invoice
+    # was made with -- unless Billing typed the tax in. An invoice with no
+    # stored lines (made before lines were kept) is left as it was edited.
+    new_line_items = existing_metadata.get("line_items") if "line_items" in existing_metadata else None
+    if (
+        not tax_overridden
+        and edit_before_line_items
+        and new_line_items is not None
+        and _lines_changed(edit_before_line_items, new_line_items)
+    ):
+        recalculated = rental_tax_for_lines(new_line_items)
+        difference = recalculated - _money(invoice.tax_amount)
+        if difference != 0:
+            invoice.tax_amount = recalculated
+            invoice.total_amount = _money(invoice.total_amount) + difference
+            financial_edit = True
     if financial_edit:
         invalidate_invoice_approval(db, invoice, current_user)
             

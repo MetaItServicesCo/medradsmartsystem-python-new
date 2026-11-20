@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Boolean, ForeignKey, Enum as SQLEnum, Index, Numeric, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Boolean, ForeignKey, Enum as SQLEnum, Index, Numeric, JSON, UniqueConstraint, false
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -117,6 +117,9 @@ class Rental(Base):
     square_customer_id = Column(EncryptedPaymentReference(), nullable=True)
     failed_charge_count = Column(Integer, nullable=False, default=0)
     committed_periods = Column(Integer, nullable=True)
+    # Kept open until every item is returned: the committed periods are the
+    # minimum term, and billing continues one period at a time after it.
+    open_ended = Column(Boolean, nullable=False, default=False, server_default=false())
     periods_billed = Column(Integer, nullable=False, default=0)
     next_bill_date = Column(Date, nullable=True)
 

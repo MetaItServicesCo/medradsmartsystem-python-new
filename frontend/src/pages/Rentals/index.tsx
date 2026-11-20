@@ -5,7 +5,7 @@ import {
   Alert, Autocomplete, Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, IconButton, ListItemIcon, Menu, MenuItem,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
-  TablePagination, TextField, Typography, useMediaQuery, useTheme,
+  TablePagination, TextField, Typography, useMediaQuery, useTheme, FormControlLabel,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentIcon from '@mui/icons-material/Assignment'
@@ -56,6 +56,7 @@ import {
   deleteRental,
   returnRental,
   convertRentalToInvoice,
+  fetchRentalFinalInvoicePreview,
   fetchRentalInvoices,
   fetchRentalSummary,
   updateRentalInvoice,
@@ -380,6 +381,7 @@ interface RentalAgreementFormState {
   terms_and_conditions: string
   auto_charge: boolean
   committed_periods: number | ''
+  open_ended: boolean
   discount_type: '' | 'flat' | 'percent'
   discount_value: number
   discount_apply_after_periods: number | ''
@@ -409,6 +411,7 @@ const emptyAgreement = (): RentalAgreementFormState => ({
   terms_and_conditions: '',
   auto_charge: false,
   committed_periods: '',
+  open_ended: false,
   discount_type: '',
   discount_value: 0,
   discount_apply_after_periods: '',
@@ -922,6 +925,7 @@ const Rentals = () => {
     items: buildAgreementItems(),
     auto_charge: agreementForm.auto_charge,
     committed_periods: agreementForm.committed_periods === '' ? null : Number(agreementForm.committed_periods),
+    open_ended: agreementForm.billing_frequency !== 'custom' && agreementForm.open_ended,
     discount_type: agreementForm.discount_type || null,
     discount_value: agreementForm.discount_type ? normalizeMoneyInput(agreementForm.discount_value) : null,
     discount_apply_after_periods: agreementForm.discount_apply_after_periods === '' ? null : Number(agreementForm.discount_apply_after_periods),
@@ -1209,6 +1213,7 @@ const Rentals = () => {
       terms_and_conditions: rental.terms_and_conditions || '',
       auto_charge: Boolean(rental.auto_charge),
       committed_periods: rental.committed_periods ?? '',
+      open_ended: Boolean(rental.open_ended),
       discount_type: (rental.discount_type as '' | 'flat' | 'percent') || '',
       discount_value: Number(rental.discount_value || 0),
       discount_apply_after_periods: rental.discount_apply_after_periods ?? '',
@@ -1767,16 +1772,50 @@ const Rentals = () => {
     } as RentalItem]
   }, [convertAgreement])
 
-  // Base rental = periods × rate × qty, summed across every item.
-  const calculatedBaseRental = useMemo(
-    () => convertItems.reduce((sum, item) => sum + billingPeriods * Number(item.rental_rate || 0) * Number(item.quantity || 1), 0),
-    [convertItems, billingPeriods],
-  )
-  const itemsShippingTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.shipping_fee || 0), 0), [convertItems])
-  const itemsSetupTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.setup_fee || 0), 0), [convertItems])
+  // What the server will bill: only what no invoice has billed yet -- the
+  // periods and fees already invoiced are left out. The figures below come
+  // from it, so what this window shows is what the invoice charges.
+  const finalPreviewQ = useQuery({
+    queryKey: ['rental-final-invoice-preview', convertAgreement?.id],
+    queryFn: () => fetchRentalFinalInvoicePreview(Number(convertAgreement?.id)),
+    enabled: Boolean(convertAgreement?.id),
+    staleTime: 0,
+  })
+  const finalPreview = finalPreviewQ.data
+  const periodsToBill = finalPreview ? finalPreview.unbilled_periods : billingPeriods
+  const unbilledFee = (kind: 'shipping' | 'setup' | 'removal' | 'labor') => {
+    const fee = finalPreview?.fees.find(item => item.kind === kind)
+    return fee && !fee.already_billed ? Number(fee.amount || 0) : 0
+  }
 
-  const itemsLaborTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.labor_fee || 0), 0), [convertItems])
-  const itemsRemovalTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.removal_fee || 0), 0), [convertItems])
+  // Base rental = periods to bill × rate × qty, summed across every item.
+  const calculatedBaseRental = useMemo(
+    () => (finalPreview
+      ? Number(finalPreview.rent || 0)
+      : convertItems.reduce((sum, item) => sum + billingPeriods * Number(item.rental_rate || 0) * Number(item.quantity || 1), 0)),
+    [convertItems, billingPeriods, finalPreview],
+  )
+  const itemsShippingTotal = useMemo(() => (finalPreview ? unbilledFee('shipping') : convertItems.reduce((sum, item) => sum + Number(item.shipping_fee || 0), 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [convertItems, finalPreview])
+  const itemsSetupTotal = useMemo(() => (finalPreview ? unbilledFee('setup') : convertItems.reduce((sum, item) => sum + Number(item.setup_fee || 0), 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [convertItems, finalPreview])
+
+  const itemsLaborTotal = useMemo(() => (finalPreview ? unbilledFee('labor') : convertItems.reduce((sum, item) => sum + Number(item.labor_fee || 0), 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [convertItems, finalPreview])
+  const itemsRemovalTotal = useMemo(() => (finalPreview ? unbilledFee('removal') : convertItems.reduce((sum, item) => sum + Number(item.removal_fee || 0), 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [convertItems, finalPreview])
+  const alreadyBilledNote = finalPreview?.scheduled
+    ? [
+      finalPreview.periods_billed > 0
+        ? (finalPreview.periods_billed === 1 ? 'period 1' : `periods 1-${finalPreview.periods_billed}`)
+        : '',
+      ...finalPreview.fees.filter(fee => fee.already_billed && Number(fee.amount) > 0).map(fee => fee.description),
+    ].filter(Boolean).join(', ')
+    : ''
   const convertShippingTotal = Number(invoiceDetails.shipping_fee || 0) + itemsShippingTotal
   const convertSetupTotal = Number(invoiceDetails.setup_fee || 0) + itemsSetupTotal
   // Same tax rule as Sales: 8.25% on rent + shipping & packing + delivery & setup + removal.
@@ -2073,7 +2112,9 @@ const Rentals = () => {
                 <TableCell>
                   <RentalCellStack
                     primary={String(item.billing_frequency || '').replace(/_/g, ' ')}
-                    secondary={`${formatDate(item.start_date)} – ${formatDate(item.end_date)}`}
+                    secondary={item.open_ended
+                      ? `${formatDate(item.start_date)} – open until returned`
+                      : `${formatDate(item.start_date)} – ${formatDate(item.end_date)}`}
                   />
                 </TableCell>
                 <TableCell>
@@ -2500,7 +2541,7 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CheckCircleIcon fontSize="small" /></ListItemIcon>
           Return Equipment
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || isDraftAction || Boolean(actionAgreement.converted_invoice_id)} onClick={() => actionAgreement && openConvertDialog(actionAgreement)}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || isDraftAction || (Boolean(actionAgreement.converted_invoice_id) && actionAgreement.converted_invoice_status !== 'cancelled')} onClick={() => actionAgreement && openConvertDialog(actionAgreement)}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><ReceiptLongIcon fontSize="small" /></ListItemIcon>
           Convert to Invoice
         </MenuItem>
@@ -3002,6 +3043,26 @@ const Rentals = () => {
                   </TableCell>
                   <TableCell>
                     <TextField fullWidth size="small" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} inputProps={{ min: 1 }} />
+                    {/* Open: the committed periods are the minimum term, then billed each period until returned. */}
+                    <FormControlLabel
+                      sx={{ mt: 0.5, mr: 0, alignItems: 'flex-start' }}
+                      control={(
+                        <Checkbox
+                          size="small"
+                          sx={{ py: 0.25 }}
+                          disabled={agreementForm.billing_frequency === 'custom'}
+                          checked={agreementForm.billing_frequency !== 'custom' && agreementForm.open_ended}
+                          onChange={e => setAgreementForm(prev => ({ ...prev, open_ended: e.target.checked }))}
+                          inputProps={{ 'aria-label': 'Keep open until returned' }}
+                          data-open-ended
+                        />
+                      )}
+                      label={(
+                        <Typography sx={{ fontSize: 12, lineHeight: 1.35, color: '#475569', fontWeight: 700, pt: 0.4 }}>
+                          {agreementForm.billing_frequency === 'custom' ? 'Fixed term (custom schedule)' : 'Keep open until returned'}
+                        </Typography>
+                      )}
+                    />
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '130px 90px minmax(150px, 1fr)', gap: 0.75 }}>
@@ -3414,6 +3475,17 @@ const Rentals = () => {
                   </Table>
                 </Card>
 
+                {alreadyBilledNote && (
+                  <Alert severity="info" data-final-invoice-note>
+                    Already invoiced: {alreadyBilledNote}. This invoice bills only what is left
+                    {finalPreview && finalPreview.unbilled_periods > 0
+                      ? `: ${finalPreview.unbilled_periods} more period${finalPreview.unbilled_periods === 1 ? '' : 's'} up to ${formatDate(finalPreview.last_day)}`
+                      : ''}
+                    {finalPreview && finalPreview.unbilled_periods === 0 && !finalPreview.fees.some(fee => !fee.already_billed && Number(fee.amount) > 0)
+                      ? '. Nothing is left to bill unless you add extra charges below.'
+                      : '.'}
+                  </Alert>
+                )}
                 <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}` }}>
                   <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>Rental Product Details</Box>
                   <Table>
@@ -3442,8 +3514,8 @@ const Rentals = () => {
                           <TableCell>{money(item.setup_fee)}</TableCell>
                           <TableCell>{money(item.labor_fee)}</TableCell>
                           <TableCell>{item.item_condition || '-'}</TableCell>
-                          <TableCell>{billingPeriods}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 900, color: '#047857' }}>{money(billingPeriods * Number(item.rental_rate || 0) * Number(item.quantity || 1))}</TableCell>
+                          <TableCell>{periodsToBill}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 900, color: '#047857' }}>{money(periodsToBill * Number(item.rental_rate || 0) * Number(item.quantity || 1))}</TableCell>
                         </TableRow>
                       ))}
                       {[
@@ -3702,7 +3774,11 @@ const Rentals = () => {
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>RENTAL PERIOD</Typography>
-                  <Typography sx={{ fontWeight: 800 }}>{formatDate(viewAgreement.start_date)} to {formatDate(viewAgreement.end_date)}</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>
+                    {viewAgreement.open_ended
+                      ? `${formatDate(viewAgreement.start_date)} · open until returned (minimum term to ${formatDate(viewAgreement.end_date)})`
+                      : `${formatDate(viewAgreement.start_date)} to ${formatDate(viewAgreement.end_date)}`}
+                  </Typography>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>ACTUAL RETURN DATE</Typography>

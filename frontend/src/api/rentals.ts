@@ -122,6 +122,8 @@ export interface Rental {
     user_agent: string | null
   } | null
   committed_periods: number | null
+  /** Kept open until every item is returned: committed periods are the minimum term. */
+  open_ended?: boolean
   periods_billed: number
   next_bill_date: string | null
   next_payment: RentalProjectedPayment | null
@@ -294,6 +296,7 @@ export interface RentalPayload {
   // Recurring billing / commitment discount configuration.
   auto_charge?: boolean
   committed_periods?: number | null
+  open_ended?: boolean
   discount_type?: RentalDiscountType | null
   discount_value?: number | null
   discount_apply_after_periods?: number | null
@@ -443,6 +446,23 @@ export const returnRental = async (
   data: RentalReturnPayload
 ): Promise<Rental> => {
   const res = await apiClient.post(`/rentals/${id}/return`, data)
+  return res.data
+}
+
+/** What Convert to Invoice would bill now: only what no invoice has billed yet. */
+export interface RentalFinalInvoicePreview {
+  scheduled: boolean
+  last_day: string | null
+  periods_billed: number
+  periods_covered: number
+  unbilled_periods: number
+  rent_per_period: string
+  rent: string
+  fees: Array<{ kind: 'shipping' | 'setup' | 'removal' | 'labor'; code: string; description: string; amount: string; already_billed: boolean }>
+}
+
+export const fetchRentalFinalInvoicePreview = async (id: number): Promise<RentalFinalInvoicePreview> => {
+  const res = await apiClient.get(`/rentals/${id}/final-invoice-preview`)
   return res.data
 }
 

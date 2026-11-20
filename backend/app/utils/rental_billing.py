@@ -119,6 +119,17 @@ def billing_period_date(rental: Rental, period_index: int) -> date:
     return advance_billing_date(rental.start_date, _freq(rental), max(0, period_index - 1))
 
 
+def all_items_returned(rental: Rental) -> bool:
+    items = rental.items or []
+    return bool(items) and all(item.item_status == RentalItemStatus.RETURNED.value for item in items)
+
+
+def is_open_ended(rental: Rental) -> bool:
+    """Billed one period at a time until every item is returned. Custom
+    schedules are fixed by definition, so they are never open."""
+    return bool(getattr(rental, "open_ended", False)) and _freq(rental) != "custom"
+
+
 def billing_period_end(rental: Rental, period_index: int) -> date:
     if _freq(rental) == "custom":
         count = max(1, int(rental.committed_periods or 1))
@@ -126,6 +137,10 @@ def billing_period_end(rental: Rental, period_index: int) -> date:
             return rental.end_date
         return billing_period_date(rental, period_index + 1) - timedelta(days=1)
     natural_end = billing_period_date(rental, period_index + 1) - timedelta(days=1)
+    if is_open_ended(rental):
+        # Past the minimum term an open agreement's periods run on; its end
+        # date is only where the commitment ends.
+        return natural_end
     return min(natural_end, rental.end_date) if rental.end_date else natural_end
 
 
@@ -250,6 +265,12 @@ def effective_period_count(rental: Rental) -> int:
     if rental.start_date is None or rental.end_date is None:
         # Only a draft saved before its term was entered: nothing to bill yet.
         return 0
+    if is_open_ended(rental):
+        # The committed periods are the minimum. While anything is still out,
+        # one more period is always due; once everything is back, nothing is.
+        committed = max(1, int(rental.committed_periods or 1))
+        billed = int(rental.periods_billed or 0)
+        return max(committed, billed) if all_items_returned(rental) else max(committed, billed + 1)
     if _freq(rental) == "custom":
         return max(1, int(rental.committed_periods or 1))
     count = 0
@@ -361,6 +382,37 @@ def invoice_amounts_for_period(
     return _recurring_invoice_amounts(rental, period_index, include_conditional=include_conditional)
 
 
+# Lines that are never taxed on a rental invoice: refundable deposits, labor,
+# and the service charges a final invoice can carry. Everything else -- rent,
+# shipping & packing, delivery & setup, removal & pickup -- is taxed, the rule
+# every rental invoice is created with.
+NON_TAXABLE_RENTAL_CODES = frozenset({"DEPOSIT", "LABOR", "WORKED-HOURS", "SERVICE-FEE", "APP-FEE"})
+
+
+def rental_line_is_taxable(item_number: Any) -> bool:
+    code = str(item_number or "").strip().upper()
+    if code in NON_TAXABLE_RENTAL_CODES or code.startswith("DEP-"):
+        return False
+    return True
+
+
+def _line_total(line: dict[str, Any]) -> Decimal:
+    if line.get("total_amount") not in (None, ""):
+        return _money(line.get("total_amount"))
+    if line.get("total") not in (None, ""):
+        return _money(line.get("total"))
+    return (
+        _money(line.get("unit_price")) * Decimal(str(line.get("quantity") or 0))
+        + _money(line.get("shipping_fee")) + _money(line.get("setup_fee"))
+    )
+
+
+def rental_tax_for_lines(lines: list[dict[str, Any]]) -> Decimal:
+    """Tax for a rental invoice's lines, as it is calculated when the invoice is made."""
+    taxable = sum((_line_total(line) for line in lines if rental_line_is_taxable(line.get("item_number"))), Decimal("0"))
+    return (taxable * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 def _initial_invoice_line_items(rental: Rental) -> list[dict[str, Any]]:
     """Build period-one invoice lines from the agreement snapshots."""
     line_items: list[dict[str, Any]] = []
@@ -468,9 +520,11 @@ def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
         _line(item.part_number or "Rental", item.part_description or "Rental product", _money(item.rental_rate), int(item.quantity or 1))
         for item in rental.items or []
     ]
+    beyond_minimum = is_open_ended(rental) and period_index > int(rental.committed_periods or 0)
     visible = (
         f"Rental {rental.rental_number} — period {period_index}"
-        + (f" of {rental.committed_periods}" if rental.committed_periods else "")
+        + (" (open agreement, billed until returned)" if beyond_minimum
+           else (f" of {rental.committed_periods}" if rental.committed_periods else ""))
         + (f" (commitment discount {discount} applied)" if discount > 0 else "")
     )
     invoice = Invoice(
