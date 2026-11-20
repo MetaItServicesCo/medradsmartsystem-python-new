@@ -362,6 +362,15 @@ const isPassFailNa = (options: any): boolean =>
 // standard check-grid look; everything else renders as a labelled value table.
 // Returns '' when the inspection has no custom grid, so callers fall back to the
 // fixed default-report template.
+// One answer on a custom form. A field with no label of its own (a free-text
+// box under a section title) prints full width, as the technician wrote it,
+// line breaks kept -- not under a "-" label.
+const answerRowHtml = (label: unknown, value: unknown): string => {
+  const text = String(label ?? '').trim()
+  const answer = `<td${text ? '' : ' colspan="2"'} style="white-space:pre-wrap">${esc(value)}</td>`
+  return text ? `<tr><td class="k">${esc(text)}</td>${answer}</tr>` : `<tr>${answer}</tr>`
+}
+
 const customGridHtml = (inspection: InspectionReportLike): string => {
   // The single-report endpoint sends `form_schema`; the batch endpoint sends the
   // same schema as `attached_form_schema` / `form_template_schema`. Accept any.
@@ -427,7 +436,7 @@ const customGridHtml = (inspection: InspectionReportLike): string => {
     </table>` : ''
   const fieldTable = fieldItems.length ? `
     <table class="doc notes" style="margin-top:8px"><tbody>
-      ${fieldItems.map(f => `<tr><td class="k">${esc(f.label || '-')}</td><td>${esc(f.value)}</td></tr>`).join('')}
+      ${fieldItems.map(f => answerRowHtml(f.label, f.value)).join('')}
     </tbody></table>` : ''
   return checkTable + fieldTable
 }
@@ -550,7 +559,7 @@ const canvasAnswersHtml = (inspection: InspectionReportLike): string => {
         const table = canvasTableAnswersHtml(element, values)
         return table ? `<tr><td colspan="2">${table}</td></tr>` : ''
       }
-      return `<tr><td class="k">${esc(element.label || '-')}</td><td>${esc(answerText(values[element.id]))}</td></tr>`
+      return answerRowHtml(element.label, answerText(values[element.id]))
     })
     .join('')
   return rows ? `<table class="doc notes" style="margin-top:8px"><tbody>${rows}</tbody></table>` : ''
@@ -562,6 +571,25 @@ const canvasAnswersHtml = (inspection: InspectionReportLike): string => {
 // does too, followed by the custom grid's or canvas form's answers.
 const gridHtml = (inspection: InspectionReportLike) =>
   standardGridHtml(inspection) + customGridHtml(inspection) + canvasAnswersHtml(inspection)
+
+// The custom form's title, as the report screen shows it above the form.
+const customFormTitle = (inspection: InspectionReportLike): string => {
+  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  const gridTitle = String(schema?.custom_grid?.title || '').trim()
+  if (gridTitle && gridTitle !== 'Set Title') return gridTitle
+  const canvasTitle = String(schema?.canvas_form?.title || '').trim()
+  return canvasTitle || 'Functional Test'
+}
+
+// A filled report's inspection section, in the order the report screen shows
+// it: the built-in checklist, then the custom form's answers under the
+// form's own title. With no custom answers there is no heading: an empty
+// "Functional Test" heading used to print on every report.
+const reportSectionsHtml = (inspection: InspectionReportLike): string => {
+  const custom = customGridHtml(inspection) + canvasAnswersHtml(inspection)
+  return standardGridHtml(inspection)
+    + (custom ? `<h2 class="sec">${esc(customFormTitle(inspection))}</h2>${custom}` : '')
+}
 
 const biomedNotesHtml = (inspection: InspectionReportLike) => {
   const data = reportData(inspection)
@@ -714,8 +742,7 @@ const cePageHtml = (inspection: InspectionReportLike, facility: Facility | null 
       ${identityHtml(inspection)}
       ${fac.name ? `<div class="facbox"><div class="fac">${esc(fac.name)}</div><div>${facInfo}</div></div>` : ''}
     </div>
-    ${gridHtml(inspection)}
-    <h2 class="sec">Functional Test</h2>
+    ${reportSectionsHtml(inspection)}
     ${biomedNotesHtml(inspection)}
     ${measurementsHtml(inspection)}
     ${photosHtml(inspection)}

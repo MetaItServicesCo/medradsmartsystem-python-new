@@ -96,7 +96,7 @@ const appPrinted = print({
 ok('an app-built grid form prints the built-in table the screen shows above it, then its answers',
   hasStandardTable(appPrinted) && appPrinted.includes('EKG Cable')
   && appPrinted.indexOf('Replaced on') < appPrinted.indexOf('EKG Cable'))
-ok('a standard report prints the standard table as before', hasStandardTable(print({ form_data: { checks: { cleaning: 'pass' } } })))
+ok('a standard report prints the standard table as before', hasStandardTable(print({ form_data: { checks: { cleaning: 'pass' }, diagnostics: { summary: 'Passed.' } } })))
 
 // ── Battery / PM Kit "Replaced on / Due" ───────────────────────────────────
 const typed = print({
@@ -310,6 +310,48 @@ const typedEquipment = cePage(print({ form_data: { test_equipment: [{ descriptio
 ok('typed-in test equipment prints as before: no empty Model or Asset # column', typedEquipment.includes('Safety Analyzer') && !typedEquipment.includes('>Model<') && !typedEquipment.includes('>Asset #<'))
 const blankDefaults = cePage(print({ form_data: { test_equipment: [{ description: '', make: '', serial_number: '' }] } }))
 ok('no test equipment entered: no section', !blankDefaults.includes('Test Equipment'))
+
+// ── A custom form's free text prints under the form's own title ────────────
+// INSP-012605: the technician's text, typed in the "Functional Test" form
+// below the checklist, printed above that heading with "-" as its label, and
+// the heading printed empty.
+const NOTE = 'Physical inspection of unit passed.\nLaser lenses cleaned. No recent errors.'
+const sectionOf = (html, title) => {
+  const start = html.indexOf(`<h2 class="sec">${title}</h2>`)
+  const end = html.indexOf('Biomed Notes', start)
+  return start >= 0 && end > start ? html.slice(start, end) : ''
+}
+for (const [label, schema, values] of [
+  ['a grid cell with no label', { custom_grid: { title: 'Functional Test', columns: 1, cells: [[{ id: 'ft', type: 'textarea' }]] } }, { ft: NOTE }],
+  ['a grid cell holding an unlabelled text block', { custom_grid: { title: 'Functional Test', columns: 1,
+    cells: [[{ id: 'ft', type: 'text', blocks: [{ id: 'note', type: 'textarea' }] }]] } }, { ft__note: NOTE }],
+]) {
+  const html = cePage(print({ form_schema: schema, form_data: { checks: { functional: 'pass' }, custom_grid_values: values, diagnostics: { summary: 'Passed.' } } }))
+  const section = sectionOf(html, 'Functional Test')
+  ok(`${label}: its text prints under the form's title, after the checklist and before Biomed Notes`,
+    section.includes('Physical inspection of unit passed.') && html.indexOf('Replaced on') < html.indexOf('<h2 class="sec">Functional Test</h2>'))
+  ok('  full width, with no "-" label, and its line breaks kept', !section.includes('>-<') && section.includes('colspan="2"')
+    && section.includes('white-space:pre-wrap') && section.includes('\nLaser lenses cleaned.'))
+  ok('  the heading prints once, not empty above or below it', html.split('>Functional Test<').length - 1 === 1)
+}
+const canvasNote = cePage(print({
+  form_schema: { canvas_form: { title: 'Laser Functional Check', elements: [{ id: 'n', type: 'textarea', x: 0, y: 0 }] } },
+  form_data: { checks: {}, canvas_values: { n: NOTE }, diagnostics: { summary: 'Passed.' } },
+}))
+ok('a canvas form\'s unlabelled box prints under its own title, full width', sectionOf(canvasNote, 'Laser Functional Check').includes('Physical inspection of unit passed.')
+  && !sectionOf(canvasNote, 'Laser Functional Check').includes('>-<'))
+const titled = cePage(print({ form_schema: legacyGrid, form_data: { checks: {}, custom_grid_values: { item_101__ans: 'Pass', item_id_incolumn3611__ans: '72 bpm' }, diagnostics: { summary: 'Passed.' } } }))
+ok('a grid form with labelled fields prints them, labelled, under its own title',
+  sectionOf(titled, 'Patient Monitor1').includes('EKG Set – Actual') && sectionOf(titled, 'Patient Monitor1').includes('72 bpm'))
+const untitled = cePage(print({ form_schema: { custom_grid: { title: 'Set Title', columns: 1, cells: [[{ id: 'ft', type: 'textarea' }]] } },
+  form_data: { checks: {}, custom_grid_values: { ft: 'Checked.' }, diagnostics: { summary: 'Passed.' } } }))
+ok('a grid form never given a title prints under "Functional Test", not "Set Title"',
+  sectionOf(untitled, 'Functional Test').includes('Checked.') && !untitled.includes('Set Title'))
+const noForm = cePage(print({ form_data: { checks: { cleaning: 'pass' }, diagnostics: { summary: 'Passed.' } } }))
+ok('a report with no custom form no longer prints an empty "Functional Test" heading',
+  !noForm.includes('>Functional Test<') && noForm.includes('Biomed Notes') && hasStandardTable(noForm))
+ok('the blank printable form is unchanged: no heading, standard table',
+  hasStandardTable(buildInspectionFormHtml({ name: 'Laser' })) && !buildInspectionFormHtml({ name: 'Laser' }).includes('>Functional Test<'))
 
 console.log()
 if (failures) {
