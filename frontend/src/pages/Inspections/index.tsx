@@ -125,7 +125,7 @@ const CHECK_FIELDS = [
   ['pm_kit', 'PM Kit'],
 ]
 
-type ReportFormSource = 'default' | 'attached' | 'existing' | 'custom'
+type ReportFormSource = 'saved' | 'default' | 'attached' | 'existing' | 'custom'
 type FormBuilderMode = 'create' | 'edit' | 'report-custom'
 type GridCellType = 'text' | 'input' | 'radio' | 'checkbox'
 type GridCellBlockType = 'label' | 'input' | 'radio' | 'checkbox' | 'textarea'
@@ -1037,6 +1037,25 @@ const reportWithDefaults = (inspection: Inspection) => {
   return withInspectionCost({ ...saved, checks, diagnostics }, inspection)
 }
 
+// The form a saved report was filled in on: the copy Report Activity keeps
+// with the report. Reopening the report starts from it, so its answers stay
+// on the fields they were recorded against. Null for a report never saved
+// from Report Activity (the migrated ones), which open as before.
+const savedReportFormOf = (inspection: Inspection | null) => {
+  const saved = (inspection?.form_data as any)?.form_template
+  const schema = saved?.schema
+  if (!schema || typeof schema !== 'object') return null
+  if (!Array.isArray(schema.custom_grid?.cells) && !(Array.isArray(schema.canvas_form?.elements) && schema.canvas_form.elements.length)) return null
+  const name = String(saved.name || inspection?.form_template_name || 'Inspection form')
+  return {
+    id: (Number(saved.id) || inspection?.form_template_id || null) as number | null,
+    name,
+    source: saved.source as string | undefined,
+    savedAsTemplate: saved.saved_as_template as boolean | undefined,
+    schema: normalizeInspectionFormSchema(schema, name),
+  }
+}
+
 const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
   asset_tag: '',
   make: '',
@@ -1619,7 +1638,9 @@ const Inspections = () => {
     if (!selectedReportFormId) return null
     return inspectionForms.find(form => form.id === selectedReportFormId) || null
   }, [inspectionForms, selectedReportFormId])
+  const savedReportForm = useMemo(() => savedReportFormOf(reportInspection), [reportInspection])
   const activeReportSchema = useMemo(() => {
+    if (reportFormSource === 'saved') return savedReportForm?.schema ?? null
     if (reportFormSource === 'custom') return reportCustomSchema
     if (reportFormSource === 'attached') {
       return reportInspection?.attached_form_schema
@@ -1630,7 +1651,7 @@ const Inspections = () => {
       return selectedReportTemplate ? normalizeInspectionFormSchema(selectedReportTemplate.schema, selectedReportTemplate.name) : null
     }
     return defaultReportForm ? normalizeInspectionFormSchema(defaultReportForm.schema, defaultReportForm.name) : null
-  }, [defaultReportForm, reportCustomSchema, reportFormSource, reportInspection?.attached_form_name, reportInspection?.attached_form_schema, selectedReportTemplate])
+  }, [defaultReportForm, reportCustomSchema, reportFormSource, reportInspection?.attached_form_name, reportInspection?.attached_form_schema, savedReportForm, selectedReportTemplate])
   const assignableModalities = useMemo(
     () => flattenModalities(modalitiesQ.data?.items || []),
     [modalitiesQ.data?.items],
@@ -2217,6 +2238,18 @@ const Inspections = () => {
     if (reportInspection) {
       setReport(reportWithDefaults(reportInspection))
       setReportStatus(reportInspection.status === 'completed' ? 'completed' : 'completed')
+      const assetName = reportInspection.asset_name || reportInspection.equipment_name || reportInspection.inspection_number
+      setCustomFormName(`${assetName} Custom Inspection Form`)
+      setCustomFormDescription(`Reusable custom inspection form created from ${reportInspection.inspection_number}.`)
+      setSaveCustomForm(true)
+      // A report saved from Report Activity reopens on the form it was filled in on.
+      const saved = savedReportFormOf(reportInspection)
+      if (saved) {
+        setReportFormSource('saved')
+        setSelectedReportFormId(saved.id)
+        setReportCustomSchema(saved.schema)
+        return
+      }
       const usesAttached = Boolean(reportInspection.attached_form_id)
       const initialSource: ReportFormSource = usesAttached ? 'attached' : 'default'
       setReportFormSource(initialSource)
@@ -2225,9 +2258,6 @@ const Inspections = () => {
           ? reportInspection.attached_form_id
           : defaultReportForm?.id || reportInspection.form_template_id || null,
       )
-      const assetName = reportInspection.asset_name || reportInspection.equipment_name || reportInspection.inspection_number
-      setCustomFormName(`${assetName} Custom Inspection Form`)
-      setCustomFormDescription(`Reusable custom inspection form created from ${reportInspection.inspection_number}.`)
       const baseSchema = usesAttached && reportInspection.attached_form_schema
         ? normalizeInspectionFormSchema(reportInspection.attached_form_schema, reportInspection.attached_form_name || 'Asset attached form')
         : reportInspection.form_template_schema
@@ -2236,7 +2266,6 @@ const Inspections = () => {
             ? schemaForForm(defaultReportForm)
             : null
       setReportCustomSchema(baseSchema)
-      setSaveCustomForm(true)
     }
   }, [reportInspection, defaultReportForm?.id])
 
@@ -3371,6 +3400,13 @@ const Inspections = () => {
 
   const applyReportFormSource = (source: ReportFormSource) => {
     setReportFormSource(source)
+    if (source === 'saved') {
+      if (!savedReportForm) return
+      setSelectedReportFormId(savedReportForm.id)
+      setReportCustomSchema(savedReportForm.schema)
+      setReport((prev: any) => mergeSchemaDefaultsIntoReport(prev, savedReportForm.schema))
+      return
+    }
     if (source === 'default') {
       setSelectedReportFormId(defaultReportForm?.id || reportInspection?.form_template_id || null)
       const base = defaultReportForm ? schemaForForm(defaultReportForm) : null
@@ -3405,6 +3441,7 @@ const Inspections = () => {
   }
 
   const selectedReportFormName = () => {
+    if (reportFormSource === 'saved') return savedReportForm?.name || 'Inspection form'
     if (reportFormSource === 'attached') return reportInspection?.attached_form_name || 'Asset attached form'
     if (reportFormSource === 'existing') return selectedReportTemplate?.name || 'Existing inspection form'
     if (reportFormSource === 'custom') return customFormName || 'Customized form'
@@ -3460,8 +3497,11 @@ const Inspections = () => {
       form_template: {
         id: formTemplateId,
         name: formTemplateName,
-        source: reportFormSource,
-        saved_as_template: reportFormSource === 'custom' ? saveCustomForm : true,
+        // Saved again on the form it was filled in on: that form's record as it was.
+        source: reportFormSource === 'saved' ? (savedReportForm?.source || 'saved') : reportFormSource,
+        saved_as_template: reportFormSource === 'saved'
+          ? (savedReportForm?.savedAsTemplate ?? true)
+          : reportFormSource === 'custom' ? saveCustomForm : true,
         schema: reportFormSource === 'custom'
           ? schemaToPayload(reportCustomSchema || normalizeInspectionFormSchema(buildReusableFormSchema(formTemplateName, normalizedReport), formTemplateName), formTemplateName)
           : activeReportSchema,
@@ -6960,6 +7000,13 @@ const Inspections = () => {
                   Choose the form source for this inspection report. Custom forms can be saved for future assets.
                 </Typography>
                 <RadioGroup row={!reportOnPhone} value={reportFormSource} onChange={(event) => applyReportFormSource(event.target.value as ReportFormSource)} sx={reportOnPhone ? { gap: 0.25, '& .MuiFormControlLabel-root': { alignItems: 'flex-start', mr: 0 }, '& .MuiRadio-root': { pt: 0.5 }, '& .MuiFormControlLabel-label': { pt: 0.75, lineHeight: 1.35 } } : undefined}>
+                  {savedReportForm && (
+                    <FormControlLabel
+                      value="saved"
+                      control={<Radio />}
+                      label={`Form this report was filled in on - ${savedReportForm.name}`}
+                    />
+                  )}
                   <FormControlLabel
                     value="default"
                     control={<Radio />}
