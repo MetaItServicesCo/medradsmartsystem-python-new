@@ -66,7 +66,12 @@ from app.utils.payment_proofs import SERVICE_PAYMENT_IN_REVIEW, service_payment_
 from app.utils.payment_receipts import deliver_payment_receipt, queue_payment_receipt
 from app.utils.permissions import has_module_permission
 from app.utils.rate_limit import enforce_rate_limit, public_payment_identity
-from app.utils.service_invoice_document import build_service_invoice_document, service_work_entries
+from app.utils.service_invoice_document import (
+    billed_work_entries,
+    build_service_invoice_document,
+    latest_hours_correction,
+    service_work_entries,
+)
 from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
 from app.utils.square_payments import (
     SquareConfigurationError,
@@ -203,7 +208,12 @@ def read_invoice_work_entries(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """The rows the invoice will show, for the administrator to word before generating it."""
+    """The rows the invoice will show, for the administrator to word before generating it.
+
+    Hours are as the invoice will print them; a row changed by an hours
+    correction carries the technician's "logged_hours", and the correction
+    itself comes with them so Billing sees why.
+    """
     if not _is_internal_service_user(current_user) or not has_module_permission(current_user, "billing", "edit"):
         raise HTTPException(status_code=403, detail="Billing edit permission is required")
     sr = db.query(ServiceRequest).options(joinedload(ServiceRequest.assigned_technician)).filter(
@@ -212,7 +222,11 @@ def read_invoice_work_entries(
     if not sr:
         raise HTTPException(status_code=404, detail="Service request not found")
     _require_service_facility_access(db, current_user, sr.facility_id)
-    return {"items": service_work_entries(sr)}
+    return {
+        "items": billed_work_entries(sr, service_work_entries(sr)),
+        "hours_correction": latest_hours_correction(sr),
+        "billed_hours": float(sr.time_spent_hours or 0),
+    }
 
 
 @router.get("/service-invoices/{invoice_id}/share-options")

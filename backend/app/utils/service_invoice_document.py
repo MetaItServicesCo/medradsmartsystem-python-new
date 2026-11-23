@@ -10,6 +10,8 @@ record and carry no amounts: they are billed only through a quotation.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from types import SimpleNamespace
 from typing import Any, Optional
 
@@ -116,6 +118,101 @@ def service_work_entries(sr: ServiceRequest, edits: Optional[dict[str, dict[str,
     return rows
 
 
+def _latest_correction_at(history: list[dict[str, Any]]) -> Optional[int]:
+    for index in range(len(history) - 1, -1, -1):
+        if history[index].get("action") == "hours_correction":
+            return index
+    return None
+
+
+def latest_hours_correction(sr: Optional[ServiceRequest]) -> Optional[dict[str, Any]]:
+    """The administrator's last hours correction on the request, or None."""
+    if not sr:
+        return None
+    history = _history(sr)
+    index = _latest_correction_at(history)
+    if index is None:
+        return None
+    entry = history[index]
+    changes = entry["changes"]
+    return {
+        "from_hours": _number(changes.get("from_hours")),
+        "to_hours": _number(changes.get("to_hours")),
+        "reason": _text(changes.get("reason")),
+        "user": _text(entry.get("user")),
+        "timestamp": entry.get("timestamp"),
+    }
+
+
+def _hours(value: Any) -> Decimal:
+    return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _moved_clock(value: Any, delta: Decimal) -> Any:
+    """A clock time moved by `delta` hours, written the way it was given."""
+    if not isinstance(value, str) or not value.strip():
+        return value
+    raw = value.strip()
+    try:
+        moment = datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
+    except ValueError:
+        return value
+    moved = (moment + timedelta(hours=float(delta))).isoformat()
+    return moved[:-6] + "Z" if raw.endswith("Z") and moved.endswith("+00:00") else moved
+
+
+def billed_work_entries(sr: Optional[ServiceRequest], entries: list[Any]) -> list[Any]:
+    """The invoice's visit rows with their hours as billed.
+
+    An administrator's hours correction changes what the request bills, not the
+    technicians' logged visits. On the invoice the visits must add up to the
+    hours billed, so the difference is shown on the last visit logged before
+    the correction (a reduction larger than that visit carries on to the one
+    before; visits logged after it are shown as logged), and its check-out
+    moves by the same amount, a break inside the visit kept. The work order
+    itself is untouched. Each changed row keeps its logged hours under
+    "logged_hours" for Billing; the customer's copy leaves that out.
+    """
+    history = _history(sr) if sr else []
+    corrected_at = _latest_correction_at(history)
+    if corrected_at is None:
+        return entries
+    rows = [dict(row) if isinstance(row, dict) else row for row in entries]
+    timed = [row for row in rows if isinstance(row, dict) and _number(row.get("hours")) is not None]
+    # The correction set the total for the visits logged before it; a visit
+    # logged afterwards added its own hours and is shown as logged.
+    before = {
+        str(session.get("session_id") or f"session-{index}")
+        for index, session in enumerate(_service_session_entries(
+            SimpleNamespace(history=history[:corrected_at], assigned_technician=sr.assigned_technician)))
+    }
+    if not timed:
+        return rows
+    adjustable = [row for row in timed if str(row.get("key")) in before] or timed
+    remaining = _hours(sr.time_spent_hours or 0) - sum((_hours(row["hours"]) for row in timed), Decimal("0"))
+    for row in reversed(adjustable):
+        if remaining == 0:
+            break
+        logged = _hours(row["hours"])
+        billed = max(logged + remaining, Decimal("0"))
+        delta = billed - logged
+        if delta == 0:
+            continue
+        remaining -= delta
+        row["logged_hours"] = float(logged)
+        row["hours"] = float(billed)
+        row["check_out"] = _moved_clock(row.get("check_out"), delta)
+    return rows
+
+
+def customer_work_entries(entries: list[Any]) -> list[Any]:
+    """Rows as the customer sees them: the hours billed, nothing internal."""
+    return [
+        {key: value for key, value in row.items() if key != "logged_hours"} if isinstance(row, dict) else row
+        for row in entries
+    ]
+
+
 def _work_order_items(sr: ServiceRequest) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Parts and test equipment recorded across the sessions and additions."""
     sources = [*_sessions(sr)]
@@ -162,6 +259,8 @@ def build_service_invoice_document(
     entries = invoice.service_work_entries if isinstance(invoice.service_work_entries, list) else (
         service_work_entries(sr) if sr else []
     )
+    # The visits add up to the hours billed, after any hours correction.
+    entries = customer_work_entries(billed_work_entries(sr, entries))
     parts, test_equipment = _work_order_items(sr) if sr else ([], [])
     status = invoice.status.value if hasattr(invoice.status, "value") else invoice.status
     technician = sr.assigned_technician.full_name if sr and sr.assigned_technician else None

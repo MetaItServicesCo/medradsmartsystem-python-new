@@ -739,7 +739,24 @@ export interface ServiceInvoiceWorkEntry {
   technician: string
   check_in: string | null
   check_out: string | null
+  /** As the invoice prints it: the hours billed. */
   hours: number | null
+  /** The technician's logged hours, when an hours correction changed this row (Billing only). */
+  logged_hours?: number | null
+}
+
+export interface ServiceHoursCorrection {
+  from_hours: number | null
+  to_hours: number | null
+  reason: string
+  user: string
+  timestamp: string | null
+}
+
+export interface ServiceInvoiceWorkPreview {
+  items: ServiceInvoiceWorkEntry[]
+  hours_correction: ServiceHoursCorrection | null
+  billed_hours: number
 }
 
 export interface ServiceInvoiceDocument {
@@ -859,9 +876,13 @@ export const fetchServiceInvoiceDocument = async (invoiceId: number): Promise<Se
   return res.data
 }
 
-export const fetchInvoiceWorkEntries = async (requestId: number): Promise<ServiceInvoiceWorkEntry[]> => {
+export const fetchInvoiceWorkEntries = async (requestId: number): Promise<ServiceInvoiceWorkPreview> => {
   const res = await apiClient.get(`/service-requests/${requestId}/invoice-work-entries`)
-  return res.data.items
+  return {
+    items: res.data.items ?? [],
+    hours_correction: res.data.hours_correction ?? null,
+    billed_hours: Number(res.data.billed_hours ?? 0),
+  }
 }
 
 export const fetchServiceInvoiceShareOptions = async (invoiceId: number): Promise<ServiceInvoiceShareOptions> => {

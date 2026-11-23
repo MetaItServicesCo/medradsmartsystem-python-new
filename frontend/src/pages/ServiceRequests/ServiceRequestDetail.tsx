@@ -44,6 +44,7 @@ import {
   fetchInvoiceWorkEntries,
   fetchServiceRequest,
   type ServiceInvoiceWorkEntry,
+  type ServiceHoursCorrection,
   fetchServiceInvoices,
   generateServiceInvoice,
   updateServiceRequest,
@@ -224,6 +225,8 @@ const ServiceRequestDetail = () => {
   const [invoiceServiceCallFee, setInvoiceServiceCallFee] = useState('0')
   // The diagnosis and work done as they will read on the invoice.
   const [invoiceWorkEntries, setInvoiceWorkEntries] = useState<ServiceInvoiceWorkEntry[]>([])
+  // The administrator's hours correction, if any: why the visits show the billed hours.
+  const [invoiceHoursCorrection, setInvoiceHoursCorrection] = useState<ServiceHoursCorrection | null>(null)
   const [editingTime, setEditingTime] = useState(false)
   const [editTimeValue, setEditTimeValue] = useState('')
   const [editTimeReason, setEditTimeReason] = useState('')
@@ -755,6 +758,14 @@ const ServiceRequestDetail = () => {
     [sr?.quotations]
   )
 
+  // Times and hours exactly as the printed invoice shows them.
+  const invoiceClock = (value: string | null) => {
+    if (!value) return ''
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  }
+  const hoursText = (value: number | null | undefined) => `${Number(value ?? 0).toFixed(2)} hrs`
+
   const formatDateTime = (d: string | null) => {
     if (!d) return '—'
     const utc = /Z|[+-]\d{2}:/.test(d) ? d : d + 'Z'
@@ -1072,8 +1083,12 @@ const ServiceRequestDetail = () => {
     setInvoiceLaborFees(calculatedServiceCost.toFixed(2))
     setInvoiceServiceCallFee(tierServiceCallFee.toFixed(2))
     setInvoiceWorkEntries([])
+    setInvoiceHoursCorrection(null)
     void fetchInvoiceWorkEntries(sr.id)
-      .then(setInvoiceWorkEntries)
+      .then(preview => {
+        setInvoiceWorkEntries(preview.items)
+        setInvoiceHoursCorrection(preview.hours_correction)
+      })
       .catch(() => toast.warning('The work details could not be loaded; the invoice will use them as recorded'))
     setInvoiceTravelMode('fixed')
     setInvoiceTravelCharges('0')
@@ -2496,9 +2511,30 @@ const ServiceRequestDetail = () => {
                       The customer reads this. Correct it here if needed; the work order itself stays as recorded.
                     </Typography>
                   </Box>
+                  {invoiceHoursCorrection && (
+                    <Alert severity="info" sx={{ borderRadius: '12px', '& .MuiAlert-message': { fontWeight: 700 } }}>
+                      Hours were corrected from {hoursText(invoiceHoursCorrection.from_hours)} to {hoursText(invoiceHoursCorrection.to_hours)}
+                      {invoiceHoursCorrection.user ? ` by ${invoiceHoursCorrection.user}` : ''}
+                      {invoiceHoursCorrection.reason ? ` ("${invoiceHoursCorrection.reason}")` : ''}.
+                      {' '}The invoice shows the visits at the {timeSpentHours.toFixed(2)} hrs billed; the technician&apos;s logged time stays on the work order.
+                    </Alert>
+                  )}
                   {invoiceWorkEntries.map((entry, index) => (
                     <Box key={entry.key} sx={{ display: 'grid', gap: 1 }}>
-                      <Typography sx={{ color: '#475569', fontWeight: 800, fontSize: 12 }}>{entry.date}</Typography>
+                      <Box>
+                        <Typography sx={{ color: '#475569', fontWeight: 800, fontSize: 12 }}>
+                          {[
+                            entry.date,
+                            entry.check_in || entry.check_out ? `${invoiceClock(entry.check_in) || '—'} – ${invoiceClock(entry.check_out) || '—'}` : '',
+                            entry.hours != null ? hoursText(entry.hours) : '',
+                          ].filter(Boolean).join(' · ')}
+                        </Typography>
+                        {entry.logged_hours != null && (
+                          <Typography sx={{ color: '#B45309', fontWeight: 700, fontSize: 12 }}>
+                            Technician logged {hoursText(entry.logged_hours)}; shown as {hoursText(entry.hours)} to match the hours billed.
+                          </Typography>
+                        )}
+                      </Box>
                       {(['diagnosis', 'work_done'] as const).map(field => (
                         <TextField
                           key={field}
