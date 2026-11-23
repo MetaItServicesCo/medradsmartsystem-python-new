@@ -6987,6 +6987,7 @@ const Inspections = () => {
             Technician Inspection Report
             <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
               {reportInspection?.batch_number || reportInspection?.inspection_number} - {reportInspection?.asset_name || reportInspection?.equipment_name}
+              {reportInspection?.equipment_description ? ` · ${reportInspection.equipment_description}` : ''}
             </Typography>
           </Box>
           {renderLiveReportStatusChip()}

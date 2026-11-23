@@ -428,6 +428,21 @@ const batchWithForms = buildInspectionBatchReportHtml({ batch_number: 'INSP-9', 
 ], batch_invoice: null }, null)
 ok('a batch report prints each asset\'s report form the same way', batchWithForms.includes('Laser Output') && batchWithForms.includes('4.8 W') && !batchWithForms.includes('Attached Question'))
 
+// ── The asset's description, and the facility address printed once ────────
+const vast = { name: 'Vast Clinical Research Frisco', address: '3140 Legacy Dr. Bldg 300 Ste 330, Frisco, Tx, 75034',
+  city: 'Frisco', state: 'TX', zip_code: '75034', country: 'United States', phone: '9452894112', email: 'a@example.com' }
+const carm = { asset_name: 'VCRF 01 Horizon 642E', asset_tag: 'VCRF 01', equipment_description: 'C ARM', form_data: { checks: {} } }
+const carmReport = buildInspectionSingleReportHtml({ ...base, ...carm }, vast)
+ok('inspection report: the asset description prints as its own box', carmReport.includes('Asset Description') && carmReport.includes('C ARM'))
+ok('  beside the Description printed today, unchanged', carmReport.includes('>Description<') && carmReport.includes('VCRF 01 Horizon 642E'))
+ok('  and under the asset on the billing page', billingPage(carmReport).includes('C ARM'))
+ok('no description, no Asset Description box', !print({ form_data: { checks: {} } }).includes('Asset Description'))
+const carmBatch = buildInspectionBatchReportHtml({ batch_number: 'INSP-9', assets: [{ ...base, id: 7, inspection_number: 'INSP-9-001', ...carm }], batch_invoice: null }, vast)
+ok('batch report: the asset list and billing rows carry the description', carmBatch.split('C ARM').length - 1 >= 3, String(carmBatch.split('C ARM').length - 1))
+ok('the address prints the street once, then city, state, zip and country',
+  carmReport.includes('3140 Legacy Dr. Bldg 300 Ste 330') && carmReport.includes('Frisco, TX 75034, United States')
+  && !carmReport.includes('Ste 330, Frisco'))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)

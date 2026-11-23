@@ -1,5 +1,6 @@
 import { fetchFacility, type Facility } from '@/api/facilities'
 import { buildInspectionReportDocumentHtml, INSPECTION_REPORT_CSS } from '@/utils/inspectionReportHtml'
+import { facilityAddressLines } from '@/utils/facilityAddress'
 
 // Presentation only. The standalone service report reuses the customer rental-agreement
 // design (the same INSPECTION_REPORT_CSS chrome the inspection report uses); the invoice
@@ -92,9 +93,9 @@ const totalMileage = (sessions: any[]) => sessions.reduce((sum, session) => sum 
 
 const facilityLines = (facility: Facility | null | undefined, sr: any) => {
   const name = facility?.name || sr?.facility_name || ''
-  const cityState = [facility?.city, facility?.state].filter(hasVal).join(', ')
-  const line2 = [cityState, facility?.zip_code].filter(hasVal).join(' ')
-  return { name, address: facility?.address || '', line2, phone: facility?.phone || '', email: facility?.email || '' }
+  // The street, then city, state, zip and country -- never printed twice.
+  const { street, line2 } = facilityAddressLines(facility)
+  return { name, address: street, line2, phone: facility?.phone || '', email: facility?.email || '' }
 }
 
 /* ------------------------------------------------------------------ *
@@ -197,6 +198,7 @@ const serviceOverviewPageHtml = (sr: any, facility: Facility | null | undefined,
         ${idBox('Request #', sr.request_number)}
         ${idBox('Reference / PO #', sr.reference_number)}
         ${idBox('Equipment', equipment)}
+        ${idBox('Asset Description', sr.equipment_description)}
         ${idBox('Asset Tag', sr.asset_tag)}
         ${idBox('Serial #', sr.serial_number)}
         ${idBox('Priority', displayStatus(sr.priority, ''))}
@@ -348,7 +350,7 @@ const serviceBillingPageHtml = (sr: any) => {
     <table class="doc">
       <thead><tr><th class="center">S.No.</th><th>Request #</th><th>Equipment description</th><th class="right">Amount $</th></tr></thead>
       <tbody>
-        <tr><td class="center">1</td><td>${esc(sr.request_number || '-')}</td><td>${esc(sr.equipment_name || '-')}</td><td class="right amount">${esc(money(amount))}</td></tr>
+        <tr><td class="center">1</td><td>${esc(sr.request_number || '-')}</td><td>${esc(sr.equipment_name || '-')}${sr.equipment_description ? `<div class="muted" style="font-size:11px;margin-top:2px">${esc(sr.equipment_description)}</div>` : ''}</td><td class="right amount">${esc(money(amount))}</td></tr>
         <tr class="total"><td></td><td></td><td class="right">Total</td><td class="right amount">${esc(money(amount))}</td></tr>
       </tbody>
     </table>
@@ -477,6 +479,7 @@ export const buildServiceReportSheet = (sr: any): string => {
           <div class="box"><h3>Facility</h3><strong class="customer">${esc(sr.facility_name || '-')}</strong></div>
           <div class="box meta">
             <strong>Equipment</strong><span>${esc(sr.equipment_name || '-')}</span>
+            ${sr.equipment_description ? `<strong>Asset Description</strong><span>${esc(sr.equipment_description)}</span>` : ''}
             <strong>Reference / PO #</strong><span>${esc(sr.reference_number || '-')}</span>
             <strong>Requested By</strong><span>${esc(sr.requested_by_name || '-')}</span>
             <strong>Technician</strong><span>${esc(sr.technician_name || 'Unassigned')}</span>

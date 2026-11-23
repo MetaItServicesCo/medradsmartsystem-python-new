@@ -46,6 +46,12 @@ def _equipment_name(equipment: Optional[Equipment]) -> Optional[str]:
     return " ".join(str(part) for part in [equipment.asset_tag, equipment.make, equipment.model] if part).strip() or None
 
 
+def _asset_description(inspection: Inspection) -> Optional[str]:
+    """The inspected asset's own description, as its inventory record has it."""
+    asset = inspection.inventory_part or inspection.equipment
+    return (getattr(asset, "description", None) or None) if asset else None
+
+
 def _part_name(part: Optional[InventoryPart]) -> Optional[str]:
     if not part:
         return None
@@ -133,6 +139,8 @@ def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -
         "facility_name": sr.facility.name if sr.facility else None,
         "equipment_id": sr.equipment_id,
         "equipment_name": _equipment_name(sr.equipment),
+        # The asset's own description from its inventory record, printed beside the above.
+        "equipment_description": (getattr(sr.equipment, "description", None) or None) if sr.equipment else None,
         "asset_tag": sr.equipment.asset_tag if sr.equipment else None,
         "serial_number": sr.equipment.serial_number if sr.equipment else None,
         "make": sr.equipment.make if sr.equipment else None,
@@ -227,6 +235,8 @@ def _inspection_report_row(
             else asset_name or "Inspection asset"
         ),
         "equipment_name": _equipment_name(inspection.equipment) if inspection.equipment else None,
+        # The asset's own description from its inventory record, printed beside the above.
+        "equipment_description": _asset_description(inspection),
         "inventory_part_name": _part_name(inspection.inventory_part) if inspection.inventory_part else None,
         "asset_tag": inspection.equipment.asset_tag if inspection.equipment else inspection.inventory_part.part_number if inspection.inventory_part else None,
         "part_number": inspection.inventory_part.part_number if inspection.inventory_part else None,

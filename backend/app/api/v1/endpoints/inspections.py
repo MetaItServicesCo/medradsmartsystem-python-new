@@ -684,6 +684,9 @@ def _inspection_response(inspection: Inspection) -> dict[str, Any]:
     data["inventory_part_name"] = _part_name(inspection.inventory_part) if inspection.inventory_part else None
     data["equipment_name"] = _equipment_name(inspection.equipment) if inspection.equipment else None
     data["asset_name"] = data["inventory_part_name"] or data["equipment_name"] or "Inspection asset"
+    # The asset's own description from its inventory record, printed beside its name.
+    _described = inspection.inventory_part or inspection.equipment
+    data["equipment_description"] = (getattr(_described, "description", None) or None) if _described else None
     data["part_number"] = inspection.inventory_part.part_number if inspection.inventory_part else None
     data["asset_tag"] = inspection.equipment.asset_tag if inspection.equipment else None
     data["serial_number"] = (

@@ -581,6 +581,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
               <TableRow>
                 <TableCell>Asset Tag</TableCell>
                 <TableCell>Make / Model</TableCell>
+                <TableCell>Description</TableCell>
                 <TableCell>Serial #</TableCell>
                 <TableCell>Tier</TableCell>
                 <TableCell>Status</TableCell>
@@ -590,11 +591,11 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
-                  <TableRow key={i}>{Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
+                  <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
                 ))
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                     <InventoryIcon sx={{ fontSize: '2.5rem', color: '#E5E7EB', mb: 1, display: 'block', mx: 'auto' }} />
                     <Typography variant="body2" color="text.secondary">No inventory items for this facility</Typography>
                   </TableCell>
@@ -605,6 +606,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                   <TableRow key={item.id}>
                     <TableCell><ClippedTooltipText value={item.asset_tag} fontWeight={600} /></TableCell>
                     <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.description} fallback="—" color="#475569" /></TableCell>
                     <TableCell><ClippedTooltipText value={item.serial_number} monospace textSx={{ fontSize: '0.8rem' }} /></TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ color: item.tier_id ? '#7C3AED' : '#9CA3AF', fontWeight: item.tier_id ? 600 : 400 }}>

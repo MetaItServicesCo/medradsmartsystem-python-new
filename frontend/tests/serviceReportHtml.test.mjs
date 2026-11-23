@@ -147,6 +147,21 @@ ok('breakdowns and labels are escaped', !hostile.includes('<img src=x') && !host
   ok('a cancelled invoice does not count: the recorded cost is shown', cancelled.slice(cancelled.indexOf('Work Summary')).includes('$300.00'))
 }
 
+// ── The asset's description, and the facility address printed once ────────
+const chisholm = { name: 'Chisholm Trail Physical Therapy', address: '2010 W Katherine P Raines Rd #400, Cleburne, TX 76033, United States',
+  city: 'cleburne', state: 'TX', zip_code: '76033', country: 'United States', phone: '(817) 556-3212', email: 'tm@example.com' }
+const described = { ...sr, sessions: [appSession], make: 'Unknown', model: 'PR02', asset_tag: 'CTPT 16', equipment_description: 'Recumbent bike' }
+const describedReport = buildServiceReportDocument(described, chisholm)
+ok('service report: the asset description prints beside Equipment, Asset Tag and Serial #',
+  describedReport.includes('Asset Description') && describedReport.includes('Recumbent bike') && describedReport.includes('Unknown PR02'))
+const describedBilling = describedReport.slice(describedReport.indexOf('Billing Page'))
+ok('  and on the billing page row, under the equipment', describedBilling.includes('Recumbent bike'))
+ok('  the sheet layout shows it too', buildServiceReportSheet(described).includes('Recumbent bike'))
+ok('no description, nothing extra printed', !buildServiceReportDocument({ ...sr, sessions: [appSession] }, chisholm).includes('Asset Description'))
+ok('the address prints the street once, then city, state, zip and country',
+  describedReport.includes('2010 W Katherine P Raines Rd #400') && describedReport.includes('Cleburne, TX 76033, United States')
+  && !describedReport.includes('Raines Rd #400, Cleburne') && !describedReport.includes('cleburne, TX 76033'))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)

@@ -1,6 +1,7 @@
 import { fetchFacility, type Facility } from '@/api/facilities'
 import { fetchInspectionBatch } from '@/api/inspections'
 import { canvasValuesFromGrid } from '@/utils/gridToCanvas'
+import { facilityAddressLines } from '@/utils/facilityAddress'
 
 // Presentation only. The report copies the customer rental-agreement look
 // (CustomerDocumentUI palette + gradient divider + rounded cards + status chips)
@@ -41,6 +42,8 @@ export type InspectionReportLike = {
   id?: number | null
   batch_id?: number | null
   form_data?: Record<string, any> | null
+  /** The asset's own description from its inventory record ("C ARM"), printed beside its name. */
+  equipment_description?: string | null
   form_schema?: Record<string, any> | null
   form_template_schema?: Record<string, any> | null
   attached_form_schema?: Record<string, any> | null
@@ -196,6 +199,16 @@ const reportData = (inspection: InspectionReportLike): any => {
 const assetLabel = (inspection: InspectionReportLike) =>
   inspection.asset_name || inspection.equipment_name || inspection.inventory_part_name || reportData(inspection).identity?.description || '-'
 
+// The asset's own description from its inventory record, printed alongside
+// what names the asset (tag, make and model); '' when it has none.
+const assetDescription = (inspection: InspectionReportLike) => String(inspection.equipment_description ?? '').trim()
+
+// An asset cell in a list: its name, with its description under it when it has one.
+const assetCellHtml = (inspection: InspectionReportLike) => {
+  const description = assetDescription(inspection)
+  return `${esc(assetLabel(inspection))}${description ? `<div class="muted" style="font-size:11px;margin-top:2px">${esc(description)}</div>` : ''}`
+}
+
 const assetTag = (inspection: InspectionReportLike) =>
   inspection.asset_tag || inspection.part_number || reportData(inspection).identity?.asset_number || '-'
 
@@ -242,9 +255,9 @@ const assetAmount = (inspection: InspectionReportLike, contextInvoice?: ReportIn
 
 const facilityLines = (facility: Facility | null | undefined, inspection?: InspectionReportLike) => {
   const name = facility?.name || inspection?.facility_name || ''
-  const cityState = [facility?.city, facility?.state].filter(hasVal).join(', ')
-  const line2 = [cityState, facility?.zip_code].filter(hasVal).join(' ')
-  return { name, address: facility?.address || '', line2, phone: facility?.phone || '', email: facility?.email || '' }
+  // The street, then city, state, zip and country -- never printed twice.
+  const { street, line2 } = facilityAddressLines(facility)
+  return { name, address: street, line2, phone: facility?.phone || '', email: facility?.email || '' }
 }
 
 const dot = (on: boolean) => `<span class="dot${on ? ' on' : ''}"></span>`
@@ -309,7 +322,7 @@ const listTableHtml = (assets: InspectionReportLike[], heading: string, facility
       <tr>
         <td class="center">${index + 1}</td>
         <td>${esc(assetTag(asset))}</td>
-        <td>${esc(assetLabel(asset))}</td>
+        <td>${assetCellHtml(asset)}</td>
         <td class="center"><span class="status ${statusClass(asset.result)}">${esc(asset.result || '-')}</span></td>
       </tr>`).join('')
     : `<tr><td colspan="4" class="center muted">${esc(emptyText)}</td></tr>`
@@ -329,6 +342,7 @@ const identityHtml = (inspection: InspectionReportLike) => {
   const fields: Array<[string, unknown]> = [
     ['Asset #', assetTag(inspection)],
     ['Description', assetLabel(inspection)],
+    ['Asset Description', assetDescription(inspection)],
     ['Make', inspection.make || id.make],
     ['Location', id.location],
     ['Model', inspection.model || id.model],
@@ -791,11 +805,11 @@ const cePageHtml = (inspection: InspectionReportLike, facility: Facility | null 
   `, opts)
 }
 
-const billingRow = (number: number, tag: string, description: string, amount: number) => `
+const billingRow = (number: number, tag: string, description: string, amount: number, assetDescriptionText = '') => `
     <tr>
       <td class="center">${number}</td>
       <td>${esc(tag)}</td>
-      <td>${esc(description)}</td>
+      <td>${esc(description)}${assetDescriptionText ? `<div class="muted" style="font-size:11px;margin-top:2px">${esc(assetDescriptionText)}</div>` : ''}</td>
       <td class="right amount">${esc(money(amount))}</td>
     </tr>`
 
@@ -820,7 +834,7 @@ const billingPageHtml = (
     rows = lines.map((line, index) => {
       const asset = byNumber.get(String(line.item_number || ''))
       return asset
-        ? billingRow(index + 1, assetTag(asset), assetLabel(asset), lineAmount(line))
+        ? billingRow(index + 1, assetTag(asset), assetLabel(asset), lineAmount(line), assetDescription(asset))
         : billingRow(index + 1, '', line.description || 'Invoice item', lineAmount(line))
     }).join('')
     lineTotal = lines.reduce((sum, line) => sum + lineAmount(line), 0)
@@ -836,7 +850,7 @@ const billingPageHtml = (
     if (tax > 0) { adjustments += adjustmentRow('Tax', tax); lineTotal += tax }
     if (discount > 0) { adjustments += adjustmentRow('Discount', -discount); lineTotal -= discount }
   } else {
-    rows = assets.map((asset, index) => billingRow(index + 1, assetTag(asset), assetLabel(asset), assetAmount(asset, invoice))).join('')
+    rows = assets.map((asset, index) => billingRow(index + 1, assetTag(asset), assetLabel(asset), assetAmount(asset, invoice), assetDescription(asset))).join('')
     lineTotal = assets.reduce((sum, asset) => sum + assetAmount(asset, invoice), 0)
     // The batch's travel cost: the invoice's once it is invoiced, else the batch's own.
     const travel = opts.whole ? Number((invoice ? invoice.travel_cost : opts.travelCost) || 0) : 0

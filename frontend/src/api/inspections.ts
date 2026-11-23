@@ -124,6 +124,8 @@ export interface InvoiceTransaction {
 export interface Inspection {
   /** The PM cost of the tier this asset is billed on; null when no tier applies. */
   tier_pm_fee?: number | null
+  /** The asset's own description from its inventory record ("C ARM"). */
+  equipment_description?: string | null
   id: number
   inspection_number: string
   batch_id: number | null

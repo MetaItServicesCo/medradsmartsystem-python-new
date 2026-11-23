@@ -128,8 +128,12 @@ print("\nNothing else changes")
 ok("the fields that were there are all still there",
    all(key in rows["FPSC 12"] for key in ("asset_name", "asset_tag", "serial_number", "tier_name", "inspector_name", "status", "tier_pm_fee")))
 ok("loading the batch does not ask the database once per asset", queries["n"] <= 15, queries["n"])
-plain = _inspection_response(db.query(Inspection).first())
-ok("other inspection lists are not given the new fields", "modality_name" not in plain and "equipment_description" not in plain)
+plain_inspection = db.query(Inspection).first()
+plain = _inspection_response(plain_inspection)
+ok("other inspection lists are not given the batch's modality columns", "modality_name" not in plain and "sub_modality_name" not in plain)
+# Every printed report shows the asset's description, so every inspection carries it.
+asset = plain_inspection.inventory_part or plain_inspection.equipment
+ok("every inspection carries its asset's description, for its report", plain["equipment_description"] == (asset.description or None), plain.get("equipment_description"))
 
 print()
 if failures:
