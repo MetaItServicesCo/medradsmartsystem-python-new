@@ -148,8 +148,8 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
 
       <div class="si-section">
         <h2>Service Report</h2>
-        ${table(['#', 'Service Required', 'Serial#', 'Asset #', 'Make', 'Model'], [`
-          <tr><td>1</td><td class="pre">${esc(equipment.service_required)}</td><td>${esc(equipment.serial_number)}</td><td>${esc(equipment.asset_tag)}</td><td>${esc(equipment.make)}</td><td>${esc(equipment.model)}</td></tr>`], 6)}
+        ${table(['#', 'Service Required', 'Asset Description', 'Serial#', 'Asset #', 'Make', 'Model'], [`
+          <tr><td>1</td><td class="pre">${esc(equipment.service_required)}</td><td>${esc(equipment.description)}</td><td>${esc(equipment.serial_number)}</td><td>${esc(equipment.asset_tag)}</td><td>${esc(equipment.make)}</td><td>${esc(equipment.model)}</td></tr>`], 7)}
       </div>
 
       <div class="si-section si-scroll">

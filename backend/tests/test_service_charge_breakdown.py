@@ -131,6 +131,13 @@ ok("the Service Fee has nothing to explain", c["Service Fee"]["amount"] == "150.
 ok("labels and amounts are as before", [(r["label"], r["amount"]) for r in build_service_invoice_document(inv, _service_invoice_line_items(inv))["charges"]] == [("Service Fee", "150.00"), ("Labor", "700.00")])
 ok("the invoice total is untouched", build_service_invoice_document(inv, _service_invoice_line_items(inv))["total_amount"] == "850.00")
 
+print("\nThe asset's Description is on the invoice, as on the reports")
+ok("no Description on the asset: none on the invoice", build_service_invoice_document(inv, [])["equipment"]["description"] is None)
+sr.equipment.description = "C ARM"
+db.commit()
+ok("its Description: C ARM", build_service_invoice_document(inv, [])["equipment"]["description"] == "C ARM")
+ok("  the rest of the asset as before", {k: v for k, v in build_service_invoice_document(inv, [])["equipment"].items() if k in ("make", "model")} == {"make": "Hill Rom", "model": "P7500"})
+
 print("\nLabor typed in by hand")
 c = charges(invoice(request("4"), "600.00"))
 ok("$600 for 4 hrs reads 4.00 hrs, adjusted", c["Labor"]["amount"] == "600.00" and c["Labor"]["breakdown"] == "4.00 hrs, adjusted", c["Labor"])

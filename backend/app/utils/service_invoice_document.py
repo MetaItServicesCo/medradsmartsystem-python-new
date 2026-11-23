@@ -281,6 +281,8 @@ def build_service_invoice_document(
         },
         "equipment": {
             "service_required": (sr.service_required or sr.problem_description) if sr else None,
+            # The asset's own Description ("C ARM"), as on the service and inspection reports.
+            "description": (getattr(equipment, "description", None) or None) if equipment else None,
             "serial_number": equipment.serial_number if equipment else None,
             "asset_tag": equipment.asset_tag if equipment else None,
             "make": equipment.make if equipment else None,

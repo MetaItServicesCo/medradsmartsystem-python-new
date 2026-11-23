@@ -35,7 +35,7 @@ const ok = (label, condition, detail = '') => {
 const doc = (value, over = {}) => ({
   invoice_number: value, request_number: value, status: value, issue_date: value, due_date: value, installment_plan: value, po: value,
   facility: { name: value, address: value, contact_name: value, phone: value, email: value },
-  equipment: { service_required: value, serial_number: value, asset_tag: value, make: value, model: value },
+  equipment: { service_required: value, description: value, serial_number: value, asset_tag: value, make: value, model: value },
   work_entries: [{ key: 'k', date: value, diagnosis: value, work_done: value, technician: value, check_in: value, check_out: value, hours: 2 }],
   total_hours: 2,
   parts: [{ part_number: value, description: value, quantity: value, condition: value }],
@@ -76,6 +76,13 @@ ok('a value cannot break out of an attribute', !quoted.includes('" onerror="'))
 console.log('\nThe rules')
 const sample = await buildServiceInvoiceHtml(doc('v'))
 ok('uses the shared invoice design', sample.includes('class="sheet doc-a"') && sample.includes('class="accent-bar"') && sample.includes('class="box prepared"') && sample.includes('class="totals"') && sample.includes('class="grand"'))
+const described = await buildServiceInvoiceHtml({ ...doc('v'), equipment: { service_required: 'No image', description: 'C ARM', serial_number: 'S1', asset_tag: 'A1', make: 'GE', model: 'OEC 9900' } })
+ok('the asset Description prints beside the asset, under "Asset Description"',
+  /<th>Service Required<\/th><th>Asset Description<\/th><th>Serial#<\/th>/.test(described)
+  && /<td class="pre">No image<\/td><td>C ARM<\/td><td>S1<\/td><td>A1<\/td><td>GE<\/td><td>OEC 9900<\/td>/.test(described))
+const undescribed = await buildServiceInvoiceHtml({ ...doc('v'), equipment: { service_required: 'No image', serial_number: 'S1', asset_tag: 'A1', make: 'GE', model: 'OEC 9900' } })
+ok('  an asset without one (or an older server): the cell is empty, nothing else moves',
+  /<td class="pre">No image<\/td><td><\/td><td>S1<\/td>/.test(undescribed) && !/>\s*(null|undefined)\s*</.test(undescribed))
 const noEquipment = await buildServiceInvoiceHtml(doc('v', { test_equipment: [] }))
 ok('test equipment shows if used', sample.includes('Test Equipment'))
 ok('and not if it was not', !noEquipment.includes('Test Equipment'))

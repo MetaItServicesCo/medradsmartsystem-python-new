@@ -768,7 +768,7 @@ export interface ServiceInvoiceDocument {
   installment_plan: string
   po: string | null
   facility: { name: string | null; address: string | null; contact_name: string | null; phone: string | null; email: string | null }
-  equipment: { service_required: string | null; serial_number: string | null; asset_tag: string | null; make: string | null; model: string | null }
+  equipment: { service_required: string | null; description?: string | null; serial_number: string | null; asset_tag: string | null; make: string | null; model: string | null }
   work_entries: ServiceInvoiceWorkEntry[]
   total_hours: number
   parts: { part_number: string | null; description: string | null; quantity: number | null; condition: string | null }[]
