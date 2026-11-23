@@ -46,6 +46,29 @@ const clock = (value?: string | null) => {
   return parsed ? parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''
 }
 
+/**
+ * Escaped text whose everyday words stay whole. Only a run of 25 or more
+ * characters with no space (a long serial, a pasted code) gets places it may
+ * break, so one value cannot push a table off the page.
+ */
+const LONG_RUN = 25
+const fit = (value: unknown) => String(value ?? '').split(/(\s+)/).map(part => (
+  part.length >= LONG_RUN ? (part.match(/.{1,12}/g) || []).map(esc).join('<wbr>') : esc(part)
+)).join('')
+
+/** Short codes stay on one line; a very long one may wrap. */
+const keep = (value: unknown) => (String(value ?? '').length < 16 ? ' class="si-keep"' : '')
+
+/** Check-in and check-out in one column: "9:00 AM – 1:00 PM", or whichever was recorded. */
+const visitTime = (checkIn?: string | null, checkOut?: string | null) => {
+  const from = clock(checkIn)
+  const to = clock(checkOut)
+  return from && to ? `${from} – ${to}` : from || to
+}
+
+/** 4 -> "4.00", 6.666 -> "6.67": hours as everywhere else on the invoice. */
+const hoursText = (value: unknown) => Number(value || 0).toFixed(2)
+
 const statusLabel = (status: string) => (status === 'pending' || status === 'overdue' ? 'Due' : status.replace(/_/g, ' '))
 
 // Only what the shared design has no class for, and its narrow-screen layout.
@@ -56,6 +79,20 @@ const EXTRA_STYLES = `
   .doc-a .si-section table { margin-top: 0; }
   .doc-a .pre { white-space: pre-wrap; }
   .doc-a .si-empty { color: #94A3B8; }
+  /* Tidy tables: headings on one line; a word, code or number is never split
+     (a column widens to its longest word first); dates, times, codes and
+     numbers stay whole on one line; only the long text wraps, between words. */
+  .doc-a .si-section th { white-space: nowrap; }
+  .doc-a .si-section td { word-break: normal; overflow-wrap: break-word; }
+  .doc-a .si-section td.si-keep { white-space: nowrap; }
+  /* A cell's own min-width is ignored in a table; the block inside it is not. */
+  .doc-a .si-section td.si-text > div { min-width: 9em; }
+  .doc-a .si-section td.si-name > div { min-width: 7.5em; }
+  .doc-a .si-section td.si-desc > div { min-width: 9.5em; }
+  /* The visits: Action Taken, the longest text, gets the room. */
+  .doc-a .si-section td.si-diag > div { min-width: 8em; }
+  .doc-a .si-section td.si-wide > div { min-width: 14em; }
+  .doc-a .si-section td.right, .doc-a .si-section th.right { text-align: right; }
   .doc-a tr.si-total td { font-weight: 900; color: #1E1B4B; background: #F8FAFC; }
   .doc-a .si-bottom { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-top: 24px; page-break-inside: avoid; }
   .doc-a .si-bottom .totals { margin-top: 0; margin-left: auto; }
@@ -77,9 +114,11 @@ const EXTRA_STYLES = `
   }
 </style>`
 
-const table = (head: string[], rows: string[], columns: number) => `
+/** A heading, or [heading, class] for one that lines up like its cells ("right"). */
+type Head = string | [string, string]
+const table = (head: Head[], rows: string[], columns: number) => `
   <div class="si-scroll"><table>
-    <thead><tr>${head.map(cell => `<th>${esc(cell)}</th>`).join('')}</tr></thead>
+    <thead><tr>${head.map(cell => (Array.isArray(cell) ? `<th class="${cell[1]}">${esc(cell[0])}</th>` : `<th>${esc(cell)}</th>`)).join('')}</tr></thead>
     <tbody>${rows.length ? rows.join('') : `<tr><td class="si-empty" colspan="${columns}">No items to display</td></tr>`}</tbody>
   </table></div>`
 
@@ -91,18 +130,17 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
 
   const workRows = doc.work_entries.map(entry => `
     <tr>
-      <td>${esc(entry.date)}</td>
-      <td class="pre">${esc(entry.diagnosis)}</td>
-      <td class="pre">${esc(entry.work_done)}</td>
-      <td>${esc(entry.technician)}</td>
-      <td>${esc(clock(entry.check_in))}</td>
-      <td>${esc(clock(entry.check_out))}</td>
-      <td class="right">${entry.hours != null ? esc(Number(entry.hours)) : ''}</td>
+      <td class="si-keep">${esc(entry.date ? longDate(entry.date) : '')}</td>
+      <td class="pre si-diag"><div>${fit(entry.diagnosis)}</div></td>
+      <td class="pre si-wide"><div>${fit(entry.work_done)}</div></td>
+      <td>${fit(entry.technician)}</td>
+      <td class="si-keep">${esc(visitTime(entry.check_in, entry.check_out))}</td>
+      <td class="right si-keep">${entry.hours != null ? esc(hoursText(entry.hours)) : ''}</td>
     </tr>`)
   const partRows = doc.parts.map((part, index) => `
-    <tr><td>${index + 1}</td><td class="item-number">${esc(part.part_number)}</td><td>${esc(part.description)}</td><td class="right">${esc(part.quantity)}</td><td>${esc(part.condition)}</td></tr>`)
+    <tr><td class="si-keep">${index + 1}</td><td class="item-number${String(part.part_number ?? '').length < 16 ? ' si-keep' : ''}">${fit(part.part_number)}</td><td>${fit(part.description)}</td><td class="right si-keep">${esc(part.quantity)}</td><td>${esc(part.condition)}</td></tr>`)
   const equipmentRows = doc.test_equipment.map((item, index) => `
-    <tr><td>${index + 1}</td><td>${esc(item.description)}</td><td>${esc(item.make)}</td><td>${esc(item.model)}</td><td>${esc(item.serial_number)}</td></tr>`)
+    <tr><td class="si-keep">${index + 1}</td><td class="si-desc"><div>${fit(item.description)}</div></td><td class="si-name"><div>${fit(item.make)}</div></td><td class="si-name"><div>${fit(item.model)}</div></td><td${keep(item.serial_number)}>${fit(item.serial_number)}</td></tr>`)
 
   const charge = (label: string, value: unknown, breakdown?: string | null) => `<div><span>${esc(label)}${breakdown ? ` <span class="si-breakdown">(${esc(breakdown)})</span>` : ''}</span><strong>${esc(money(value))}</strong></div>`
   const tax = Number(doc.tax_amount || 0)
@@ -153,22 +191,22 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
       <div class="si-section">
         <h2>Service Report</h2>
         ${table(['#', 'Service Required', 'Asset Description', 'Serial#', 'Asset #', 'Make', 'Model'], [`
-          <tr><td>1</td><td class="pre">${esc(equipment.service_required)}</td><td>${esc(equipment.description)}</td><td>${esc(equipment.serial_number)}</td><td>${esc(equipment.asset_tag)}</td><td>${esc(equipment.make)}</td><td>${esc(equipment.model)}</td></tr>`], 7)}
+          <tr><td class="si-keep">1</td><td class="pre si-text"><div>${fit(equipment.service_required)}</div></td><td class="si-desc"><div>${fit(equipment.description)}</div></td><td${keep(equipment.serial_number)}>${fit(equipment.serial_number)}</td><td${keep(equipment.asset_tag)}>${fit(equipment.asset_tag)}</td><td class="si-name"><div>${fit(equipment.make)}</div></td><td class="si-name"><div>${fit(equipment.model)}</div></td></tr>`], 7)}
       </div>
 
       <div class="si-section si-scroll">
         <table>
-          <thead><tr><th>Date</th><th>Diagnose</th><th>Action Taken</th><th>Technician</th><th>Check In</th><th>Check Out</th><th class="right">Hours</th></tr></thead>
+          <thead><tr><th>Date</th><th>Diagnose</th><th>Action Taken</th><th>Technician</th><th>Time</th><th class="right">Hours</th></tr></thead>
           <tbody>
-            ${workRows.length ? workRows.join('') : '<tr><td class="si-empty" colspan="7">No items to display</td></tr>'}
-            <tr class="si-total"><td class="right" colspan="6">Total Hours:</td><td class="right">${esc(Number(doc.total_hours || 0))}</td></tr>
+            ${workRows.length ? workRows.join('') : '<tr><td class="si-empty" colspan="6">No items to display</td></tr>'}
+            <tr class="si-total"><td class="right" colspan="5">Total Hours:</td><td class="right si-keep">${esc(hoursText(doc.total_hours))}</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="si-section">
         <h2>Parts Used</h2>
-        ${table(['#', 'Part Number', 'Description', 'Quantity', 'Condition'], partRows, 5)}
+        ${table(['#', 'Part Number', 'Description', ['Quantity', 'right'], 'Condition'], partRows, 5)}
       </div>
 
       ${equipmentRows.length ? `
