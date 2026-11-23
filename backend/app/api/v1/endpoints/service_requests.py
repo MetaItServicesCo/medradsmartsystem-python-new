@@ -1,6 +1,7 @@
 import copy
 import mimetypes
 import os
+import re
 import uuid
 from typing import Any, Optional
 from datetime import date, datetime, time, timedelta, timezone
@@ -1383,6 +1384,16 @@ def update_service_invoice(
     return _service_invoice_response(invoice)
 
 
+def _part_search_words(search: Optional[str]) -> list[str]:
+    """The words of a part search; a word of punctuation only (the " - " in a pasted label) is dropped."""
+    return [word for word in re.split(r"[\s,]+", (search or "").strip()) if re.search(r"[A-Za-z0-9]", word)]
+
+
+def _escape_like(text: str) -> str:
+    """Text matched literally by LIKE: its % and _ are not wildcards."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("/{request_id}/available-parts")
 def list_service_request_parts(
     request_id: int,
@@ -1404,18 +1415,34 @@ def list_service_request_parts(
         InventoryPart.status == "active",
         InventoryPart.quantity_on_hand > 0,
     )
-    if search and search.strip():
-        like = f"%{search.strip()}%"
+    # Every word typed must appear in one of the part's fields, in any order:
+    # "philips probe" finds a Philips part described as a probe. A single
+    # word, or a phrase found whole in one field, matches exactly as before.
+    words = _part_search_words(search)
+    for word in words:
+        like = f"%{_escape_like(word)}%"
         query = query.filter(or_(
-            InventoryPart.part_number.ilike(like),
-            InventoryPart.description.ilike(like),
-            InventoryPart.make.ilike(like),
-            InventoryPart.model.ilike(like),
-            InventoryPart.serial_number.ilike(like),
-            InventoryPart.batch_number.ilike(like),
+            InventoryPart.part_number.ilike(like, escape="\\"),
+            InventoryPart.description.ilike(like, escape="\\"),
+            InventoryPart.make.ilike(like, escape="\\"),
+            InventoryPart.model.ilike(like, escape="\\"),
+            InventoryPart.serial_number.ilike(like, escape="\\"),
+            InventoryPart.batch_number.ilike(like, escape="\\"),
         ))
     total = query.count()
-    parts = query.order_by(InventoryPart.updated_at.desc(), InventoryPart.id.desc()).offset(skip).limit(limit).all()
+    ordering = [InventoryPart.updated_at.desc(), InventoryPart.id.desc()]
+    if words:
+        # The part whose number was typed comes first, then numbers starting with it.
+        term = search.strip().lower()
+        ordering = [
+            case(
+                (func.lower(InventoryPart.part_number) == term, 0),
+                (func.lower(InventoryPart.part_number).like(f"{_escape_like(term)}%", escape="\\"), 1),
+                else_=2,
+            ),
+            *ordering,
+        ]
+    parts = query.order_by(*ordering).offset(skip).limit(limit).all()
     return {"items": [_service_part_option(part) for part in parts], "total": total}
 
 

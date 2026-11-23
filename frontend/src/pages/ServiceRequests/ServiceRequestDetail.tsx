@@ -65,6 +65,7 @@ import { DEFAULT_SERVICE_TAX_RATE, quotationBeforeTax, serviceInvoiceTaxable, se
 import { fetchServiceProgressReport } from '@/api/reports'
 import ReplayIcon from '@mui/icons-material/Replay'
 import { downloadServiceProgressReport } from '@/utils/serviceReportPdf'
+import { longestSearchWord, matchesEveryWord, quantityProblem, wholeQuantityInput } from '@/utils/pickerSearch'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
 
@@ -190,7 +191,12 @@ const ServiceRequestDetail = () => {
   const [sessionBreakMinutes, setSessionBreakMinutes] = useState('0')
   const [sessionTotalWorkHours, setSessionTotalWorkHours] = useState('')
   const [sessionTotalMileage, setSessionTotalMileage] = useState('')
-  const [selectedTestEquipmentIds, setSelectedTestEquipmentIds] = useState<number[]>([])
+  // The test equipment picked, kept whole: a pick stays picked even when the
+  // list it came from is searched or reloaded without it.
+  const [selectedTestEquipment, setSelectedTestEquipment] = useState<TestEquipment[]>([])
+  const selectedTestEquipmentIds = useMemo(() => selectedTestEquipment.map(item => item.id), [selectedTestEquipment])
+  const [testEquipmentInput, setTestEquipmentInput] = useState('')
+  const [testEquipmentSearch, setTestEquipmentSearch] = useState('')
   const [workSessionId, setWorkSessionId] = useState(createWorkSessionId)
   const [partSearchInput, setPartSearchInput] = useState('')
   const [partSearch, setPartSearch] = useState('')
@@ -316,7 +322,28 @@ const ServiceRequestDetail = () => {
     queryFn: () => fetchActiveTestEquipment({ limit: 500 }),
     enabled: canLogWorkForRequest || canAddWithoutTime,
   })
-  const testEquipmentOptions = testEquipmentData?.items || []
+  useEffect(() => {
+    const timer = window.setTimeout(() => setTestEquipmentSearch(testEquipmentInput.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [testEquipmentInput])
+  // All active test equipment is loaded and searched here, on every field. Only
+  // when there is more than one load holds is the server asked as well, for
+  // the longest word typed, so nothing beyond the first load is out of reach.
+  const testEquipmentListIsPartial = Boolean(testEquipmentData && testEquipmentData.total > testEquipmentData.items.length)
+  const testEquipmentServerWord = longestSearchWord(testEquipmentSearch)
+  const testEquipmentSearchQ = useQuery({
+    queryKey: ['test-equipment', 'active-options', testEquipmentServerWord],
+    queryFn: () => fetchActiveTestEquipment({ search: testEquipmentServerWord, limit: 500 }),
+    enabled: (canLogWorkForRequest || canAddWithoutTime) && testEquipmentListIsPartial && Boolean(testEquipmentServerWord),
+    staleTime: 15_000,
+  })
+  const testEquipmentOptions = useMemo(() => {
+    const byId = new Map<number, TestEquipment>()
+    ;(testEquipmentData?.items || []).forEach(item => byId.set(item.id, item))
+    ;(testEquipmentSearchQ.data?.items || []).forEach(item => { if (!byId.has(item.id)) byId.set(item.id, item) })
+    selectedTestEquipment.forEach(item => { if (!byId.has(item.id)) byId.set(item.id, item) })
+    return Array.from(byId.values())
+  }, [selectedTestEquipment, testEquipmentData?.items, testEquipmentSearchQ.data?.items])
 
   useEffect(() => {
     const timer = window.setTimeout(() => setPartSearch(partSearchInput.trim()), 300)
@@ -335,16 +362,28 @@ const ServiceRequestDetail = () => {
     enabled: Boolean(id) && canFetchServiceParts,
     staleTime: 15_000,
   })
+  // The search results in the server's order, then any picked part they do not
+  // include: a part picked never jumps to the top of the list under the pointer.
   const servicePartOptions = useMemo(() => {
     const byId = new Map<number, ServiceRequestPartOption>()
-    selectedServiceParts.forEach((part) => byId.set(part.id, part))
     ;(servicePartsQ.data?.items || []).forEach((part) => byId.set(part.id, part))
+    selectedServiceParts.forEach((part) => { if (!byId.has(part.id)) byId.set(part.id, part) })
     return Array.from(byId.values())
   }, [selectedServiceParts, servicePartsQ.data?.items])
   const selectedServicePartValues = useMemo(() => {
     const currentById = new Map(servicePartOptions.map((part) => [part.id, part]))
     return selectedServiceParts.map((part) => currentById.get(part.id) || part)
   }, [selectedServiceParts, servicePartOptions])
+  // What is typed has not been searched yet (the search waits for a pause in typing).
+  const partSearchPending = partSearchInput.trim() !== partSearch
+  const partResultIds = useMemo(
+    () => new Set((servicePartsQ.data?.items || []).map((part) => part.id)),
+    [servicePartsQ.data?.items],
+  )
+  // The list shows the first matches only; say so, so a part not listed is searched for, not assumed missing.
+  const partsShownOfTotal = !partSearchPending && servicePartsQ.data && servicePartsQ.data.total > servicePartsQ.data.items.length
+    ? `Showing the first ${servicePartsQ.data.items.length} of ${servicePartsQ.data.total} parts; type more to narrow it down.`
+    : ''
 
   const updateMutation = useMutation({
     mutationFn: (data: ServiceRequestUpdate) =>
@@ -375,7 +414,9 @@ const ServiceRequestDetail = () => {
     setSessionDiagnosis('')
     setSessionWorkDone('')
     setSessionNotes('')
-    setSelectedTestEquipmentIds([])
+    setSelectedTestEquipment([])
+    setTestEquipmentInput('')
+    setTestEquipmentSearch('')
     setWorkSessionId(createWorkSessionId())
     setPartSearchInput('')
     setPartSearch('')
@@ -1671,36 +1712,80 @@ const ServiceRequestDetail = () => {
                 />
                 <Autocomplete
                   multiple
+                  disableCloseOnSelect
                   options={testEquipmentOptions}
-                  value={testEquipmentOptions.filter((item: TestEquipment) => selectedTestEquipmentIds.includes(item.id))}
-                  onChange={(_, value) => setSelectedTestEquipmentIds(value.map((item) => item.id))}
+                  value={selectedTestEquipment}
+                  onChange={(_, value) => setSelectedTestEquipment(value)}
+                  inputValue={testEquipmentInput}
+                  onInputChange={(event, value, reason) => {
+                    // Picking keeps the search, so several matches can be ticked in a row; leaving the box clears it.
+                    if (reason === 'reset' && event?.type !== 'blur') return
+                    setTestEquipmentInput(value)
+                  }}
+                  // Every word typed, in any order, on any field shown: name, maker, model, serial, asset, description.
+                  filterOptions={(options, state) => options.filter(option => matchesEveryWord(
+                    [option.tem, option.mrf, option.model, option.serial_number, option.asset, option.description],
+                    state.inputValue,
+                  ))}
+                  loading={testEquipmentSearchQ.isFetching}
+                  loadingText="Searching test equipment..."
+                  noOptionsText={testEquipmentInput.trim() ? 'No active test equipment matches this search' : 'No active test equipment available'}
                   getOptionLabel={(option) => `${option.tem}${option.serial_number ? ` - ${option.serial_number}` : ''}`}
                   isOptionEqualToValue={(option, value) => option.id === value.id}
-                  renderOption={(props, option) => (
-                    <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
-                        <AssessmentIcon fontSize="small" />
-                      </Avatar>
-                      <Box>
-                        <Typography sx={{ fontWeight: 800 }}>{option.tem}</Typography>
-                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
-                          {[option.mrf, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
-                        </Typography>
+                  renderOption={(props, option, { selected }) => {
+                    // Keyed by id: two units with the same name are still two rows.
+                    const { key: _labelKey, ...optionProps } = props as typeof props & { key?: string }
+                    return (
+                      <Box component="li" key={option.id} {...optionProps} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Checkbox size="small" checked={selected} sx={{ p: 0.25, mr: 0.25 }} />
+                        <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
+                          <AssessmentIcon fontSize="small" />
+                        </Avatar>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 800 }}>{option.tem}</Typography>
+                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                            {[option.mrf, option.model, option.serial_number, option.asset].filter(Boolean).join(' / ') || 'No details'}
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
-                  )}
+                    )
+                  }}
                   renderInput={(params) => (
-                    <TextField {...params} label="Test Equipment Used" placeholder="Select equipment used in this session" />
+                    <TextField
+                      {...params}
+                      label="Test Equipment Used"
+                      placeholder={selectedTestEquipment.length ? 'Search to add more' : 'Search by name, maker, model or serial'}
+                    />
                   )}
                 />
                 <Autocomplete
                   multiple
+                  disableCloseOnSelect
                   options={servicePartOptions}
                   value={selectedServicePartValues}
-                  loading={servicePartsQ.isLoading || servicePartsQ.isFetching}
-                  filterOptions={(options) => options}
-                  onInputChange={(_, value, reason) => {
-                    if (reason === 'input' || reason === 'clear') setPartSearchInput(value)
+                  loading={partSearchPending || servicePartsQ.isFetching}
+                  loadingText="Searching parts..."
+                  // The server has searched already. Until it answers for what is typed now,
+                  // nothing is listed, so an earlier search's results are never offered as this one's.
+                  filterOptions={(options) => (partSearchPending
+                    ? []
+                    : options.filter(option => partResultIds.has(option.id) || matchesEveryWord(
+                      [option.part_number, option.description, option.make, option.model, option.serial_number, option.batch_number],
+                      partSearch,
+                    )))}
+                  inputValue={partSearchInput}
+                  onInputChange={(event, value, reason) => {
+                    // Picking keeps the search, so several matches can be ticked in a row; leaving the box clears it.
+                    if (reason === 'reset' && event?.type !== 'blur') return
+                    setPartSearchInput(value)
+                  }}
+                  // The picked parts are listed below with their quantities, not repeated as chips here;
+                  // so Backspace in an empty box must not silently drop the last one.
+                  renderTags={() => null}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Backspace' && !partSearchInput) {
+                      (event as typeof event & { defaultMuiPrevented?: boolean }).defaultMuiPrevented = true
+                    }
                   }}
                   onChange={(_, value) => {
                     setSelectedServiceParts(value)
@@ -1710,30 +1795,40 @@ const ServiceRequestDetail = () => {
                       return next
                     })
                   }}
-                  getOptionLabel={(option) => `${option.part_number} - ${option.description}`}
+                  getOptionLabel={(option) => [option.part_number, option.description].filter(Boolean).join(' - ')}
                   isOptionEqualToValue={(option, value) => option.id === value.id}
                   noOptionsText={partSearch ? 'No in-stock parts match this search' : 'No in-stock parts available'}
-                  renderOption={(props, option) => (
-                    <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" sx={{ width: 36, height: 36, bgcolor: '#ECFDF5', color: '#059669' }}>
-                        <BuildIcon fontSize="small" />
-                      </Avatar>
-                      <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography sx={{ fontWeight: 900 }}>{option.part_number} - {option.description}</Typography>
-                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
-                          {[option.make, option.model, option.serial_number].filter(Boolean).join(' / ') || option.part_type} · {option.quantity_on_hand} in stock
-                        </Typography>
+                  renderOption={(props, option, { selected }) => {
+                    // Keyed by id: the same part number and description in two places are still two rows.
+                    const { key: _labelKey, ...optionProps } = props as typeof props & { key?: string }
+                    return (
+                      <Box component="li" key={option.id} {...optionProps} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Checkbox size="small" checked={selected} sx={{ p: 0.25, mr: 0.25 }} />
+                        <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" sx={{ width: 36, height: 36, bgcolor: '#ECFDF5', color: '#059669' }}>
+                          <BuildIcon fontSize="small" />
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography sx={{ fontWeight: 900 }}>{[option.part_number, option.description].filter(Boolean).join(' - ')}</Typography>
+                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                            {[option.make, option.model, option.serial_number].filter(Boolean).join(' / ') || option.part_type} · {option.quantity_on_hand} in stock
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
-                  )}
+                    )
+                  }}
                   renderInput={(params) => (
                     <TextField
                       {...params}
                       label="Parts Used"
-                      placeholder="Search and select inventory parts"
-                      helperText={addingWithoutTime
-                        ? 'Stock is deducted only when this addition is saved. Parts are billed only through a quotation.'
-                        : 'Stock is deducted only when this work session is successfully saved.'}
+                      placeholder={selectedServicePartValues.length
+                        ? 'Search to add more parts'
+                        : 'Search by part number, description, make, model or serial'}
+                      helperText={[
+                        partsShownOfTotal,
+                        addingWithoutTime
+                          ? 'Stock is deducted only when this addition is saved. Parts are billed only through a quotation.'
+                          : 'Stock is deducted only when this work session is successfully saved.',
+                      ].filter(Boolean).join(' ')}
                     />
                   )}
                 />
@@ -1757,16 +1852,25 @@ const ServiceRequestDetail = () => {
                             </Typography>
                           </Box>
                         </Box>
-                        <TextField
-                          size="small"
-                          type="number"
-                          label="Quantity used"
-                          value={partQuantities[part.id] ?? '1'}
-                          onChange={(event) => setPartQuantities((previous) => ({ ...previous, [part.id]: event.target.value }))}
-                          inputProps={{ min: 1, max: part.quantity_on_hand, step: 1 }}
-                          error={Number(partQuantities[part.id] ?? '1') > part.quantity_on_hand || Number(partQuantities[part.id] ?? '1') <= 0}
-                          sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
-                        />
+                        {(() => {
+                          // A whole number typed as text: a number box changes its value when the
+                          // page is scrolled over it, and takes 1.5 or "e" without saying why it is refused.
+                          const quantity = partQuantities[part.id] ?? '1'
+                          const problem = quantityProblem(quantity, part.quantity_on_hand)
+                          return (
+                            <TextField
+                              size="small"
+                              label="Quantity used"
+                              value={quantity}
+                              onChange={(event) => setPartQuantities((previous) => ({ ...previous, [part.id]: wholeQuantityInput(event.target.value) }))}
+                              onFocus={(event) => event.target.select()}
+                              inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', 'aria-label': `Quantity of ${part.part_number} used` }}
+                              error={Boolean(problem)}
+                              helperText={problem || `of ${part.quantity_on_hand} available`}
+                              sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
+                            />
+                          )
+                        })()}
                         <IconButton
                           aria-label={`Remove ${part.part_number}`}
                           onClick={() => {
