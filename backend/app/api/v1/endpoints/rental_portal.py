@@ -36,6 +36,7 @@ from app.utils.rental_billing import (
 )
 from app.utils.rental_extensions import OPEN_EXTENSION_STATUSES, current_extension, extension_response
 from app.utils.notifications import notify_admins
+from app.utils.rental_change_requests import CHANGES_REQUESTED, comment_excerpt, open_change_request
 from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
 from app.utils.square_payments import (
     square_public_config,
@@ -373,12 +374,22 @@ def _portal_response(
             "invoice_number": None,
         } if upcoming else None)
 
+    change_request = open_change_request(rental.history) if rental.acceptance is None else None
     return {
         "company_name": "Mr. BioMed Tech Services",
         "agreement": _agreement_view(rental),
         "acceptance": _acceptance_view(rental.acceptance),
         "can_transact": can_transact,
-        "can_sign": can_transact and rental.acceptance is None,
+        # While the customer's request for changes is open, the agreement waits for
+        # the revised one (staff send the link again) before it can be signed.
+        "can_sign": can_transact and rental.acceptance is None and change_request is None,
+        "change_request": change_request,
+        "can_request_changes": bool(
+            can_transact
+            and rental.acceptance is None
+            and rental.status == RentalStatus.ACTIVE
+            and change_request is None
+        ),
         "invoices": [_invoice_view(invoice) for invoice in invoices],
         "billing_schedule": schedule,
         "next_payment": next_payment,
@@ -391,6 +402,54 @@ def _portal_response(
         ),
         "square": square_public_config(),
     }
+
+
+class RequestChangesIn(BaseModel):
+    comments: str = Field(max_length=5000)
+
+
+def _request_agreement_changes(
+    rental: Rental,
+    payload: RequestChangesIn,
+    db: Session,
+    requester_name: Optional[str],
+    requester_user_id: Optional[int] = None,
+) -> Any:
+    """The customer asks for changes to an agreement they have not signed, saying what to change."""
+    comments = (payload.comments or "").strip()
+    if not comments:
+        raise HTTPException(status_code=422, detail="Please describe the changes you would like")
+    if rental.acceptance is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="This agreement is already signed. Request an extension, or contact us to change it.",
+        )
+    if rental.status != RentalStatus.ACTIVE:
+        raise HTTPException(status_code=409, detail="This rental agreement is no longer open for changes")
+    if open_change_request(rental.history):
+        raise HTTPException(status_code=409, detail="Your request for changes has been sent. We will send you the revised agreement.")
+    name = (requester_name or "").strip() or rental.customer_name or "The customer"
+    history = list(rental.history or [])
+    history.append({
+        "action": CHANGES_REQUESTED,
+        "by": name,
+        "user_id": requester_user_id,
+        "at": datetime.utcnow().isoformat(),
+        "details": {"comments": comments},
+    })
+    rental.history = history
+    rental.updated_at = datetime.utcnow()
+    notify_admins(
+        db,
+        title=f"Rental changes requested: {rental.rental_number}",
+        message=f'{name} asked for changes to {rental.rental_number}: "{comment_excerpt(comments)}"',
+        notification_type="rental_changes",
+        link_url=f"/rentals/agreements?search={rental.rental_number}",
+        actor_id=requester_user_id,
+    )
+    db.commit()
+    db.refresh(rental)
+    return _portal_response(db, rental)
 
 
 class RequestExtensionIn(BaseModel):
@@ -630,6 +689,16 @@ def _cancel_extension(
 def public_view_rental(token: str, db: Session = Depends(get_db)) -> Any:
     rental = _find_rental_by_token(db, token)
     return _portal_response(db, rental)
+
+
+@router.post("/rentals/public/{token}/request-changes")
+def public_request_rental_changes(
+    token: str,
+    payload: RequestChangesIn,
+    db: Session = Depends(get_db),
+) -> Any:
+    rental = _find_rental_by_token(db, token, for_update=True)
+    return _request_agreement_changes(rental, payload, db, rental.customer_name)
 
 
 @router.post("/rentals/public/{token}/extensions")
@@ -895,6 +964,11 @@ def _accept_rental(
 ) -> Any:
     if not payload.terms_accepted:
         raise HTTPException(status_code=422, detail="Accept the rental terms before signing")
+    if rental.acceptance is None and open_change_request(rental.history):
+        raise HTTPException(
+            status_code=409,
+            detail="You asked for changes to this agreement. It can be signed once we send you the revised agreement.",
+        )
     if rental.acceptance:
         if rental.acceptance.agreement_revision == (rental.revision or 1):
             return _portal_response(db, rental)
@@ -1240,6 +1314,24 @@ def account_view_rental(
         db,
         rental,
         can_transact=rental.customer_user_id == current_user.id,
+    )
+
+
+@router.post("/rentals/account/{rental_id}/request-changes")
+def account_request_rental_changes(
+    rental_id: int,
+    payload: RequestChangesIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    _require_primary_account_recipient(rental, current_user)
+    return _request_agreement_changes(
+        rental,
+        payload,
+        db,
+        current_user.full_name or current_user.username,
+        current_user.id,
     )
 
 

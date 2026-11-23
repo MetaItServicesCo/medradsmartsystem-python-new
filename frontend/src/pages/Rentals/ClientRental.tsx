@@ -28,6 +28,8 @@ import {
   customerPortalSx,
 } from '@/components/Documents/CustomerDocumentUI'
 import {
+  requestAccountRentalChanges,
+  requestPublicRentalChanges,
   acceptAccountRental,
   acceptAccountRentalExtension,
   acceptPublicRental,
@@ -54,6 +56,8 @@ const money = (value: number | string | null | undefined) => `$${Number(value ||
 const dateLabel = (value?: string | null) => (value
   ? new Date(`${value}${value.length === 10 ? 'T00:00:00' : ''}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   : '—')
+const dateTimeLabel = (value: string) =>
+  new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 const frequencyLabel = (value: string) => value === 'biweekly' ? 'Bi-weekly' : `${value.charAt(0).toUpperCase()}${value.slice(1)}`
 
 const Centered = ({ children }: { children: React.ReactNode }) => (
@@ -122,6 +126,8 @@ const ClientRental = () => {
   const [showCardEditor, setShowCardEditor] = useState(false)
   const [authorizeReplacement, setAuthorizeReplacement] = useState(false)
   const [confirmCardRemoval, setConfirmCardRemoval] = useState(false)
+  const [changesOpen, setChangesOpen] = useState(false)
+  const [changesText, setChangesText] = useState('')
 
   const portalKey = isAccountView
     ? ['rental-account', accountRentalId]
@@ -161,6 +167,19 @@ const ClientRental = () => {
       toast.success('Rental agreement signed and approved')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not approve the agreement'),
+  })
+
+  const requestChangesMut = useMutation({
+    mutationFn: () => isAccountView
+      ? requestAccountRentalChanges(accountRentalId, changesText.trim())
+      : requestPublicRentalChanges(token, changesText.trim()),
+    onSuccess: (data) => {
+      queryClient.setQueryData(portalKey, data)
+      setChangesOpen(false)
+      setChangesText('')
+      toast.success('Change request sent')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not send your request'),
   })
 
   const requestExtensionMut = useMutation({
@@ -371,12 +390,14 @@ const ClientRental = () => {
                 onClick={() => document.getElementById('rental-acceptance')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}
               >
-                Continue to signature
+                {portalQ.data?.change_request ? 'View your request' : 'Continue to signature'}
               </Button>
             )}
             sx={{ mb: 3, borderRadius: '14px', alignItems: 'center' }}
           >
-            Review the agreement and its terms, then sign before making the initial payment.
+            {portalQ.data?.change_request
+              ? 'You asked for changes to this agreement. We will send you the revised agreement to sign.'
+              : 'Review the agreement and its terms, then sign before making the initial payment.'}
           </Alert>
         )}
         {!acceptance && !canTransact && (
@@ -538,7 +559,18 @@ const ClientRental = () => {
         )}
         </Box>
 
-        {!acceptance && canTransact ? (
+        {!acceptance && canTransact && !isExtensionView && portalQ.data?.change_request ? (
+          // They asked for changes: what they sent, and what happens next. Signing waits for the revised agreement.
+          <Alert id="rental-acceptance" severity="info" sx={{ mb: 3, borderRadius: '18px', '& .MuiAlert-message': { width: '100%', minWidth: 0 } }}>
+            <Typography sx={{ fontWeight: 900 }}>You asked for changes. We will send you the revised agreement to sign.</Typography>
+            {portalQ.data.change_request.at && (
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: 'text.secondary' }}>{dateTimeLabel(portalQ.data.change_request.at)}</Typography>
+            )}
+            <Box component="blockquote" sx={{ m: 0, mt: 1, px: 1.5, py: 1, borderLeft: '3px solid', borderColor: 'divider', bgcolor: 'rgba(255,255,255,0.7)', borderRadius: '0 10px 10px 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+              {portalQ.data.change_request.comments}
+            </Box>
+          </Alert>
+        ) : !acceptance && canTransact ? (
           <Card id="rental-acceptance" className="rental-agreement-content" variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', mb: 3, borderColor: '#C4B5FD', bgcolor: '#FAF9FF', scrollMarginTop: 24 }}>
             <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 20 }}>Sign and approve this rental agreement</Typography>
             <Typography sx={{ color: '#64748B', mt: 0.5, mb: 2 }}>Review the agreement, type your full legal name, and accept the terms before paying.</Typography>
@@ -552,6 +584,11 @@ const ClientRental = () => {
             <Button variant="contained" startIcon={<DrawIcon />} disabled={!termsAccepted || signatureName.trim().length < 2 || acceptMut.isPending} onClick={() => acceptMut.mutate()} sx={{ mt: 1, fontWeight: 900, textTransform: 'none' }}>
               Sign &amp; Approve Agreement
             </Button>
+            {portalQ.data?.can_request_changes && !isExtensionView && (
+              <Button variant="outlined" onClick={() => setChangesOpen(true)} sx={{ mt: 1, ml: 1.5, fontWeight: 900, textTransform: 'none' }}>
+                Request Changes
+              </Button>
+            )}
           </Card>
         ) : acceptance ? <CustomerSignatureRecord context="Agreement" acceptedBy={acceptance.accepted_by_name} acceptedAt={dateLabel(acceptance.accepted_at)} signature={acceptance.signature_name} detail={`Revision ${acceptance.agreement_revision}`} /> : null}
 
@@ -718,6 +755,31 @@ const ClientRental = () => {
           </>
         )}
       </Card>
+      <Dialog open={changesOpen} onClose={() => !requestChangesMut.isPending && setChangesOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900 }}>Request Changes</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={4}
+            label="What would you like changed?"
+            placeholder="For example: deliver on Monday instead, add a second mattress, or change the billing contact."
+            value={changesText}
+            onChange={event => setChangesText(event.target.value)}
+            inputProps={{ maxLength: 5000 }}
+            helperText="Your message is sent to our team. You can sign once we send you the revised agreement."
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setChangesOpen(false)} disabled={requestChangesMut.isPending}>Cancel</Button>
+          <Button variant="contained" disabled={requestChangesMut.isPending || !changesText.trim()} onClick={() => requestChangesMut.mutate()}>
+            Send Request
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={confirmCardRemoval} onClose={() => !removeCardMut.isPending && setConfirmCardRemoval(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>Remove saved card?</DialogTitle>
         <DialogContent>

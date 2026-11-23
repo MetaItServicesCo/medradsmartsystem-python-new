@@ -84,6 +84,7 @@ from app.utils.rental_billing import (
 )
 from app.utils.rental_billing_job import run_rental_billing_job
 from app.utils.rental_extensions import current_extension, extension_response
+from app.utils.rental_change_requests import open_change_request
 from app.utils.notifications import create_notification, create_notifications
 from app.utils.permissions import has_module_permission
 from app.utils.list_search import (
@@ -644,6 +645,8 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "created_at": rental.created_at,
         "updated_at": rental.updated_at,
         "history": rental.history or [],
+        # The customer's open request for changes, in their words (None once the link is sent again or signed).
+        "change_request": open_change_request(rental.history) if rental.acceptance is None else None,
         "extension": extension_response(current_extension(rental)),
         "extension_history": [extension_response(item) for item in (rental.extensions or [])],
     }

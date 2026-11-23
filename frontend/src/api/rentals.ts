@@ -178,8 +178,16 @@ export interface Rental {
   created_at: string
   updated_at: string
   history: RentalHistoryItem[]
+  /** The customer's open request for changes, in their words; null once the link is sent again or signed. */
+  change_request?: RentalChangeRequest | null
   extension: RentalExtension | null
   extension_history: Array<RentalExtension | null>
+}
+
+export interface RentalChangeRequest {
+  by: string
+  at: string | null
+  comments: string
 }
 
 export interface RentalInvoice {
@@ -674,6 +682,9 @@ export interface RentalPortal {
   } | null
   can_transact: boolean
   can_sign: boolean
+  /** The customer's open request for changes; the agreement can be signed once it is answered. */
+  change_request?: RentalChangeRequest | null
+  can_request_changes?: boolean
   invoices: RentalPortalInvoice[]
   billing_schedule: RentalBillingPeriod[]
   next_payment: RentalProjectedPayment | null
@@ -820,6 +831,16 @@ export const cancelRentalLinkExtension = async (token: string, extensionId: numb
 
 export const cancelAccountRentalExtension = async (rentalId: number, extensionId: number): Promise<RentalPortal> => {
   const res = await apiClient.post(`/rentals/account/${rentalId}/extensions/${extensionId}/cancel`)
+  return res.data
+}
+
+export const requestPublicRentalChanges = async (token: string, comments: string): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/request-changes`, { comments })
+  return res.data
+}
+
+export const requestAccountRentalChanges = async (rentalId: number, comments: string): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/account/${rentalId}/request-changes`, { comments })
   return res.data
 }
 

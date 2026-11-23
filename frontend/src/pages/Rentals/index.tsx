@@ -88,6 +88,8 @@ import {
   type RentalInvoiceStatus,
 } from '@/api/rentals'
 import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
+import { commentExcerpt } from '@/utils/customerResponse'
+import CustomerResponseNotice from '@/components/Sales/CustomerResponseNotice'
 import { digitsOnly, formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -230,6 +232,14 @@ const isIncompleteDraft = (rental: Rental) => (
     || !rental.start_date
     || !rental.end_date
   )
+)
+
+// The customer's open request for changes, shown in their words with what to do next.
+const RentalChangeRequestNotice = ({ request }: { request: NonNullable<Rental['change_request']> }) => (
+  <CustomerResponseNotice
+    response={{ action: 'changes_requested', by: request.by, at: request.at, comments: request.comments }}
+    hint="Edit the agreement to make these changes, then use Send Link to Customer. The customer can sign once the link is sent again."
+  />
 )
 
 const RentalStatusChip = ({ value, label }: { value: string; label?: string }) => {
@@ -2122,7 +2132,25 @@ const Rentals = () => {
                     <RentalStatusChip value={item.status} />
                     {item.is_overdue && <RentalStatusChip value="overdue" />}
                     {isIncompleteDraft(item) && <RentalStatusChip value="pending" label="Incomplete" />}
+                    {item.change_request && <RentalStatusChip value="pending" label="Changes requested" />}
                   </Box>
+                  {item.change_request && (
+                    // What the customer asked for, in their words, until the link is sent again.
+                    <Typography
+                      role="button"
+                      tabIndex={0}
+                      title={item.change_request.comments}
+                      onClick={() => setViewAgreement(item)}
+                      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setViewAgreement(item) } }}
+                      sx={{
+                        mt: 0.6, maxWidth: 220, fontSize: 11.5, lineHeight: 1.35, cursor: 'pointer', color: '#C2410C', fontWeight: 700,
+                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        '&:hover': { textDecoration: 'underline' },
+                      }}
+                    >
+                      {`“${commentExcerpt(item.change_request.comments)}”`}
+                    </Typography>
+                  )}
                 </TableCell>
                 <TableCell align="right">
                   {highlighted && (
@@ -2714,6 +2742,9 @@ const Rentals = () => {
           {editingAgreement ? 'Edit Rental Agreement' : 'Create Rental Agreement'}
         </DialogTitle>
         <DialogContent dividers>
+          {editingAgreement?.change_request && (
+            <Box sx={{ mb: 2 }}><RentalChangeRequestNotice request={editingAgreement.change_request} /></Box>
+          )}
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Customer &amp; Agreement Details</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5, pt: 1, '& .MuiOutlinedInput-root': { minHeight: 44 }, '& .MuiInputBase-input': { py: 1.25 } }}>
             <FacilitySearchAutocomplete
@@ -3747,6 +3778,7 @@ const Rentals = () => {
         <DialogContent dividers>
           {viewAgreement && (
             <Box sx={{ display: 'grid', gap: 3 }}>
+              {viewAgreement.change_request && <RentalChangeRequestNotice request={viewAgreement.change_request} />}
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>AGREEMENT NO.</Typography>
@@ -4056,9 +4088,15 @@ const Rentals = () => {
                       <Typography sx={{ fontWeight: 850, textTransform: 'capitalize', color: '#7C3AED' }}>{h.action.replace(/_/g, ' ')}</Typography>
                       <Typography sx={{ color: '#6B7280', fontSize: 12 }}>by {h.by} at {formatDate(h.at)}</Typography>
                     </Box>
-                    <Typography variant="body2" title={auditDetailsText(h.details)} sx={{ color: '#4B5563', alignSelf: 'center', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {auditDetailsText(h.details)}
-                    </Typography>
+                    {h.action === 'changes_requested' ? (
+                      <Typography variant="body2" sx={{ color: '#1E1B4B', alignSelf: 'center', maxWidth: 400, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', borderLeft: '3px solid #FDBA74', pl: 1.25 }}>
+                        {String(h.details?.comments || '').trim() || 'No comments were given.'}
+                      </Typography>
+                    ) : (
+                      <Typography variant="body2" title={auditDetailsText(h.details)} sx={{ color: '#4B5563', alignSelf: 'center', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {auditDetailsText(h.details)}
+                      </Typography>
+                    )}
                   </Box>
                 ))}
               </Box>
