@@ -137,6 +137,11 @@ sr.equipment.description = "C ARM"
 db.commit()
 ok("its Description: C ARM", build_service_invoice_document(inv, [])["equipment"]["description"] == "C ARM")
 ok("  the rest of the asset as before", {k: v for k, v in build_service_invoice_document(inv, [])["equipment"].items() if k in ("make", "model")} == {"make": "Hill Rom", "model": "P7500"})
+fields = build_service_invoice_document(inv, [])["facility"]["address_fields"]
+ok("Bill To carries the facility's address in its parts, for the two-line print",
+   fields is not None and fields["address"] == inv.facility.address and fields["city"] == inv.facility.city
+   and fields["state"] == inv.facility.state and fields["zip_code"] == inv.facility.zip_code and set(fields) == {"address", "suite", "city", "state", "zip_code", "country"}, fields)
+ok("  and the one-line address as before", build_service_invoice_document(inv, [])["facility"]["address"] is not None)
 
 print("\nLabor typed in by hand")
 c = charges(invoice(request("4"), "600.00"))

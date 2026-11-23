@@ -275,6 +275,16 @@ def build_service_invoice_document(
         "facility": {
             "name": facility.name if facility else invoice.customer_name,
             "address": _facility_address(facility) or invoice.customer_address,
+            # The same address in its parts, so it prints as two lines (street;
+            # city, state zip, country) by the rule the reports use.
+            "address_fields": {
+                "address": facility.address,
+                "suite": getattr(facility, "suite", None),
+                "city": facility.city,
+                "state": facility.state,
+                "zip_code": facility.zip_code,
+                "country": getattr(facility, "country", None),
+            } if facility else None,
             "contact_name": (facility.contact_person if facility else None) or invoice.customer_name,
             "phone": (facility.phone if facility else None) or invoice.customer_phone,
             "email": (facility.email if facility else None) or invoice.customer_email,

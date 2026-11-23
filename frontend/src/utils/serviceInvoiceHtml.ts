@@ -8,6 +8,7 @@
  */
 import type { ServiceInvoiceDocument } from '@/api/serviceRequests'
 import { printStyles } from '@/utils/invoiceDocumentStyles'
+import { facilityAddressLines } from '@/utils/facilityAddress'
 
 const COMPANY = {
   name: 'Mr. BioMed Tech Services',
@@ -84,6 +85,9 @@ const table = (head: string[], rows: string[], columns: number) => `
 
 export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Promise<string> => {
   const { equipment, facility } = doc
+  // The street, then city, state, zip and country -- never printed twice, as on the reports.
+  const twoLines = facility.address_fields ? facilityAddressLines(facility.address_fields) : null
+  const addressLines = (twoLines ? [twoLines.street, twoLines.line2] : [facility.address]).filter(Boolean)
 
   const workRows = doc.work_entries.map(entry => `
     <tr>
@@ -132,7 +136,7 @@ export const buildServiceInvoiceHtml = async (doc: ServiceInvoiceDocument): Prom
           ${facility.contact_name ? `<span class="muted">${esc(facility.contact_name)}</span><br>` : ''}
           ${facility.email ? `<span class="muted">${esc(facility.email)}</span><br>` : ''}
           ${facility.phone ? `<span class="muted">${esc(facility.phone)}</span><br>` : ''}
-          ${facility.address ? `<span class="muted">${esc(facility.address)}</span>` : ''}
+          ${addressLines.map(line => `<span class="muted">${esc(line)}</span>`).join('<br>')}
         </div>
         <div class="box meta">
           <strong>Invoice #</strong><span>${esc(doc.invoice_number)}</span>

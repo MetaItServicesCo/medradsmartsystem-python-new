@@ -81,6 +81,20 @@ ok('a state abbreviation that is not before a zip is left alone', r.street === '
 r = lines({ ...tx, address: '4500 Frisco', city: 'Frisco', zip_code: '75034' })
 ok('a street that would be left as only a number is printed as typed', r.street === '4500 Frisco', show(r))
 
+// The suite goes on the street line, never twice.
+r = lines({ address: '1 Main St', suite: 'Suite 200', city: 'Plano', state: 'TX', zip_code: '75024', country: 'United States' })
+ok('a suite goes after the street', r.street === '1 Main St, Suite 200' && r.line2 === 'Plano, TX 75024, United States', show(r))
+r = lines({ address: '3140 Legacy Dr. Bldg 300 Ste 330, Frisco, TX 75034', suite: 'Ste 330', city: 'Frisco', state: 'TX', zip_code: '75034', country: 'United States' })
+ok('  not when the street already has it', r.street === '3140 Legacy Dr. Bldg 300 Ste 330', show(r))
+r = lines({ address: '2010 W Raines Rd #400', suite: '#400', city: 'Cleburne', state: 'TX', zip_code: '76033', country: 'United States' })
+ok('  "#400" already on the street: once', r.street === '2010 W Raines Rd #400', show(r))
+r = lines({ address: '330 Main St', suite: 'Suite 330', city: 'Plano', state: 'TX', zip_code: '75024', country: 'United States' })
+ok('  a street number like the suite number is not mistaken for it', r.street === '330 Main St, Suite 330', show(r))
+r = lines({ address: '1 Main St', suite: 'N/A', city: 'Plano', state: 'TX', zip_code: '75024', country: 'United States' })
+ok('  a placeholder suite prints as nothing', r.street === '1 Main St', show(r))
+r = lines({ address: '', suite: 'Suite 5', city: 'Plano', state: 'TX', zip_code: '75024', country: 'United States' })
+ok('  a suite with no street: just the suite', r.street === 'Suite 5', show(r))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)

@@ -34,7 +34,7 @@ const ok = (label, condition, detail = '') => {
 
 const doc = (value, over = {}) => ({
   invoice_number: value, request_number: value, status: value, issue_date: value, due_date: value, installment_plan: value, po: value,
-  facility: { name: value, address: value, contact_name: value, phone: value, email: value },
+  facility: { name: value, address: value, address_fields: { address: value, suite: value, city: value, state: value, zip_code: value, country: value }, contact_name: value, phone: value, email: value },
   equipment: { service_required: value, description: value, serial_number: value, asset_tag: value, make: value, model: value },
   work_entries: [{ key: 'k', date: value, diagnosis: value, work_done: value, technician: value, check_in: value, check_out: value, hours: 2 }],
   total_hours: 2,
@@ -113,6 +113,24 @@ const adjusted = await buildServiceInvoiceHtml(doc('v', { charges: [{ label: 'La
 ok('labor changed by hand reads as adjusted, never as a wrong sum', adjusted.includes('(4.00 hrs, adjusted)') && !adjusted.includes('×'))
 const older = await buildServiceInvoiceHtml(doc('v', { charges: [{ label: 'Labor', amount: '700.00' }] }))
 ok('a server that sends no breakdown: the line as before', /<span>Labor<\/span><strong>\$700\.00<\/strong>/.test(older))
+
+// Bill To: the street, then city, state zip and country -- as on the reports.
+const billTo = html => (/<div class="box prepared">([\s\S]*?)<\/div>/.exec(html) || [])[1] || ''
+const facility = (over) => ({ name: 'Cleburne Imaging', contact_name: 'Jane Doe', phone: '555-0101', email: 'ap@clinic.test', ...over })
+let box = billTo(await buildServiceInvoiceHtml({ ...doc('v'), facility: facility({
+  address: '2010 W Katherine P Raines Rd #400, Cleburne, TX 76033, United States, cleburne, TX, 76033',
+  address_fields: { address: '2010 W Katherine P Raines Rd #400, Cleburne, TX 76033, United States', suite: null, city: 'cleburne', state: 'TX', zip_code: '76033', country: 'United States' },
+}) }))
+ok('Bill To: street on one line, "Cleburne, TX 76033, United States" on the next, nothing twice',
+  box.includes('<span class="muted">2010 W Katherine P Raines Rd #400</span><br><span class="muted">Cleburne, TX 76033, United States</span>')
+  && (box.match(/76033/g) || []).length === 1, box)
+ok('  name, contact, email and phone as before', box.includes('<strong class="customer">Cleburne Imaging</strong>') && box.includes('Jane Doe') && box.includes('ap@clinic.test') && box.includes('555-0101'))
+box = billTo(await buildServiceInvoiceHtml({ ...doc('v'), facility: facility({ address: '1 Main St, Suite 200, Plano, TX, 75024', address_fields: { address: '1 Main St', suite: 'Suite 200', city: 'Plano', state: 'TX', zip_code: '75024', country: 'United States' } }) }))
+ok('  a suite stays on the street line', box.includes('1 Main St, Suite 200</span><br><span class="muted">Plano, TX 75024, United States</span>'), box)
+box = billTo(await buildServiceInvoiceHtml({ ...doc('v'), facility: facility({ address: '9 Old Rd, Dallas, TX', address_fields: undefined }) }))
+ok('  no address parts (no facility, or an older server): the address as it was', box.includes('<span class="muted">9 Old Rd, Dallas, TX</span>') && !box.includes('<br><span class="muted"></span>'), box)
+box = billTo(await buildServiceInvoiceHtml({ ...doc('v'), facility: facility({ address: null, address_fields: null }) }))
+ok('  no address at all: nothing printed, no empty lines', !box.includes('<span class="muted"></span>') && !/null|undefined/.test(box), box)
 
 console.log()
 if (failures) {

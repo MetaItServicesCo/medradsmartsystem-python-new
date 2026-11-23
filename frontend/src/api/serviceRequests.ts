@@ -1,5 +1,6 @@
 import apiClient from './client'
 import { completePaymentRequest, paymentRequestKey } from '@/utils/paymentIdempotency'
+import type { FacilityAddressLike } from '@/utils/facilityAddress'
 
 export type ServiceRequestPriority = 'low' | 'medium' | 'high' | 'critical'
 export type ServiceRequestStatus =
@@ -767,7 +768,16 @@ export interface ServiceInvoiceDocument {
   due_date: string
   installment_plan: string
   po: string | null
-  facility: { name: string | null; address: string | null; contact_name: string | null; phone: string | null; email: string | null }
+  facility: {
+    name: string | null
+    /** The whole address on one line; used when there are no parts (no facility). */
+    address: string | null
+    /** The address in its parts, printed as two lines. */
+    address_fields?: FacilityAddressLike | null
+    contact_name: string | null
+    phone: string | null
+    email: string | null
+  }
   equipment: { service_required: string | null; description?: string | null; serial_number: string | null; asset_tag: string | null; make: string | null; model: string | null }
   work_entries: ServiceInvoiceWorkEntry[]
   total_hours: number

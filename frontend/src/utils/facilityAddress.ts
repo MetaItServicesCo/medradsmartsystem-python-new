@@ -10,12 +10,14 @@
  * there; the second line is always built from the facility's own city, state,
  * zip and country. Only what is nothing but those is taken off the end, so the
  * street itself always stays as typed. Placeholders ("Not provided", "Nill")
- * print as nothing.
+ * print as nothing. A suite goes on the street line, unless the street already
+ * has it.
  * Nothing about the facility record changes; this is how it prints.
  */
 
 export interface FacilityAddressLike {
   address?: string | null
+  suite?: string | null
   city?: string | null
   state?: string | null
   zip_code?: string | null
@@ -99,6 +101,14 @@ const streetOf = (address: string, facility: FacilityAddressLike) => {
   return /[a-z]/i.test(street) ? street : address
 }
 
+/** The street with the suite after it, unless the street already ends with or contains it. */
+const withSuite = (street: string, suite: string) => {
+  if (!suite) return street
+  const have = ` ${words(street).join(' ')} `
+  if (have.includes(` ${words(suite).join(' ')} `)) return street
+  return street ? `${street}, ${suite}` : suite
+}
+
 export const facilityAddressLines = (facility: FacilityAddressLike | null | undefined): { street: string; line2: string } => {
   if (!facility) return { street: '', line2: '' }
   const city = cityLabel(field(facility.city))
@@ -106,7 +116,7 @@ export const facilityAddressLines = (facility: FacilityAddressLike | null | unde
   const cityState = [city, state].filter(Boolean).join(', ')
   const place = [cityState, field(facility.zip_code)].filter(Boolean).join(' ')
   return {
-    street: streetOf(field(facility.address), facility),
+    street: withSuite(streetOf(field(facility.address), facility), field(facility.suite)),
     line2: [place, field(facility.country)].filter(Boolean).join(', '),
   }
 }
