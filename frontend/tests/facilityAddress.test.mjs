@@ -54,6 +54,33 @@ r = lines({ address: '', city: 'Plano', state: 'TX', zip_code: '', country: 'Uni
 ok('missing fields leave no stray commas or spaces', r.street === '' && r.line2 === 'Plano, TX, United States', show(r))
 ok('no facility prints nothing', show(lines(null)) === show({ street: '', line2: '' }))
 
+// Addresses as they are in production: without commas, with placeholders.
+const tx = { state: 'TX', country: 'United States' }
+r = lines({ ...tx, address: '500 West Main Street Ste A Lewisville, TX 75057', city: 'Lewisville', zip_code: '75057' })
+ok('a city with no comma before it is still taken off the street', r.street === '500 West Main Street Ste A' && r.line2 === 'Lewisville, TX 75057, United States', show(r))
+r = lines({ ...tx, address: '5606 North Navarro #304 Victoria TX 77904 United States', city: 'Victoria', zip_code: '77904' })
+ok('  and with no commas at all', r.street === '5606 North Navarro #304', show(r))
+r = lines({ ...tx, address: '6552 Lake Worth Blvd  Lake Worth Tx 76135', city: 'Lake Worth', zip_code: '76135' })
+ok('  a street named like the city keeps its own name', r.street === '6552 Lake Worth Blvd', show(r))
+r = lines({ ...tx, address: '2840 legacy drive, Frisco Texas, 75034', city: 'Frisco', zip_code: '75034' })
+ok('  the state written out, in its own part, is taken off', r.street === '2840 legacy drive', show(r))
+r = lines({ ...tx, address: '#9 Medical Pkwy Suite 207 Dallas,TX 75034', city: 'Dallas,', state: 'Texas', zip_code: '75034' })
+ok('"Dallas,TX" with no space, and a city saved as "Dallas," print cleanly', r.street === '#9 Medical Pkwy Suite 207' && r.line2 === 'Dallas, Texas 75034, United States', show(r))
+r = lines({ ...tx, address: '470 E State Hwy 114,', city: 'Southlake', zip_code: '76092' })
+ok('a trailing comma is dropped', r.street === '470 E State Hwy 114', show(r))
+r = lines({ address: 'Not provided', city: 'Not provided', state: 'Not provided', zip_code: 'Not provided', country: 'United States' })
+ok('"Not provided" prints as nothing, not as an address', r.street === '' && r.line2 === 'United States', show(r))
+r = lines({ address: 'Nill', city: 'Nill', state: 'Nill', zip_code: 'Nill', country: 'United States' })
+ok('  "Nill" too', r.street === '' && r.line2 === 'United States', show(r))
+r = lines({ address: '184 Cedar Street Holt MI 48842 United States', city: 'Not provided', state: 'MI', zip_code: '48842', country: 'United States' })
+ok('with no city on record, the city in the address stays with the street', r.street === '184 Cedar Street Holt' && r.line2 === 'MI 48842, United States', show(r))
+r = lines({ address: '421 E. State Highway 114 Southlake, TX, 76092', city: 'Southlake', state: 'Not provided', zip_code: 'Not provided', country: 'United States' })
+ok('a state before a zip is recognised even when the record has none', r.street === '421 E. State Highway 114' && r.line2 === 'Southlake, United States', show(r))
+r = lines({ ...tx, address: '120 Main St Suite IN', city: 'Plano', zip_code: '75024' })
+ok('a state abbreviation that is not before a zip is left alone', r.street === '120 Main St Suite IN', show(r))
+r = lines({ ...tx, address: '4500 Frisco', city: 'Frisco', zip_code: '75034' })
+ok('a street that would be left as only a number is printed as typed', r.street === '4500 Frisco', show(r))
+
 console.log()
 if (failures) {
   console.log(`${failures} check(s) failed`)

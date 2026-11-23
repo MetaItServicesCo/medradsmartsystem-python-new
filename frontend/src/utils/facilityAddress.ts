@@ -8,8 +8,9 @@
  * their address field ("2010 W Katherine P Raines Rd #400, Cleburne, TX 76033,
  * United States"), so the city, state, zip and country at its end are taken off
  * there; the second line is always built from the facility's own city, state,
- * zip and country. Only trailing comma-separated parts that are nothing but
- * those are taken off: a part with anything of the street in it always stays.
+ * zip and country. Only what is nothing but those is taken off the end, so the
+ * street itself always stays as typed. Placeholders ("Not provided", "Nill")
+ * print as nothing.
  * Nothing about the facility record changes; this is how it prints.
  */
 
@@ -34,8 +35,15 @@ const US_STATES: Record<string, string> = {
 }
 const US_NAMES = ['united states of america', 'united states', 'usa', 'us']
 
-const text = (value: unknown) => String(value ?? '').trim()
-const norm = (value: string) => value.toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim()
+// Values that stand for "nothing entered" in the facility records.
+const PLACEHOLDERS = new Set(['not provided', 'not available', 'nill', 'nil', 'null', 'none', 'n/a', 'na', 'unknown', 'tbd', '-', '--', '—'])
+
+/** A field as printed: trimmed, stray commas at its ends removed, a placeholder ("Not provided", "Nill") empty. */
+const field = (value: unknown) => {
+  const cleaned = String(value ?? '').trim().replace(/^[\s,;]+|[\s,;]+$/g, '')
+  return PLACEHOLDERS.has(cleaned.toLowerCase()) ? '' : cleaned
+}
+const words = (value: string) => value.toLowerCase().replace(/[.;:()]/g, '').split(/[\s,]+/).filter(Boolean)
 
 /** "cleburne" -> "Cleburne"; a city typed with any capitals is left as typed. */
 const cityLabel = (city: string) => (city && city === city.toLowerCase()
@@ -45,41 +53,60 @@ const cityLabel = (city: string) => (city && city === city.toLowerCase()
 /** "tx" -> "TX"; a state written out is left as typed. */
 const stateLabel = (state: string) => (/^[a-z]{2}$/i.test(state) ? state.toUpperCase() : state)
 
-// Whether one comma-separated part of the address is only the city, state,
-// zip and/or country -- nothing of the street.
-const onlyLocation = (part: string, facility: FacilityAddressLike) => {
-  const city = text(facility.city)
-  const state = text(facility.state)
-  const country = text(facility.country)
-  const phrases = new Set<string>(
-    [
-      city,
-      country,
-      ...US_NAMES,
-      ...Object.keys(US_STATES),
-      ...Object.values(US_STATES),
-      state,
-    ].map(norm).filter(Boolean),
-  )
-  let rest = ` ${norm(part)} `
-  // Longest first, so "new york" goes before "york" and "united states" before "us".
-  Array.from(phrases).sort((a, b) => b.length - a.length).forEach(phrase => {
-    rest = rest.split(` ${phrase} `).join(' ')
-  })
-  rest = rest.replace(/\b\d{5}(?:-\d{4})?\b/g, ' ')
-  return rest.trim() === ''
+const ZIP = /^\d{5}(?:-\d{4})?$/
+
+/**
+ * The street: the address with the city, state, zip and country taken off its
+ * end, whether they follow commas or not ("500 W Main St Ste A Lewisville, TX
+ * 75057"). Taken off, from the end: any zip; the facility's own city, state
+ * and country; a "United States"; and any state right before a zip. It stops
+ * at the first word that is none of these, so the street is kept as typed.
+ */
+const streetOf = (address: string, facility: FacilityAddressLike) => {
+  const tokens = Array.from(address.matchAll(/[^\s,]+/g)).map(match => ({
+    at: match.index ?? 0,
+    key: match[0].toLowerCase().replace(/[.;:()]/g, ''),
+  }))
+  const ownState = field(facility.state)
+  const ownStateWords = [ownState, US_STATES[ownState.toUpperCase()] || '',
+    Object.keys(US_STATES).find(code => US_STATES[code].toLowerCase() === ownState.toLowerCase()) || '']
+  // [words, only right before a zip]
+  const phrases: Array<[string[], boolean]> = [
+    ...[field(facility.city), field(facility.country), ...ownStateWords, ...US_NAMES.filter(name => name !== 'us')]
+      .filter(Boolean).map((phrase): [string[], boolean] => [words(phrase), false]),
+    ...[...Object.keys(US_STATES), ...Object.values(US_STATES), 'us'].map((phrase): [string[], boolean] => [words(phrase), true]),
+  ].filter(([list]) => list.length > 0)
+  phrases.sort((a, b) => b[0].length - a[0].length)
+
+  let end = tokens.length
+  let afterZip = false
+  while (end > 0) {
+    const last = tokens[end - 1].key
+    if (!last || ZIP.test(last)) { end -= 1; afterZip = Boolean(last); continue }
+    const hit = phrases.find(([list, beforeZipOnly]) => (
+      list.length <= end
+      && (!beforeZipOnly || afterZip)
+      && tokens.slice(end - list.length, end).map(token => token.key).join(' ') === list.join(' ')
+    ))
+    if (!hit) break
+    end -= hit[0].length
+    afterZip = false
+  }
+  if (end === tokens.length) return address
+  if (end === 0) return ''
+  const street = address.slice(0, tokens[end].at).replace(/[\s,;:–—-]+$/, '')
+  // Nothing of a street left (only a number): print the address as it is.
+  return /[a-z]/i.test(street) ? street : address
 }
 
 export const facilityAddressLines = (facility: FacilityAddressLike | null | undefined): { street: string; line2: string } => {
   if (!facility) return { street: '', line2: '' }
-  const parts = text(facility.address).split(',').map(part => part.trim()).filter(Boolean)
-  while (parts.length > 0 && onlyLocation(parts[parts.length - 1], facility)) parts.pop()
-  const city = cityLabel(text(facility.city))
-  const state = stateLabel(text(facility.state))
+  const city = cityLabel(field(facility.city))
+  const state = stateLabel(field(facility.state))
   const cityState = [city, state].filter(Boolean).join(', ')
-  const place = [cityState, text(facility.zip_code)].filter(Boolean).join(' ')
+  const place = [cityState, field(facility.zip_code)].filter(Boolean).join(' ')
   return {
-    street: parts.join(', '),
-    line2: [place, text(facility.country)].filter(Boolean).join(', '),
+    street: streetOf(field(facility.address), facility),
+    line2: [place, field(facility.country)].filter(Boolean).join(', '),
   }
 }
