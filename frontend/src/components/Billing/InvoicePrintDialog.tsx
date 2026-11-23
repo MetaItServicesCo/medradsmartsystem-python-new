@@ -1254,7 +1254,9 @@ const InvoicePrintDialog = ({
           <Button disabled={saving} onClick={handleSave} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
             {saving ? 'Saving...' : 'Save Invoice'}
           </Button>
-        ) : isViewMode ? null : (
+        ) : isViewMode && !usesDocument ? null : (
+          // A service invoice can be printed from View too: the document alone,
+          // not the Billing page around it (which is what the browser's own print gives).
           <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" disabled={paymentEvidenceLoading || (usesDocument && !documentHtml)} sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
             Print {documentLabel(activeDocumentType, primaryDocumentLabel)}
           </Button>

@@ -85,10 +85,10 @@ ok('uses the shared invoice design', sample.includes('class="sheet doc-a"') && s
 const described = await buildServiceInvoiceHtml({ ...doc('v'), equipment: { service_required: 'No image', description: 'C ARM', serial_number: 'S1', asset_tag: 'A1', make: 'GE', model: 'OEC 9900' } })
 ok('the asset Description prints beside the asset, under "Asset Description"',
   /<th>Service Required<\/th><th>Asset Description<\/th><th>Serial#<\/th>/.test(described)
-  && /<td class="pre si-text"><div>No image<\/div><\/td><td class="si-desc"><div>C ARM<\/div><\/td><td class="si-keep">S1<\/td><td class="si-keep">A1<\/td><td class="si-name"><div>GE<\/div><\/td><td class="si-name"><div>OEC 9900<\/div><\/td>/.test(described))
+  && /<td class="pre">No image<\/td><td>C ARM<\/td><td>S1<\/td><td>A1<\/td><td>GE<\/td><td>OEC 9900<\/td>/.test(described))
 const undescribed = await buildServiceInvoiceHtml({ ...doc('v'), equipment: { service_required: 'No image', serial_number: 'S1', asset_tag: 'A1', make: 'GE', model: 'OEC 9900' } })
 ok('  an asset without one (or an older server): the cell is empty, nothing else moves',
-  /<td class="pre si-text"><div>No image<\/div><\/td><td class="si-desc"><div><\/div><\/td><td class="si-keep">S1<\/td>/.test(undescribed) && !/>\s*(null|undefined)\s*</.test(undescribed))
+  /<td class="pre">No image<\/td><td><\/td><td>S1<\/td>/.test(undescribed) && !/>\s*(null|undefined)\s*</.test(undescribed))
 const noEquipment = await buildServiceInvoiceHtml(doc('v', { test_equipment: [] }))
 ok('test equipment shows if used', sample.includes('Test Equipment'))
 ok('and not if it was not', !noEquipment.includes('Test Equipment'))
@@ -97,7 +97,7 @@ ok('parts carry no amounts', partsTable.length > 0 && !/Amount|Unit Price|\$\d/.
 const stale = await buildServiceInvoiceHtml(doc('v', { payment_link: 'https://app.test/invoice/service/abc' }))
 ok('the invoice never shows a link or QR code', !stale.includes('data:image/png') && !stale.includes('invoice/service/abc') && !/Scan QR/.test(stale))
 const noHours = await buildServiceInvoiceHtml(doc('v', { total_hours: 0, work_entries: [] }))
-ok('Total Hours shows, as 0.00', /Total Hours:<\/td><td class="right si-keep">0\.00</.test(noHours))
+ok('Total Hours shows, as 0.00', /Total Hours:<\/td><td class="right">0\.00</.test(noHours))
 const money = await buildServiceInvoiceHtml(doc('v', { tax_amount: '0.00', discount_amount: '0.00', amount_paid: '0.00' }))
 ok('zero tax, discount and paid stay off the charges', !/<span>(Tax|Discount|Paid)<\/span>/.test(money))
 const charged = await buildServiceInvoiceHtml(doc('v', { tax_amount: '10.00', discount_amount: '20.00', amount_paid: '5.00' }))
@@ -138,22 +138,30 @@ ok('  no address parts (no facility, or an older server): the address as it was'
 box = billTo(await buildServiceInvoiceHtml({ ...doc('v'), facility: facility({ address: null, address_fields: null }) }))
 ok('  no address at all: nothing printed, no empty lines', !box.includes('<span class="muted"></span>') && !/null|undefined/.test(box), box)
 
-// Tidy tables: nothing short is split across lines.
+// Tables always fit the width they are given and never scroll.
 const tidy = await buildServiceInvoiceHtml({ ...doc('v'), work_entries: [{ key: 'k', date: '2026-11-23', diagnosis: 'd', work_done: 'w', technician: 'Omar Ahmad', check_in: '2026-11-23T09:00:00', check_out: '2026-11-23T13:00:00', hours: 4 }], total_hours: 6.666 })
-ok('headings stay on one line', tidy.includes('.doc-a .si-section th { white-space: nowrap; }'))
-ok('words are never split mid-word', tidy.includes('.doc-a .si-section td { word-break: normal; overflow-wrap: break-word; }'))
-ok('the visit date reads "Nov 23, 2026", on one line', tidy.includes('<td class="si-keep">Nov 23, 2026</td>'))
-ok('check-in and check-out in one Time column, on one line', /<th>Technician<\/th><th>Time<\/th><th class="right">Hours<\/th>/.test(tidy)
-  && /<td class="si-keep">9:00\sAM – 1:00\sPM<\/td>/.test(tidy.replace(/\u202f/g, ' ')))
-ok('  a technician name wraps only between words', tidy.includes('<td>Omar Ahmad</td>'))
+ok('every table has set column shares, so it fits any width', tidy.includes('.doc-a .si-section table { table-layout: fixed; width: 100%; }'))
+ok('  nothing makes a table scroll or stretch past its box', !/overflow-x|min-width: 560px|\.si-section t[hd][^{]*\{[^}]*nowrap|si-keep|si-scroll/.test(tidy.slice(0, tidy.indexOf('<main'))) && !tidy.includes('si-scroll'))
+const shares = [...tidy.matchAll(/<colgroup>(.*?)<\/colgroup>/g)].map(m => [...m[1].matchAll(/width:(\d+)%/g)].reduce((sum, w) => sum + Number(w[1]), 0))
+ok('  each table\'s shares add up to 100%', shares.length >= 5 && shares.every(sum => sum === 100), JSON.stringify(shares))
+const heads = [...tidy.matchAll(/<table><colgroup>(.*?)<\/colgroup>\s*<thead><tr>(.*?)<\/tr>/gs)].map(m => [(m[1].match(/<col /g) || []).length, (m[2].match(/<th/g) || []).length])
+ok('  one share per column', heads.length >= 5 && heads.every(([cols, ths]) => cols === ths), JSON.stringify(heads))
+ok('words are never split mid-word unless wider than the whole column', tidy.includes('word-break: normal; overflow-wrap: break-word;'))
+ok('the visit date reads "Nov 23, 2026"', tidy.includes('<td>Nov 23, 2026</td>'))
+ok('check-in and check-out in one Time column', /<th>Technician<\/th><th>Time<\/th><th class="right">Hours<\/th>/.test(tidy)
+  && /<td>9:00\sAM – 1:00\sPM<\/td>/.test(tidy.replace(/\u202f/g, ' ')))
 ok('  Total Hours sits under Hours', tidy.includes('<td class="right" colspan="5">Total Hours:</td>'))
 const oneTime = await buildServiceInvoiceHtml({ ...doc('v'), work_entries: [{ key: 'k', date: '2026-11-23', diagnosis: 'd', work_done: 'w', technician: 'T', check_in: '2026-11-23T09:00:00', check_out: null, hours: 1 }] })
-ok('  only a check-in recorded: just that time, no dash', /<td class="si-keep">9:00\sAM<\/td>/.test(oneTime.replace(/\u202f/g, ' ')))
-ok('hours read 4.00, Total Hours 6.67', tidy.includes('<td class="right si-keep">4.00</td>') && tidy.includes('Total Hours:</td><td class="right si-keep">6.67</td>'))
+ok('  only a check-in recorded: just that time, no dash', /<td>9:00\sAM<\/td>/.test(oneTime.replace(/\u202f/g, ' ')))
+const untimed = await buildServiceInvoiceHtml({ ...doc('v'), work_entries: [{ key: 'k', date: '2026-11-23', diagnosis: 'd', work_done: 'w', technician: 'T', check_in: null, check_out: null, hours: 4 }], total_hours: 4 })
+ok('no visit has a time: no empty Time column, Action Taken gets the room',
+  /<th>Technician<\/th><th class="right">Hours<\/th>/.test(untimed) && untimed.includes('<td class="right" colspan="4">Total Hours:</td>')
+  && /<col style="width:42%">/.test(untimed))
+ok('hours read 4.00, Total Hours 6.67', tidy.includes('<td class="right">4.00</td>') && tidy.includes('Total Hours:</td><td class="right">6.67</td>'))
 
 const longCodes = await buildServiceInvoiceHtml({ ...doc('v'), equipment: { service_required: 'x', description: 'C ARM', serial_number: 'ANCS01144-XR-2209-SPECIAL-CALIBRATION-07', asset_tag: 'emfps-001', make: 'GE', model: 'Aespire 7900' } })
-ok('a short serial or asset # stays on one line', longCodes.includes('<td class="si-keep">emfps-001</td>'))
-ok('  a very long one may wrap, at set places, never off the page', longCodes.includes('<td>ANCS01144-XR<wbr>-2209-SPECIA<wbr>L-CALIBRATIO<wbr>N-07</td>'))
+ok('a code prints as it is', longCodes.includes('<td>emfps-001</td>'))
+ok('  a very long one may wrap at set places', longCodes.includes('<td>ANCS01144-XR<wbr>-2209-SPECIA<wbr>L-CALIBRATIO<wbr>N-07</td>'))
 
 console.log()
 if (failures) {
