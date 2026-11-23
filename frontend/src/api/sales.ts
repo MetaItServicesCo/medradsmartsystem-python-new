@@ -358,6 +358,8 @@ export interface SalesQuotationPortal {
     line_items: SalesQuotationLineItem[]
   }
   recipient: SalesQuotationRecipient
+  /** The customer's request for changes or decline, until a quotation is sent to them again (primary recipient only). */
+  customer_response?: { action: 'changes_requested' | 'declined'; at: string | null; comments: string } | null
   can_accept: boolean
   test_payment_enabled: boolean
   can_test_pay: boolean

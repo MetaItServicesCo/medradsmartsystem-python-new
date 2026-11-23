@@ -16,6 +16,8 @@ import SendIcon from '@mui/icons-material/Send'
 import AutorenewIcon from '@mui/icons-material/Autorenew'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined'
+import DoNotDisturbOnOutlinedIcon from '@mui/icons-material/DoNotDisturbOnOutlined'
 
 import type { SalesHistoryItem } from '@/api/sales'
 
@@ -34,6 +36,8 @@ const ACTION_META: Record<string, { label: string; icon: JSX.Element; color: str
   updated: { label: 'Updated', icon: <EditNoteIcon fontSize="small" />, color: '#1D4ED8', bg: '#DBEAFE' },
   sent: { label: 'Sent', icon: <SendIcon fontSize="small" />, color: '#6D28D9', bg: '#EDE9FE' },
   revision_created: { label: 'Revision created', icon: <AutorenewIcon fontSize="small" />, color: '#B45309', bg: '#FEF3C7' },
+  changes_requested: { label: 'Changes requested', icon: <RateReviewOutlinedIcon fontSize="small" />, color: '#C2410C', bg: '#FFEDD5' },
+  declined: { label: 'Declined', icon: <DoNotDisturbOnOutlinedIcon fontSize="small" />, color: '#B91C1C', bg: '#FEE2E2' },
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -122,6 +126,8 @@ const entrySummary = (entry: SalesHistoryItem) => {
     return 'Details updated'
   }
   if (entry.action === 'created') return 'Quotation created'
+  if (entry.action === 'changes_requested') return 'The customer asked for changes to this quotation'
+  if (entry.action === 'declined') return 'The customer declined this quotation'
   return entry.action.replace(/_/g, ' ')
 }
 
@@ -180,6 +186,23 @@ const QuotationHistoryTimeline = ({ history }: QuotationHistoryTimelineProps) =>
               <Typography sx={{ color: '#94A3B8', fontSize: 12, fontWeight: 700, mt: 0.2 }}>
                 {entry.by || 'System'} · {fmtDateTime(entry.at)}
               </Typography>
+              {(entry.action === 'changes_requested' || entry.action === 'declined') && (
+                // The customer's own words: what they want changed, or why they declined.
+                String(entry.details?.comments ?? '').trim() ? (
+                  <Box
+                    component="blockquote"
+                    sx={{
+                      m: 0, mt: 0.8, px: 1.4, py: 0.9,
+                      borderLeft: `3px solid ${meta.color}`, bgcolor: meta.bg, borderRadius: '0 10px 10px 0',
+                      whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: '#1E1B4B', fontSize: 13.5,
+                    }}
+                  >
+                    {String(entry.details?.comments).trim()}
+                  </Box>
+                ) : (
+                  <Typography sx={{ color: '#64748B', fontSize: 12.5, fontStyle: 'italic', mt: 0.5 }}>No comments were given.</Typography>
+                )
+              )}
               {snapshot && (
                 <>
                   <Box

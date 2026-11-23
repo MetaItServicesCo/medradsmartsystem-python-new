@@ -86,6 +86,10 @@ const ClientQuotation = () => {
   const [signatureName, setSignatureName] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [decision, setDecision] = useState<'decline' | 'request_changes' | null>(null)
+  // The window keeps its wording while it closes, instead of flipping as `decision` clears.
+  const lastDecision = useRef<'decline' | 'request_changes'>('request_changes')
+  if (decision) lastDecision.current = decision
+  const shownDecision = decision ?? lastDecision.current
   const [comments, setComments] = useState('')
   const [testPayOpen, setTestPayOpen] = useState(false)
   const [squarePayOpen, setSquarePayOpen] = useState(false)
@@ -518,9 +522,30 @@ const ClientQuotation = () => {
             </Box>
           </Box>
         ) : (
-          <Alert severity={quotation.status === 'declined' ? 'warning' : 'info'}>
-            This {isDirectInvoice ? 'invoice' : 'quotation'} is {statusLabel}. No further response is available.
-          </Alert>
+          data.customer_response ? (
+            // What they asked for, in their words, and what happens next.
+            <Alert severity={data.customer_response.action === 'declined' ? 'warning' : 'info'} sx={{ '& .MuiAlert-message': { width: '100%', minWidth: 0 } }}>
+              <Typography sx={{ fontWeight: 900 }}>
+                {data.customer_response.action === 'declined'
+                  ? `You declined this ${isDirectInvoice ? 'invoice' : 'quotation'}.`
+                  : 'You asked for changes. We will send you a revised quotation.'}
+              </Typography>
+              {data.customer_response.at && (
+                <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: 'text.secondary' }}>
+                  {new Date(data.customer_response.at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </Typography>
+              )}
+              {data.customer_response.comments && (
+                <Box component="blockquote" sx={{ m: 0, mt: 1, px: 1.5, py: 1, borderLeft: '3px solid', borderColor: 'divider', bgcolor: 'rgba(255,255,255,0.7)', borderRadius: '0 10px 10px 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                  {data.customer_response.comments}
+                </Box>
+              )}
+            </Alert>
+          ) : (
+            <Alert severity={quotation.status === 'declined' ? 'warning' : 'info'}>
+              This {isDirectInvoice ? 'invoice' : 'quotation'} is {statusLabel}. No further response is available.
+            </Alert>
+          )
         )}
       </Card>
 
@@ -618,23 +643,28 @@ const ClientQuotation = () => {
       </Dialog>
 
       <Dialog open={Boolean(decision)} onClose={() => setDecision(null)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 900 }}>{decision === 'decline' ? `Decline ${isDirectInvoice ? 'Invoice' : 'Quotation'}` : 'Request Changes'}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900 }}>{shownDecision === 'decline' ? `Decline ${isDirectInvoice ? 'Invoice' : 'Quotation'}` : 'Request Changes'}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
             fullWidth
             multiline
             minRows={4}
-            label="Comments"
+            label={shownDecision === 'request_changes' ? 'What would you like changed?' : 'Comments (optional)'}
+            placeholder={shownDecision === 'request_changes'
+              ? 'For example: change the quantity of item 2 to 5, remove the delivery fee, or update the billing address.'
+              : 'Let us know why, if you like.'}
             value={comments}
             onChange={event => setComments(event.target.value)}
+            inputProps={{ maxLength: 5000 }}
+            helperText={shownDecision === 'request_changes' ? 'Your message is sent to our team with your request.' : undefined}
             sx={{ mt: 1 }}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDecision(null)}>Cancel</Button>
-          <Button color={decision === 'decline' ? 'error' : 'primary'} variant="contained" disabled={decisionMut.isPending} onClick={() => decisionMut.mutate()}>
-            Submit
+          <Button color={shownDecision === 'decline' ? 'error' : 'primary'} variant="contained" disabled={decisionMut.isPending || (shownDecision === 'request_changes' && !comments.trim())} onClick={() => decisionMut.mutate()}>
+            {shownDecision === 'request_changes' ? 'Send Request' : 'Submit'}
           </Button>
         </DialogActions>
       </Dialog>

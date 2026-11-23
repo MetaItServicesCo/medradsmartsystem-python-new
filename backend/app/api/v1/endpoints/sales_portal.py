@@ -72,7 +72,7 @@ class PortalAcceptanceIn(BaseModel):
 
 class PortalDecisionIn(BaseModel):
     action: str
-    comments: Optional[str] = None
+    comments: Optional[str] = Field(default=None, max_length=5000)
 
 
 class PortalPaymentAuthorizationIn(BaseModel):
@@ -117,6 +117,24 @@ def _recipient_options():
     )
 
 
+def _open_customer_response(quotation: SalesQuotation) -> Optional[dict[str, Any]]:
+    """The customer's latest request for changes or decline, until a quotation is sent to them again."""
+    for entry in reversed(list(quotation.history or [])):
+        if not isinstance(entry, dict):
+            continue
+        action = entry.get("action")
+        if action == "sent":
+            return None
+        if action in {"changes_requested", "declined"}:
+            details = entry.get("details") or {}
+            return {
+                "action": action,
+                "at": entry.get("at"),
+                "comments": str(details.get("comments") or "").strip(),
+            }
+    return None
+
+
 def _portal_response(recipient: SalesQuotationRecipient) -> dict[str, Any]:
     quotation = recipient.quotation
     acceptance = quotation.acceptance
@@ -148,6 +166,10 @@ def _portal_response(recipient: SalesQuotationRecipient) -> dict[str, Any]:
             "line_items": [_line_response(line) for line in quotation.line_items or []],
         },
         "recipient": _recipient_response(recipient),
+        # What the customer answered, shown back to the person who answered it.
+        "customer_response": (
+            _open_customer_response(quotation) if recipient.recipient_type == "primary" else None
+        ),
         "can_accept": (
             recipient.recipient_type == "primary"
             and quotation.status in {"sent", "viewed"}
@@ -849,6 +871,15 @@ def accept_public_quotation(
     return _accept_recipient_quotation(db, recipient, payload, request, recipient.user)
 
 
+def _decision_message(name: str, quotation: SalesQuotation, comments: Optional[str]) -> str:
+    """The staff notification for a customer's answer, with the start of what they wrote."""
+    message = f"{name} {quotation.status.replace('_', ' ')} for {quotation.quotation_number}."
+    said = " ".join((comments or "").split())
+    if said:
+        message += ' "{}"'.format(said if len(said) <= 160 else said[:159].rstrip() + "…")
+    return message
+
+
 @router.post("/public/quotations/{token}/decision")
 def decide_public_quotation(
     token: str,
@@ -868,6 +899,9 @@ def decide_public_quotation(
     action = payload.action.strip().lower()
     if action not in {"decline", "request_changes"}:
         raise HTTPException(status_code=400, detail="Action must be decline or request_changes")
+    if action == "request_changes" and not (payload.comments or "").strip():
+        # A request for changes is only useful with the changes in it.
+        raise HTTPException(status_code=422, detail="Please describe the changes you would like")
     quotation = recipient.quotation
     is_direct_invoice = (quotation.document_kind or "quotation") == "direct_invoice"
     if quotation.selection_status == "accepted" or (
@@ -896,7 +930,7 @@ def decide_public_quotation(
         db,
         user_ids=[quotation.created_by_id],
         title="Sales quotation response",
-        message=f"{recipient.name} {quotation.status.replace('_', ' ')} for {quotation.quotation_number}.",
+        message=_decision_message(recipient.name, quotation, payload.comments),
         notification_type="billing",
         link_url=f"/sales/quotations?search={quotation.quotation_number}",
         actor_id=recipient.user_id,
@@ -1170,6 +1204,9 @@ def decide_client_quotation(
     action = payload.action.strip().lower()
     if action not in {"decline", "request_changes"}:
         raise HTTPException(status_code=400, detail="Action must be decline or request_changes")
+    if action == "request_changes" and not (payload.comments or "").strip():
+        # A request for changes is only useful with the changes in it.
+        raise HTTPException(status_code=422, detail="Please describe the changes you would like")
     quotation = recipient.quotation
     is_direct_invoice = (quotation.document_kind or "quotation") == "direct_invoice"
     if quotation.selection_status == "accepted" or (
@@ -1197,7 +1234,7 @@ def decide_client_quotation(
         db,
         user_ids=[quotation.created_by_id],
         title="Sales quotation response",
-        message=f"{recipient.name} {quotation.status.replace('_', ' ')} for {quotation.quotation_number}.",
+        message=_decision_message(recipient.name, quotation, payload.comments),
         notification_type="billing",
         link_url=f"/sales/quotations?search={quotation.quotation_number}",
         actor_id=current_user.id,

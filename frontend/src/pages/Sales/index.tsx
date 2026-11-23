@@ -37,6 +37,7 @@ import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SalesPricingBreakdown from '@/components/Sales/SalesPricingBreakdown'
 import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
 import QuotationHistoryTimeline from '@/components/Sales/QuotationHistoryTimeline'
+import CustomerResponseNotice from '@/components/Sales/CustomerResponseNotice'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import DebouncedSearchField from '@/components/DebouncedSearchField'
 import ContextTableRow from '@/components/ContextTableRow'
@@ -75,6 +76,7 @@ import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
 import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { copyText } from '@/utils/clipboard'
+import { commentExcerpt, openCustomerResponse } from '@/utils/customerResponse'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import {
   calculateSalesPricing,
@@ -1651,6 +1653,28 @@ const Sales = () => {
                     {item.revision > 1 && <SalesStatusChip value="viewed" label={`Rev ${item.revision}`} />}
                     {isIncompleteDraft(item) && <SalesStatusChip value="changes_requested" label="Incomplete" />}
                   </Box>
+                  {(() => {
+                    // What the customer asked for, in their words, until a revision is sent to them.
+                    const response = openCustomerResponse(item.history)
+                    if (!response) return null
+                    return (
+                      <Typography
+                        role="button"
+                        tabIndex={0}
+                        title={response.comments || 'No comments were given.'}
+                        onClick={() => setViewQuotation(item)}
+                        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setViewQuotation(item) } }}
+                        sx={{
+                          mt: 0.6, maxWidth: 220, fontSize: 11.5, lineHeight: 1.35, cursor: 'pointer',
+                          color: response.action === 'declined' ? '#B91C1C' : '#C2410C', fontWeight: 700,
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                          '&:hover': { textDecoration: 'underline' },
+                        }}
+                      >
+                        {response.comments ? `“${commentExcerpt(response.comments)}”` : 'No comments given - view'}
+                      </Typography>
+                    )
+                  })()}
                   {item.status === 'in_progress' && (
                     <Box sx={{ mt: 0.75, maxWidth: 128 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.35 }}>
@@ -2246,6 +2270,17 @@ const Sales = () => {
             : salesDocumentMode === 'invoice' ? 'Create Sales Invoice' : 'Create Sales Quotation'}
         </DialogTitle>
         <DialogContent dividers>
+          {(() => {
+            const response = editingQuotation ? openCustomerResponse(editingQuotation.history) : null
+            return response ? (
+              <Box sx={{ mb: 2 }}>
+                <CustomerResponseNotice
+                  response={response}
+                  hint={response.action === 'changes_requested' ? 'Make these changes below, then send the quotation to the customer again.' : undefined}
+                />
+              </Box>
+            ) : null
+          })()}
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
             Customer &amp; {salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} Details
           </Typography>
@@ -3183,6 +3218,22 @@ const Sales = () => {
         <DialogContent sx={{ p: { xs: 2, md: 4 } }}>
           {viewQuotation && (
             <>
+              {(() => {
+                const response = openCustomerResponse(viewQuotation.history)
+                if (!response) return null
+                return (
+                  <Box sx={{ mb: 2.5 }}>
+                    <CustomerResponseNotice
+                      response={response}
+                      hint={response.action === 'changes_requested'
+                        ? (viewQuotation.status === 'draft'
+                          ? 'A revision is being prepared. Make these changes, then send it to the customer again.'
+                          : 'Use Create Revision from the actions menu to make these changes and send the quotation again.')
+                        : undefined}
+                    />
+                  </Box>
+                )
+              })()}
               <SalesQuotationDocument
                 quotation={viewQuotation}
                 showRevision
@@ -3421,6 +3472,10 @@ const Sales = () => {
             <Typography sx={{ color: '#B45309', fontWeight: 800 }}>
               Signed, accepted, invoiced, or paid quotations cannot be revised.
             </Typography>
+            {(() => {
+              const response = revisionQuotation ? openCustomerResponse(revisionQuotation.history) : null
+              return response ? <CustomerResponseNotice response={response} /> : null
+            })()}
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
