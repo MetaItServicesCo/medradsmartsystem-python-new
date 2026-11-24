@@ -64,6 +64,7 @@ from app.utils.payment_idempotency import (
 )
 from app.utils.payment_proofs import SERVICE_PAYMENT_IN_REVIEW, service_payment_in_review
 from app.utils.payment_receipts import deliver_payment_receipt, queue_payment_receipt
+from app.utils.bulk_invoice_lock import ensure_not_in_bulk, locking_bulk
 from app.utils.permissions import has_module_permission
 from app.utils.rate_limit import enforce_rate_limit, public_payment_identity
 from app.utils.service_invoice_document import (
@@ -264,6 +265,8 @@ def share_service_invoice(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     invoice = _staff_invoice(db, invoice_id, current_user, for_update=True)
+    # In a bulk invoice it is sent, and paid, as part of it.
+    ensure_not_in_bulk(invoice)
     if not _is_approved(invoice):
         raise HTTPException(status_code=409, detail="Approve this invoice for billing before sending it")
     if invoice.status == InvoiceStatus.CANCELLED:
@@ -369,8 +372,28 @@ def _pending_reports(db: Session, invoice: Invoice) -> int:
     )
 
 
+def in_bulk_response(invoice: Invoice) -> Optional[dict[str, Any]]:
+    """An invoice's own link, while it is paid through a bulk invoice: it says so, and takes no payment."""
+    bulk = locking_bulk(invoice)
+    if bulk is None:
+        return None
+    return {
+        "state": "in_bulk",
+        "invoice_number": invoice.invoice_number,
+        "bulk_number": bulk.bulk_number,
+        "document": None,
+        "can_pay": False,
+        "square_payment": None,
+        "can_report_payment": False,
+        "other_methods": [],
+    }
+
+
 def _public_response(invoice: Invoice) -> dict[str, Any]:
     square = square_public_config()
+    in_bulk = in_bulk_response(invoice)
+    if in_bulk is not None:
+        return in_bulk
     if not _is_approved(invoice):
         # Being changed by staff: nothing shown or payable until it is approved again.
         return {
@@ -480,6 +503,7 @@ def _take_square_payment(
         raise HTTPException(status_code=409, detail="This invoice is being updated and cannot be paid right now")
     if invoice.status == InvoiceStatus.PAID:
         return respond(invoice)
+    ensure_not_in_bulk(invoice)
     if service_payment_in_review(db, invoice):
         raise HTTPException(status_code=409, detail=SERVICE_PAYMENT_IN_REVIEW)
     if invoice.invoice_type != InvoiceType.SERVICE and pending_payment(db, invoice) == SERVICE_PAYMENT_IN_REVIEW:

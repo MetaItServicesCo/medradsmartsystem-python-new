@@ -65,6 +65,7 @@ from app.utils.payment_idempotency import (
     replay_or_raise,
 )
 from app.utils.payment_receipts import deliver_payment_receipt, queue_rental_payment_receipt
+from app.utils.bulk_invoice_lock import ensure_not_in_bulk
 
 router = APIRouter()
 
@@ -1039,6 +1040,7 @@ def _pay_rental_invoice(
         raise HTTPException(status_code=404, detail="Invoice not found")
     if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.balance_due or 0)) <= 0:
         return _portal_response(db, rental)
+    ensure_not_in_bulk(invoice)
     payment_source = payload.source_id
     saved_card: Optional[dict[str, Any]] = None
     card_evidence = None

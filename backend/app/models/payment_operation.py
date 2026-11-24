@@ -25,6 +25,13 @@ class PaymentOperation(Base):
             sqlite_where=text("invoice_id IS NOT NULL AND status IN ('processing', 'unknown')"),
         ),
         Index(
+            "uq_payment_operations_active_bulk_invoice",
+            "bulk_invoice_id",
+            unique=True,
+            postgresql_where=text("bulk_invoice_id IS NOT NULL AND status IN ('processing', 'unknown')"),
+            sqlite_where=text("bulk_invoice_id IS NOT NULL AND status IN ('processing', 'unknown')"),
+        ),
+        Index(
             "uq_payment_operations_active_quotation",
             "quotation_id",
             unique=True,
@@ -40,6 +47,7 @@ class PaymentOperation(Base):
     status = Column(String(24), nullable=False, default="processing", index=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=True, index=True)
     quotation_id = Column(Integer, ForeignKey("service_request_quotations.id", ondelete="CASCADE"), nullable=True, index=True)
+    bulk_invoice_id = Column(Integer, ForeignKey("bulk_invoices.id", ondelete="CASCADE"), nullable=True, index=True)
     provider = Column(String(32), nullable=True)
     provider_reference = Column(String(255), nullable=True, unique=True, index=True)
     amount = Column(Numeric(12, 2), nullable=False)

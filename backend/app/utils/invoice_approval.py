@@ -9,6 +9,7 @@ from sqlalchemy.orm import Query, Session
 
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.user import User, UserRole
+from app.utils.bulk_invoice_lock import bulk_lock_message, locking_bulk
 from app.utils.invoice_editing import parse_invoice_edit_metadata
 from app.utils.invoice_ledger import add_invoice_transaction
 
@@ -153,7 +154,35 @@ def has_financial_edits(invoice: Invoice, update_data: dict[str, Any]) -> bool:
     return bool(SOURCE_FINANCIAL_EDIT_FIELDS.intersection(update_data))
 
 
+def _ensure_bulk_edit_allowed(invoice: Invoice, update_data: dict[str, Any]) -> None:
+    """An invoice in a bulk invoice is paid through it: an edit cannot record a
+    payment on it, mark it paid or cancel it; and once the bulk invoice has a
+    payment, its amounts stay as they were."""
+    bulk = locking_bulk(invoice)
+    if bulk is None:
+        return
+    requested_status = update_data.get("status")
+    if hasattr(requested_status, "value"):
+        requested_status = requested_status.value
+    current_status = invoice.status.value if hasattr(invoice.status, "value") else invoice.status
+    paid_changes = update_data.get("amount_paid") is not None and _money(update_data["amount_paid"]) != _money(invoice.amount_paid)
+    status_changes = requested_status in {
+        InvoiceStatus.PAID.value, InvoiceStatus.PARTIALLY_PAID.value, InvoiceStatus.CANCELLED.value,
+    } and requested_status != current_status
+    if paid_changes or status_changes:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=bulk_lock_message(invoice, bulk))
+    if has_financial_edits(invoice, update_data) and _money(bulk.amount_paid) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Invoice {invoice.invoice_number} is part of bulk invoice {bulk.bulk_number}, which has a payment "
+                "recorded; its amounts cannot be changed."
+            ),
+        )
+
+
 def ensure_financial_edit_allowed(invoice: Invoice, update_data: dict[str, Any]) -> None:
+    _ensure_bulk_edit_allowed(invoice, update_data)
     if has_financial_edits(invoice, update_data) and (
         _money(invoice.amount_paid) > 0 or invoice.status == InvoiceStatus.PAID
     ):

@@ -24,6 +24,7 @@ from app.models.payment_operation import PaymentOperation
 from app.utils.invoice_approval import BILLING_APPROVAL_APPROVED
 from app.utils.invoice_ledger import add_invoice_transaction
 from app.utils.notifications import notify_admins
+from app.utils.bulk_invoice_lock import ensure_not_in_bulk
 from app.utils.payment_proofs import (
     PAYMENT_LINK,
     SERVICE_CARD_IN_PROGRESS,
@@ -168,6 +169,7 @@ def _record(
     sha256: Optional[str],
 ) -> dict[str, Any]:
     invoice = load_invoice()
+    ensure_not_in_bulk(invoice)
     if invoice.billing_approval_status != BILLING_APPROVAL_APPROVED:
         raise HTTPException(status_code=409, detail="This invoice is being updated and cannot be paid right now")
     balance = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))

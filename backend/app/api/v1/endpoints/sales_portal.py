@@ -59,6 +59,7 @@ from app.utils.payment_idempotency import (
 )
 from app.utils.payment_receipts import deliver_payment_receipt, queue_sales_payment_receipt
 from app.utils.rate_limit import enforce_rate_limit, public_payment_identity
+from app.utils.bulk_invoice_lock import ensure_not_in_bulk
 
 
 router = APIRouter()
@@ -258,6 +259,7 @@ def _record_test_payment(
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
     if invoice.status == InvoiceStatus.PAID:
         return _portal_response(recipient)
+    ensure_not_in_bulk(invoice)
 
     balance = max(_money(invoice.balance_due), _money(0))
     if balance <= 0:
@@ -365,6 +367,7 @@ def _record_square_payment(
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
     if invoice.status == InvoiceStatus.PAID:
         return _portal_response(recipient)
+    ensure_not_in_bulk(invoice)
 
     balance = max(_money(invoice.balance_due), _money(0))
     if balance <= 0:

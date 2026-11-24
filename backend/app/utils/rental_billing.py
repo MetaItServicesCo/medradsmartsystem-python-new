@@ -904,6 +904,8 @@ def run_rental_recurring_billing(db: Session, today: Optional[date] = None) -> d
             Invoice.balance_due > 0,
             Invoice.next_payment_retry_at.isnot(None),
             Invoice.next_payment_retry_at <= datetime.utcnow(),
+            # Paid through a bulk invoice, if it is in one.
+            Invoice.bulk_invoice_id.is_(None),
         )
         .with_for_update(skip_locked=True)
         .all()

@@ -34,6 +34,7 @@ from app.api.v1.endpoints import (
     inspection_invoice_portal,
     reports,
     billing,
+    bulk_invoices,
     square_webhooks,
 )
 
@@ -77,6 +78,9 @@ api_router.include_router(tracking.router, prefix="/tracking", tags=["tracking"]
 api_router.include_router(tracking_screen.router, tags=["tracking"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
+# Bulk invoices in Billing, and the customer's bulk invoice link.
+api_router.include_router(bulk_invoices.router, prefix="/billing/bulk-invoices", tags=["billing"])
+api_router.include_router(bulk_invoices.public_router, tags=["billing"])
 api_router.include_router(square_webhooks.router, prefix="/webhooks", tags=["webhooks"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
 # No prefix: the path must stay under /api/v1/ws/ for the proxy to upgrade it.

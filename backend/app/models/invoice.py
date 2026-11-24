@@ -97,6 +97,8 @@ class Invoice(Base):
     public_link_expires_at = Column(DateTime, nullable=True)
     public_link_sent_at = Column(DateTime, nullable=True)
     public_link_email = Column(String(320), nullable=True)
+    # The bulk invoice it is paid through, if any (see app.models.bulk_invoice).
+    bulk_invoice_id = Column(Integer, ForeignKey("bulk_invoices.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -111,6 +113,7 @@ class Invoice(Base):
     transactions = relationship("InvoiceTransaction", back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceTransaction.created_at.desc()")
     receipt_deliveries = relationship("PaymentReceiptDelivery", back_populates="invoice", cascade="all, delete-orphan")
     payment_proofs = relationship("PaymentProof", back_populates="invoice", cascade="all, delete-orphan")
+    bulk_invoice = relationship("BulkInvoice", back_populates="invoices")
 
 
 class InvoiceTransaction(Base):
@@ -181,8 +184,9 @@ class PaymentProof(Base):
     __tablename__ = "payment_proofs"
     __table_args__ = (
         CheckConstraint(
-            "(invoice_id IS NOT NULL AND service_quotation_id IS NULL) OR "
-            "(invoice_id IS NULL AND service_quotation_id IS NOT NULL)",
+            "(invoice_id IS NOT NULL AND service_quotation_id IS NULL AND bulk_invoice_id IS NULL) OR "
+            "(invoice_id IS NULL AND service_quotation_id IS NOT NULL AND bulk_invoice_id IS NULL) OR "
+            "(invoice_id IS NULL AND service_quotation_id IS NULL AND bulk_invoice_id IS NOT NULL)",
             name="ck_payment_proof_single_target",
         ),
         Index("ix_payment_proofs_review_queue", "status", "created_at"),
@@ -193,6 +197,8 @@ class PaymentProof(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=True, index=True)
+    # A payment reported for a whole bulk invoice.
+    bulk_invoice_id = Column(Integer, ForeignKey("bulk_invoices.id", ondelete="CASCADE"), nullable=True, index=True)
     service_quotation_id = Column(
         Integer,
         ForeignKey("service_request_quotations.id", ondelete="CASCADE"),
@@ -248,6 +254,7 @@ class PaymentProof(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     invoice = relationship("Invoice", back_populates="payment_proofs")
+    bulk_invoice = relationship("BulkInvoice")
     service_quotation = relationship("ServiceRequestQuotation", back_populates="payment_proofs")
     submitted_by = relationship("User", foreign_keys=[submitted_by_id])
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])

@@ -99,7 +99,19 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
         .first()
     )
     if not invoice:
-        # Not an invoice: perhaps a service quotation's card payment.
+        # Not an invoice: perhaps a bulk invoice's card payment.
+        from app.models.bulk_invoice import BulkInvoice
+        from app.utils.bulk_invoices import sync_webhook_payment
+
+        bulk = (
+            db.query(BulkInvoice)
+            .filter(BulkInvoice.bulk_number == reference_id)
+            .with_for_update()
+            .first()
+        )
+        if bulk is not None:
+            return sync_webhook_payment(db, bulk, payment, payment_id)
+        # Or a service quotation's card payment.
         return _sync_completed_quotation_payment(db, payment, reference_id, payment_id)
     if invoice.status == InvoiceStatus.CANCELLED:
         return "ignored"

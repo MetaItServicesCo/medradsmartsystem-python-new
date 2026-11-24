@@ -37,6 +37,7 @@ from app.utils.payment_idempotency import (
 from app.utils.payment_receipts import queue_payment_receipt
 from app.utils.rate_limit import enforce_rate_limit, public_payment_identity, request_ip
 from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
+from app.utils.bulk_invoice_lock import ensure_not_in_bulk
 from app.utils.square_payments import (
     SquareRequestError, create_square_card_on_file, create_square_payment, minor_units_to_amount,
     square_is_configured, square_public_config,
@@ -189,6 +190,7 @@ def pay_invoice(token: str, payload: PayIn, request: Request, db: Session = Depe
         raise HTTPException(status_code=409, detail="This invoice has been cancelled")
     if invoice.status == InvoiceStatus.PAID or money(invoice.balance_due) <= 0:
         return _view(db, agreement)
+    ensure_not_in_bulk(invoice)
     # The balance plus the card processing fee, as with every card payment.
     charge = card_charge(invoice.balance_due)
     amount = charge.total

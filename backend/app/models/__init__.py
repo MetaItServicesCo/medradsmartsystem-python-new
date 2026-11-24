@@ -8,6 +8,7 @@ from app.models.department import Department
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, PaymentProof, PaymentReceiptDelivery
 from app.models.payment_operation import PaymentOperation, PaymentWebhookEvent
+from app.models.bulk_invoice import BulkInvoice, BulkInvoicePayment, BulkInvoiceStatus
 from app.models.rental import (
     Rental,
     RentalStatus,

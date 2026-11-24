@@ -35,6 +35,7 @@ from app.api.v1.endpoints.service_invoice_portal import (
     _invoice_options,
     _pending_reports,
     _take_square_payment,
+    in_bulk_response,
 )
 from app.core.config import settings
 from app.core.deps import get_current_user
@@ -52,6 +53,7 @@ from app.utils.permissions import has_module_permission
 from app.utils.rate_limit import enforce_rate_limit, public_payment_identity
 from app.utils.service_access import is_internal_service_user
 from app.utils.square_payments import square_public_config
+from app.utils.bulk_invoice_lock import ensure_not_in_bulk
 
 router = APIRouter()
 
@@ -155,6 +157,8 @@ def share_inspection_invoice(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     invoice = _staff_invoice(db, invoice_id, current_user, for_update=True)
+    # In a bulk invoice it is sent, and paid, as part of it.
+    ensure_not_in_bulk(invoice)
     if not _is_approved(invoice):
         raise HTTPException(status_code=409, detail="Approve this invoice for billing before sending it")
     if invoice.status == InvoiceStatus.CANCELLED:
@@ -251,6 +255,9 @@ def _document(db: Session, invoice: Invoice) -> Optional[dict[str, Any]]:
 def _public_response(invoice: Invoice) -> dict[str, Any]:
     db = object_session(invoice)
     square = square_public_config()
+    in_bulk = in_bulk_response(invoice)
+    if in_bulk is not None:
+        return in_bulk
     if not _is_approved(invoice):
         # Being changed by staff: nothing shown or payable until it is approved again.
         return {

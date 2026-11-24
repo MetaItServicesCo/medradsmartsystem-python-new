@@ -51,6 +51,7 @@ def get_or_create_operation(
     quotation_id: Optional[int] = None,
     provider: Optional[str] = None,
     created_by_id: Optional[int] = None,
+    bulk_invoice_id: Optional[int] = None,
 ) -> tuple[PaymentOperation, bool]:
     key = (idempotency_key or "").strip()
     if not key:
@@ -88,6 +89,22 @@ def get_or_create_operation(
                 status_code=409,
                 detail="A payment for this invoice is already being processed or verified",
             )
+    if bulk_invoice_id is not None:
+        active = (
+            db.query(PaymentOperation)
+            .filter(
+                PaymentOperation.bulk_invoice_id == bulk_invoice_id,
+                PaymentOperation.operation_type == operation_type,
+                PaymentOperation.status.in_(["processing", "unknown"]),
+            )
+            .with_for_update()
+            .first()
+        )
+        if active:
+            raise HTTPException(
+                status_code=409,
+                detail="A payment for this bulk invoice is already being processed or verified",
+            )
 
     operation = PaymentOperation(
         idempotency_key=key,
@@ -96,6 +113,7 @@ def get_or_create_operation(
         status="processing",
         invoice_id=invoice_id,
         quotation_id=quotation_id,
+        bulk_invoice_id=bulk_invoice_id,
         provider=provider,
         amount=money(amount),
         currency=(currency or "USD").strip().upper(),

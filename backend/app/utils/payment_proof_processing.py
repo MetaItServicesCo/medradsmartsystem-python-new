@@ -77,7 +77,11 @@ def _proof_processing_input(proof_id: int) -> tuple[SimpleNamespace, str, str, A
     try:
         proof = (
             db.query(PaymentProof)
-            .options(joinedload(PaymentProof.invoice), joinedload(PaymentProof.service_quotation))
+            .options(
+                joinedload(PaymentProof.invoice),
+                joinedload(PaymentProof.service_quotation),
+                joinedload(PaymentProof.bulk_invoice),
+            )
             .filter(PaymentProof.id == proof_id)
             .first()
         )
@@ -88,6 +92,8 @@ def _proof_processing_input(proof_id: int) -> tuple[SimpleNamespace, str, str, A
             if proof.invoice is not None
             else proof.service_quotation.quotation_number
             if proof.service_quotation is not None
+            else proof.bulk_invoice.bulk_number
+            if proof.bulk_invoice is not None
             else ""
         )
         stored = SimpleNamespace(

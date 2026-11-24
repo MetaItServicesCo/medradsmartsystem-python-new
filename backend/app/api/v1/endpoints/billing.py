@@ -78,6 +78,7 @@ from app.utils.payment_proofs import (
 )
 from app.utils.rate_limit import enforce_rate_limit
 from app.utils.logging import log_activity
+from app.utils.bulk_invoice_lock import ensure_not_in_bulk
 
 
 router = APIRouter(dependencies=[Depends(require_module_access("billing"))])
@@ -140,11 +141,13 @@ def _require_invoice_facility_access(db: Session, user: User, invoice: Invoice) 
 
 def _append_source_payment_history(
     invoice: Invoice,
-    user: User,
+    user: Optional[User],
     amount: Decimal,
     payment_method: str,
 ) -> None:
-    actor = user.full_name or user.username
+    # No user when a customer paid through a link (a bulk invoice's, settling its invoices).
+    actor = (user.full_name or user.username) if user else "Customer (payment link)"
+    user_id = user.id if user else None
     at = datetime.utcnow().isoformat()
     details = {
         "invoice_id": invoice.id,
@@ -158,7 +161,7 @@ def _append_source_payment_history(
         history.append({
             "timestamp": at,
             "action": "service_invoice_payment_recorded",
-            "user_id": user.id,
+            "user_id": user_id,
             "user": actor,
             "changes": details,
         })
@@ -170,7 +173,7 @@ def _append_source_payment_history(
         history.append({
             "action": "invoice_payment_recorded",
             "by": actor,
-            "user_id": user.id,
+            "user_id": user_id,
             "at": at,
             "details": details,
         })
@@ -189,7 +192,7 @@ def _append_source_payment_history(
         history.append({
             "action": "invoice_paid" if invoice.status == InvoiceStatus.PAID else "invoice_payment_recorded",
             "by": actor,
-            "user_id": user.id,
+            "user_id": user_id,
             "at": at,
             "details": details,
         })
@@ -324,6 +327,7 @@ def mark_invoice_paid(
         raise HTTPException(status_code=404, detail="Invoice not found")
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot be marked as paid")
+    ensure_not_in_bulk(invoice)
     balance = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
     if invoice.status == InvoiceStatus.PAID or balance <= 0:
         raise HTTPException(status_code=409, detail="This invoice is already paid")
@@ -524,6 +528,7 @@ def record_invoice_payment(
     require_invoice_approved(invoice)
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    ensure_not_in_bulk(invoice)
     if _is_card_method(payload.payment_method):
         # A card payment is taken through Square, never typed in: no card
         # payment is recorded without a completed charge.
@@ -641,6 +646,7 @@ def _card_payable_invoice(db: Session, invoice_id: int, user: User, *, for_updat
     require_invoice_approved(invoice)
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    ensure_not_in_bulk(invoice)
     if invoice.status == InvoiceStatus.PAID or _money(invoice.balance_due) <= 0:
         raise HTTPException(status_code=409, detail="This invoice has no payable balance")
     if (
@@ -898,6 +904,7 @@ async def submit_invoice_payment_proof(
     require_invoice_approved(invoice)
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    ensure_not_in_bulk(invoice)
     balance = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
     if amount > balance:
         raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice balance")
@@ -1036,6 +1043,7 @@ def list_payment_proof_review_queue(
         raise HTTPException(status_code=403, detail="Internal billing approval permission is required")
     query = db.query(PaymentProof).options(
         joinedload(PaymentProof.invoice),
+        joinedload(PaymentProof.bulk_invoice),
         joinedload(PaymentProof.submitted_by),
         joinedload(PaymentProof.reviewed_by),
         joinedload(PaymentProof.service_quotation)
@@ -1175,6 +1183,13 @@ def approve_payment_proof(
         raise HTTPException(status_code=409, detail=f"A {proof.status} payment proof cannot be approved")
     if proof.extraction_status not in REVIEWABLE_EXTRACTION_STATUSES:
         raise HTTPException(status_code=409, detail="OCR processing is still in progress. Review the proof when processing finishes")
+    if proof.bulk_invoice_id:
+        # Reported for a whole bulk invoice: recorded on the bulk invoice.
+        from app.utils.bulk_invoices import approve_reported
+
+        approve_reported(db, proof, current_user, payload.notes)
+        db.refresh(proof)
+        return payment_proof_response(proof, include_ocr_text=True)
     if not proof.invoice_id:
         raise HTTPException(status_code=409, detail="Use the service quotation review endpoint for this proof")
     invoice = db.query(Invoice).filter(Invoice.id == proof.invoice_id).with_for_update().first()

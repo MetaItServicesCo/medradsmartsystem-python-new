@@ -36,6 +36,7 @@ from app.utils.payment_idempotency import (
 )
 from app.utils.payment_receipts import queue_payment_receipt
 from app.utils.card_fee import apply_card_fee, card_charge, remember_card_charge, succeeded_response
+from app.utils.bulk_invoice_lock import locking_bulk
 from app.utils.square_payments import (
     SquareRequestError, create_square_payment, disable_square_card, minor_units_to_amount,
     square_is_configured,
@@ -323,6 +324,8 @@ def bill_agreement(db: Session, agreement: LeaseAgreement, today: date, results:
         now = datetime.utcnow()
         for invoice in _chargeable_invoices(agreement):
             if not _due_for_charge(invoice, today, now):
+                continue
+            if locking_bulk(invoice) is not None:
                 continue
             outcome = charge_invoice(db, agreement, invoice)
             results[outcome] += 1

@@ -702,8 +702,11 @@ def resolved_extracted_data(proof: PaymentProof) -> dict[str, Any]:
 def payment_proof_response(proof: PaymentProof, *, include_ocr_text: bool = False) -> dict[str, Any]:
     invoice = proof.invoice
     quotation = proof.service_quotation
-    target_number = invoice.invoice_number if invoice else (quotation.quotation_number if quotation else None)
-    customer_name = invoice.customer_name if invoice else None
+    bulk = getattr(proof, "bulk_invoice", None) if getattr(proof, "bulk_invoice_id", None) else None
+    target_number = invoice.invoice_number if invoice else (
+        bulk.bulk_number if bulk else (quotation.quotation_number if quotation else None)
+    )
+    customer_name = invoice.customer_name if invoice else (bulk.bill_to_name if bulk else None)
     if customer_name is None and quotation and quotation.service_request:
         facility = quotation.service_request.facility
         customer_name = facility.name if facility else None
@@ -711,7 +714,8 @@ def payment_proof_response(proof: PaymentProof, *, include_ocr_text: bool = Fals
         "id": proof.id,
         "invoice_id": proof.invoice_id,
         "service_quotation_id": proof.service_quotation_id,
-        "target_type": "invoice" if proof.invoice_id else "service_quotation",
+        "bulk_invoice_id": getattr(proof, "bulk_invoice_id", None),
+        "target_type": "invoice" if proof.invoice_id else ("bulk_invoice" if bulk else "service_quotation"),
         "target_number": target_number,
         "customer_name": customer_name,
         "payment_method": proof.payment_method,
