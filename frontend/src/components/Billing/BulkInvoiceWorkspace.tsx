@@ -278,7 +278,9 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
               {candidatesQ.isLoading && <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>}
               {candidatesQ.isError && <Alert severity="error">The open invoices could not be loaded.</Alert>}
               {!candidatesQ.isLoading && !groups.length && !candidatesQ.isError && (
-                <Alert severity="info" sx={{ borderRadius: '14px' }}>{search ? 'Nothing matches that search.' : 'There are no open invoices.'}</Alert>
+                <Alert severity="info" sx={{ borderRadius: '14px' }}>
+                  {search ? `No facility or invoice matches "${search}".` : 'There are no open invoices to put in a bulk invoice.'}
+                </Alert>
               )}
               {groups.map((group) => {
                 const addable = group.invoices.filter(invoice => canAdd(invoice) && !box.has(invoice.id))
@@ -286,26 +288,32 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
                 const groupOpen = isOpen(group)
                 const canGoIn = group.invoices.filter(canAdd).length
                 const lockedCount = group.invoices.length - canGoIn
+                // Found by the search, but with nothing unpaid: shown, saying so.
+                const empty = group.invoices.length === 0
                 return (
-                  <Box key={group.key} data-bulk-group={group.facility_name} sx={{ bgcolor: '#fff', borderRadius: '18px', border: '1px solid #E9E5F5', boxShadow: '0 8px 22px rgba(49,46,129,0.06)', overflow: 'hidden', flexShrink: 0 }}>
+                  <Box key={group.key} data-bulk-group={group.facility_name} data-bulk-empty={empty ? 'true' : undefined} sx={{ bgcolor: '#fff', borderRadius: '18px', border: '1px solid #E9E5F5', boxShadow: '0 8px 22px rgba(49,46,129,0.06)', overflow: 'hidden', flexShrink: 0 }}>
                     <Box
                       draggable={addable.length > 0}
                       onDragStart={event => dragStart(event, addable)}
-                      onClick={() => toggle(group.key)}
-                      sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1.25, cursor: 'pointer', '&:hover': { bgcolor: '#FAF8FF' } }}
+                      onClick={() => { if (!empty) toggle(group.key) }}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1.25, cursor: empty ? 'default' : 'pointer', '&:hover': empty ? undefined : { bgcolor: '#FAF8FF' } }}
                       data-bulk-facility={group.facility_name}
                     >
-                      <ExpandMoreRoundedIcon sx={{ color: '#7C3AED', transition: 'transform .2s', transform: groupOpen ? 'rotate(180deg)' : 'none' }} />
+                      {empty
+                        ? <LockOutlinedIcon sx={{ color: '#94A3B8', mx: 0.25 }} />
+                        : <ExpandMoreRoundedIcon sx={{ color: '#7C3AED', transition: 'transform .2s', transform: groupOpen ? 'rotate(180deg)' : 'none' }} />}
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 900, color: '#1E1B4B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.facility_name}</Typography>
                         <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
-                          {canGoIn
-                            ? `${canGoIn} can go in · ${money(openBalance)}`
-                            : 'None can go in'}
+                          {empty
+                            ? 'No open invoices to add: none, or all paid'
+                            : canGoIn
+                              ? `${canGoIn} can go in · ${money(openBalance)}`
+                              : 'None can go in'}
                           {lockedCount > 0 ? ` · ${lockedCount} locked` : ''}
                         </Typography>
                       </Box>
-                      <Button
+                      {!empty && <Button
                         size="small"
                         variant="outlined"
                         startIcon={<AddRoundedIcon />}
@@ -314,9 +322,9 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
                         sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none', whiteSpace: 'nowrap' }}
                       >
                         {addable.length ? `Add all (${addable.length})` : canGoIn ? 'All in the box' : 'Add all'}
-                      </Button>
+                      </Button>}
                     </Box>
-                    <Collapse in={groupOpen} unmountOnExit>
+                    <Collapse in={groupOpen && !empty} unmountOnExit>
                       <Box sx={{ display: 'grid', gap: 0.75, px: 1.25, pb: 1.25 }}>
                         {group.invoices.map((invoice) => {
                           const inBox = box.has(invoice.id)

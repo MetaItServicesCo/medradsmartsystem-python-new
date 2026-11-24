@@ -55,6 +55,10 @@ export interface BulkCandidateGroup {
   facility_name: string
   bill_to: BulkBillTo
   invoices: BulkCandidate[]
+  eligible_count?: number
+  locked_count?: number
+  /** Found by the search, with no open invoice: shown so the search says what it found. */
+  no_open_invoices?: boolean
 }
 
 export interface BulkInvoiceRow {

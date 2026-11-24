@@ -318,7 +318,28 @@ def list_candidates(
     for group in groups:
         group["eligible_count"] = sum(1 for invoice in group["invoices"] if invoice["eligible"] or invoice["in_this_bulk"])
         group["locked_count"] = len(group["invoices"]) - group["eligible_count"]
-    groups.sort(key=lambda group: (group["eligible_count"] == 0, group["facility_name"].lower()))
+    words = _search_words(search)
+    if words:
+        # A facility the search names that has no open invoice is still shown, saying so: the
+        # search found it; there is just nothing of it to put in a bulk invoice.
+        shown = {group["facility_id"] for group in groups if group["facility_id"]}
+        named = db.query(Facility)
+        for word in words:
+            named = named.filter(Facility.name.ilike(_like(word), escape="\\"))
+        for facility in named.order_by(Facility.name).limit(50).all():
+            if facility.id in shown:
+                continue
+            groups.append({
+                "key": f"facility-{facility.id}",
+                "facility_id": facility.id,
+                "facility_name": facility.name,
+                "bill_to": facility_bill_to(facility),
+                "invoices": [],
+                "eligible_count": 0,
+                "locked_count": 0,
+                "no_open_invoices": True,
+            })
+    groups.sort(key=lambda group: (group["eligible_count"] == 0, not group["invoices"], group["facility_name"].lower()))
     return {"groups": groups, "truncated": len(invoices) >= 1500}
 
 

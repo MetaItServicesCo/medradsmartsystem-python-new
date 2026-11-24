@@ -344,6 +344,22 @@ ok("  % and _ in a word are just characters, not wildcards (0000_1 does not find
 ok("  a search of punctuation only is ignored", found("-") == found(""))
 ok("  words that match nothing together find nothing", found("alpha rental") == [])
 ok("  case does not matter", found("ALPHA service") == found("alpha SERVICE") != [])
+db = Session()
+db.add(Facility(name="Tiffany S", phone="9", email="t@clinic.test", address="9 T St", city="Houston", state="TX", zip_code="77019", country="US"))
+db.commit()
+db.close()
+groups = as_user("admin").get(f"{BULK}/candidates", params={"search": "tiffany"}).json()["groups"]
+ok("a facility the search names, with no open invoice, is shown saying so",
+   [(g["facility_name"], g["invoices"], g.get("no_open_invoices")) for g in groups] == [("Tiffany S", [], True)], groups)
+groups = as_user("admin").get(f"{BULK}/candidates", params={"search": "clinic"}).json()["groups"]
+db = Session()
+db.add(Facility(name="Zulu Clinic", phone="8", email="z@clinic.test", address="8 Z St", city="Waco", state="TX", zip_code="76701", country="US"))
+db.commit()
+db.close()
+groups = as_user("admin").get(f"{BULK}/candidates", params={"search": "clinic"}).json()["groups"]
+ok("  listed after the facilities that have open invoices", [g["facility_name"] for g in groups] == ["Alpha Clinic", "Bravo Clinic", "Zulu Clinic"],
+   [g["facility_name"] for g in groups])
+ok("  and not shown without a search", "Tiffany S" not in [g["facility_name"] for g in as_user("admin").get(f"{BULK}/candidates").json()["groups"]])
 groups = as_user("admin").get(f"{BULK}/candidates").json()["groups"]
 ok("each facility says how many can go in, and how many cannot",
    [(g["facility_name"], g["eligible_count"], g["locked_count"]) for g in groups] == [("Alpha Clinic", 2, 1), ("Bravo Clinic", 4, 3)],
