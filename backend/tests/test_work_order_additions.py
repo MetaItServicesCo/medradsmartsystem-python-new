@@ -268,7 +268,7 @@ ok("choosing the current status changes nothing", r.status_code == 200
 r = add(WITH_STATUS, notes="x", status="not-a-status")
 ok("an unknown status is refused", r.status_code == 400 and state(WITH_STATUS)["status"] == ServiceRequestStatus.WAITING_ON_PARTS)
 # Closing with no hours logged: allowed through an addition.
-ok("closing still needs something recorded", add(NO_HOURS, notes="  ", status="completed").status_code == 400
+ok("an addition with nothing in it and no change of status has nothing to save", add(NO_HOURS, notes="  ").status_code == 400
    and state(NO_HOURS)["status"] == ServiceRequestStatus.IN_PROGRESS)
 for who in ("employee", "facadmin", "client"):
     r = add(NO_HOURS, who=who, notes="Close it", status="completed")
@@ -399,20 +399,33 @@ r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/work-sessions",
 ok("a work session without hours is still refused", r.status_code == 400, str(r.status_code))
 hours_before = state(ACTIVE)["hours"]
 r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/work-sessions",
-                         json={"session_id": "session-00002", "total_work_hours": "1.25", "work_done": "Recalibrated"})
-ok("a work session with hours still adds them", r.status_code == 200 and state(ACTIVE)["hours"] == hours_before + D("1.25"),
+                         json={"session_id": "session-00002", "total_work_hours": "1.25", "diagnosis": "Drift", "work_done": "Recalibrated"})
+ok("a work session with hours, its diagnosis and work done, adds them", r.status_code == 200 and state(ACTIVE)["hours"] == hours_before + D("1.25"),
    f"{r.status_code} {state(ACTIVE)['hours']}")
 hours_before = state(ACTIVE)["hours"]
 r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/work-sessions",
                          json={"session_id": "session-00004", "total_work_hours": "0.75"})
-ok("a work session with only its time is accepted: diagnosis and work done are optional",
-   r.status_code == 200 and state(ACTIVE)["hours"] == hours_before + D("0.75"), f"{r.status_code} {r.text[:200]}")
+ok("hours logged with nothing written are refused: diagnosis and work done are required",
+   r.status_code == 400 and "diagnosis and the work done" in r.text and state(ACTIVE)["hours"] == hours_before, f"{r.status_code} {r.text[:200]}")
+r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/work-sessions",
+                         json={"session_id": "session-00005", "total_work_hours": "0.75", "diagnosis": "Drift", "notes": "n"})
+ok("  so is a diagnosis without the work done", r.status_code == 400 and state(ACTIVE)["hours"] == hours_before, f"{r.status_code}")
 r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/clock-in")
 ok("  clocking in", r.status_code == 200, f"{r.status_code} {r.text[:200]}")
-r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/clock-out", json={})
-ok("  and clocking out with nothing written is accepted too", r.status_code == 200, f"{r.status_code} {r.text[:200]}")
+r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/clock-out", json={"notes": "only a note"})
+ok("  clocking out without them is refused", r.status_code == 400 and "diagnosis and the work done" in r.text, f"{r.status_code} {r.text[:200]}")
+r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/clock-out", json={"diagnosis": "Loose wire", "work_done": "Re-seated it"})
+ok("  and accepted with them", r.status_code == 200, f"{r.status_code} {r.text[:200]}")
+additions_before = len([e for e in state(ACTIVE)["history"] if e.get("action") == "work_order_addition"])
 r = add(ACTIVE)
-ok("  an addition (no hours) with nothing in it is still refused", r.status_code == 400, f"{r.status_code} {r.text[:200]}")
+ok("without hours, nothing in it and no change of status: nothing to save", r.status_code == 400 and "Nothing to save" in r.text, f"{r.status_code} {r.text[:200]}")
+r = add(ACTIVE, status="completed")
+history = state(ACTIVE)["history"]
+ok("  without hours, nothing in it, changing the status to Completed: saved, nothing required",
+   r.status_code == 200 and state(ACTIVE)["status"] == "completed", f"{r.status_code} {r.text[:200]}")
+ok("    recorded as a status change, not as an empty addition (nothing reaches the invoice)",
+   history[-1].get("action") == "status_changed" and history[-1]["changes"]["status"] == {"from": "in_progress", "to": "completed"}
+   and len([e for e in history if e.get("action") == "work_order_addition"]) == additions_before, str(history[-1]))
 r = as_user("tech").post(f"/api/v1/service-requests/{INVOICED}/work-sessions",
                          json={"session_id": "session-00003", "total_work_hours": "1", "work_done": "late"})
 ok("a completed request still takes no work session (only additions)", r.status_code == 400, str(r.status_code))

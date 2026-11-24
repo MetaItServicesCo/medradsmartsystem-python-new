@@ -2314,7 +2314,9 @@ def create_manual_work_session(
     part_usages = list(session.part_usages or [])
     if duration_hours <= 0:
         raise HTTPException(status_code=400, detail="Work-session duration must be greater than zero after break time")
-    # Diagnosis, work done, notes, parts and test equipment are all optional: the time alone is a session.
+    # Hours logged must say what was found and what was done; notes, parts and test equipment are optional.
+    if not diagnosis or not work_done:
+        raise HTTPException(status_code=400, detail="Enter the diagnosis and the work done for this work session")
 
     now = datetime.utcnow()
     if db_sr.status == ServiceRequestStatus.NEW:
@@ -2475,7 +2477,9 @@ def clock_out_service_request(
     total_mileage = Decimal(str(clock_out.total_mileage)) if clock_out.total_mileage is not None else Decimal("0")
     if total_mileage < 0:
         raise HTTPException(status_code=400, detail="Total mileage cannot be negative")
-    # Diagnosis, work done, notes, parts and test equipment are all optional when clocking out.
+    # Hours logged must say what was found and what was done; notes, parts and test equipment are optional.
+    if not diagnosis or not work_done:
+        raise HTTPException(status_code=400, detail="Enter the diagnosis and the work done before clocking out")
 
     test_equipment_used = []
     if test_equipment_ids:
@@ -2634,8 +2638,9 @@ def add_to_work_order(
     notes = (addition.notes or "").strip()
     test_equipment_used = _test_equipment_history_items(db, list(dict.fromkeys(addition.test_equipment_ids or [])))
     part_usages = list(addition.part_usages or [])
-    if not diagnosis and not work_done and not notes and not test_equipment_used and not part_usages:
-        raise HTTPException(status_code=400, detail="Add parts, notes, diagnosis, work done or test equipment")
+    # Without hours nothing is required. With nothing in it, it can still change the status
+    # (to Completed, say); with nothing in it and no change of status, there is nothing to save.
+    has_content = bool(diagnosis or work_done or notes or test_equipment_used or part_usages)
 
     # A status change made with the addition follows a work session's rules.
     requested_status: Optional[ServiceRequestStatus] = None
@@ -2654,6 +2659,11 @@ def add_to_work_order(
                     f"Allowed: {[item.value for item in VALID_TRANSITIONS.get(db_sr.status, [])]}"
                 ),
             )
+    if not has_content and requested_status is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Nothing to save: add something to the work order, or change the service status",
+        )
     previous_status = db_sr.status
     if requested_status is not None:
         now = datetime.utcnow()
@@ -2666,23 +2676,29 @@ def add_to_work_order(
         db_sr.status = requested_status
         db_sr.total_cost = _calculate_service_cost(db_sr)
 
-    parts_used = _consume_service_parts(
-        db, db_sr, part_usages, current_user, addition_id, source="Work order addition",
-    )
     history = list(db_sr.history or [])
-    history.append(_history_entry("work_order_addition", current_user, {
-        "addition_id": addition_id,
-        "diagnosis": diagnosis,
-        "work_done": work_done,
-        "notes": notes,
-        "test_equipment": test_equipment_used,
-        "parts": parts_used,
-        "status": (
-            {"from": previous_status.value, "to": db_sr.status.value}
-            if previous_status != db_sr.status
-            else db_sr.status.value
-        ),
-    }))
+    if has_content:
+        parts_used = _consume_service_parts(
+            db, db_sr, part_usages, current_user, addition_id, source="Work order addition",
+        )
+        history.append(_history_entry("work_order_addition", current_user, {
+            "addition_id": addition_id,
+            "diagnosis": diagnosis,
+            "work_done": work_done,
+            "notes": notes,
+            "test_equipment": test_equipment_used,
+            "parts": parts_used,
+            "status": (
+                {"from": previous_status.value, "to": db_sr.status.value}
+                if previous_status != db_sr.status
+                else db_sr.status.value
+            ),
+        }))
+    else:
+        # Only the status changed: recorded as that, not as an empty addition (nothing reaches the invoice).
+        history.append(_history_entry("status_changed", current_user, {
+            "status": {"from": previous_status.value, "to": db_sr.status.value},
+        }))
     db_sr.history = history
     if previous_status != db_sr.status:
         recipients = {db_sr.requester_id, db_sr.assigned_technician_id}

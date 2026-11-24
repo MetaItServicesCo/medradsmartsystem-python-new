@@ -675,7 +675,11 @@ const ServiceRequestDetail = () => {
       }
     }
     if (!partQuantitiesAreValid()) return
-    // Diagnosis, work done, notes, parts and test equipment are all optional: the time alone is a session.
+    // Hours logged must say what was found and what was done.
+    if (!sessionDiagnosis.trim() || !sessionWorkDone.trim()) {
+      toast.error('Enter the diagnosis and the work done for this work session')
+      return
+    }
     workSessionMutation.mutate()
   }
 
@@ -696,8 +700,12 @@ const ServiceRequestDetail = () => {
 
   const handleAddToWorkOrder = () => {
     if (!partQuantitiesAreValid()) return
-    if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0 && selectedServiceParts.length === 0) {
-      toast.info('Add parts, notes, diagnosis, work done or test equipment')
+    // Without hours nothing is required; with nothing in it, it can still change the status.
+    const empty = !sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim()
+      && selectedTestEquipmentIds.length === 0 && selectedServiceParts.length === 0
+    const statusChanges = Boolean(canLogWorkForRequest && sr && serviceWorkflowStatus !== sr.status)
+    if (empty && !statusChanges) {
+      toast.info('Nothing to save: add something to the work order, or change the service status')
       return
     }
     additionMutation.mutate()
@@ -1594,7 +1602,7 @@ const ServiceRequestDetail = () => {
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>
                   Billing Calculation
                 </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, 1fr)' }, gap: 1.25 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(5, 1fr)' }, gap: 1.25 }} data-billing-calculation>
                   <Box>
                     <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
                       Asset Tier
@@ -1613,19 +1621,30 @@ const ServiceRequestDetail = () => {
                   </Box>
                   <Box>
                     <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
-                      Service Cost
+                      Service Fee
                     </Typography>
-                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>
+                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }} data-billing-service-fee>
+                      ${tierServiceCallFee.toFixed(2)}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8' }}>Charged once</Typography>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                      Labor Cost
+                    </Typography>
+                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }} data-billing-labor>
                       ${calculatedServiceCost.toFixed(2)}
                     </Typography>
+                    <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8' }}>{timeSpentHours.toFixed(2)} hrs x ${tierLaborRate.toFixed(2)}</Typography>
                   </Box>
                   <Box>
                     <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
                       Mileage
                     </Typography>
                     <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-                      {totalSessionMileage.toFixed(2)} mi x ${tierMileageRate.toFixed(2)}
+                      {totalSessionMileage.toFixed(2)} mi
                     </Typography>
+                    <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8' }}>x ${tierMileageRate.toFixed(2)} / mi</Typography>
                   </Box>
                 </Box>
                 {paidQuotations.length > 0 && (
@@ -1696,7 +1715,8 @@ const ServiceRequestDetail = () => {
                 </Box>
                 </>)}
                 <TextField
-                  label="Diagnosis (optional)"
+                  label={addingWithoutTime ? 'Diagnosis (optional)' : 'Diagnosis'}
+                  required={!addingWithoutTime}
                   multiline
                   minRows={2}
                   fullWidth
@@ -1705,7 +1725,8 @@ const ServiceRequestDetail = () => {
                   placeholder="What was diagnosed during this session?"
                 />
                 <TextField
-                  label="Work Done (optional)"
+                  label={addingWithoutTime ? 'Work Done (optional)' : 'Work Done'}
+                  required={!addingWithoutTime}
                   multiline
                   minRows={2}
                   fullWidth
