@@ -773,7 +773,20 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
     for quotation in sr.quotations or []:
         if quotation.status != "included_in_invoice":
             continue
-        if quotation.line_items:
+        if with_tax and _money(quotation.tax_amount) > 0:
+            # On the invoice at its full amount, its tax in it: one line, no separate tax line.
+            full_amount = _quotation_invoice_amount(quotation)
+            rows.append({
+                "item_number": quotation.quotation_number,
+                "description": quotation.description or "Service quotation",
+                "quantity": Decimal("1"),
+                "unit_price": full_amount,
+                "shipping_fee": Decimal("0"),
+                "setup_fee": Decimal("0"),
+                "condition": None,
+                "total_amount": full_amount,
+            })
+        elif quotation.line_items:
             for line in quotation.line_items:
                 rows.append({
                     "item_number": quotation.quotation_number,
@@ -795,20 +808,6 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
                 "setup_fee": Decimal("0"),
                 "condition": None,
                 "total_amount": quotation_amount_before_tax(quotation),
-            })
-        quotation_tax_amount = _money(quotation.tax_amount)
-        if with_tax and quotation_tax_amount > 0:
-            # Its own tax, as the customer accepted it: part of what the invoice charges for it.
-            rate = _money(getattr(quotation, "tax_rate", None))
-            rows.append({
-                "item_number": quotation.quotation_number,
-                "description": f"Tax on {quotation.quotation_number}" + (f" ({rate.normalize():f}%)" if rate > 0 else ""),
-                "quantity": Decimal("1"),
-                "unit_price": quotation_tax_amount,
-                "shipping_fee": Decimal("0"),
-                "setup_fee": Decimal("0"),
-                "condition": None,
-                "total_amount": quotation_tax_amount,
             })
     # No hours and no labour charged: no hours line, unless it is all there is.
     # Invoices from before the Service Call Fee stay as they were issued.

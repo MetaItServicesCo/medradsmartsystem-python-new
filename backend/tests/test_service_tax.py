@@ -253,9 +253,9 @@ ok("Service Fee $150 + Labor $150 + the quotation's $162.38 + Travel $40: subtot
 ok("  no tax: not on the Service Fee, the labor, the quotation or travel", money(inv["tax_amount"]) == D("0.00"), inv.get("tax_amount"))
 ok("  total $502.38, all of it due", money(inv["total_amount"]) == D("502.38") and money(inv["balance_due"]) == D("502.38"), inv.get("total_amount"))
 quote_lines = [line for line in inv.get("line_items", []) if line.get("item_number") == included["quotation_number"]]
-ok("  the quotation's part line at $150.00, then its own tax, $12.38: its $162.38 in full",
-   [(line["description"], money(line["total_amount"])) for line in quote_lines]
-   == [("Pump", D("150.00")), (f"Tax on {included['quotation_number']} (8.25%)", D("12.38"))], quote_lines)
+ok("  the quotation is one line at its full $162.38, no separate tax line",
+   [(line["description"], money(line["total_amount"])) for line in quote_lines] == [("Repair", D("162.38"))]
+   and not any("Tax on" in str(line["description"]) for line in inv.get("line_items", [])), quote_lines)
 ok("  the invoice's lines add up to its total", sum(money(line["total_amount"]) for line in inv.get("line_items", [])) == money(inv["total_amount"]),
    [(line["description"], line["total_amount"]) for line in inv.get("line_items", [])])
 db = Session()
