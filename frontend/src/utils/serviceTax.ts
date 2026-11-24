@@ -43,9 +43,12 @@ export const quotationTax = (lines: QuotationTaxLine[], rate: unknown = DEFAULT_
   return { subtotal: subtotal / 100, taxable: taxable / 100, tax, total: (subtotal + cents(tax)) / 100 }
 }
 
-/** A quotation's amount before its own tax: what a service invoice includes. */
+/** A quotation's amount before its own tax (its lines' part of it). */
 export const quotationBeforeTax = (quotation: { amount?: number | string | null; tax_amount?: number | string | null }) =>
   (cents(quotation.amount) - cents(quotation.tax_amount)) / 100
+
+/** What a quotation adds to a service invoice: its full amount, its own tax included. */
+export const quotationInvoiceAmount = (quotation: { amount?: number | string | null }) => cents(quotation.amount) / 100
 
 /**
  * What a service invoice is taxed on by itself: nothing. The Service Fee and

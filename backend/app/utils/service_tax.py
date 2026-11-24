@@ -5,9 +5,10 @@ lines are not. Part $150 + Labor $100 is $250, with 8.25% of $150 ($12.38)
 added: $262.38.
 
 A service invoice adds no tax of its own: the Service Fee, the labor and
-travel are not taxed, and a quotation included goes on at its amount only,
-before its tax. Service Fee $150 + Labor $150 + quotation $150 is $450, no tax.
-Billing can still enter a tax amount on an invoice by hand.
+travel are not taxed. A quotation included goes on at its full amount, its own
+tax included, as the customer accepted it: Service Fee $150 + Labor $150 +
+quotation $162.38 ($150 + $12.38 tax) is $462.38, and nothing more. Billing
+can still enter a tax amount on an invoice by hand.
 
 Tax is rounded to the cent, half up, as the screens show it.
 """
@@ -59,7 +60,8 @@ def quotation_tax(lines: Iterable[Any]) -> tuple[Decimal, Decimal, Decimal]:
 
 
 def quotation_amount_before_tax(quotation: Any) -> Decimal:
-    """What a quotation charges before its own tax: what an invoice includes."""
+    """What a quotation charges before its own tax. (A service invoice includes a
+    quotation at its full amount; this is its lines' part of that.)"""
     return (_money(getattr(quotation, "amount", 0)) - _money(getattr(quotation, "tax_amount", 0))).quantize(CENT)
 
 
@@ -67,6 +69,7 @@ def service_invoice_taxable_amount(
     service_call_fee: Any, labor: Any, quotations_before_tax: Any, *, includes_quotation: bool,
 ) -> Decimal:
     """What a service invoice is taxed on by itself: nothing. The Service Fee and
-    labor are not taxed, a quotation goes on at its amount without its tax, and
-    travel is never taxed. A tax Billing enters by hand is charged as entered."""
+    labor are not taxed, a quotation goes on at its full amount with its own tax
+    already in it, and travel is never taxed. A tax Billing enters by hand is
+    charged as entered."""
     return Decimal("0.00")

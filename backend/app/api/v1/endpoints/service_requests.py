@@ -696,6 +696,24 @@ def _parse_fee_notes(notes: Optional[str]) -> tuple[Optional[Decimal], Optional[
     return labor, travel, service_call
 
 
+QUOTES_WITH_TAX = "quotes=with_tax"
+
+
+def _quotes_with_tax(notes: Optional[str]) -> bool:
+    """An invoice whose included quotations went on at their full amount, their
+    tax included (every invoice issued or updated since). One issued before
+    included them before their tax, and prints as it was issued."""
+    if not notes or not notes.startswith("__FEES__:"):
+        return False
+    fee_part, _, _ = notes[len("__FEES__:"):].partition("::")
+    return QUOTES_WITH_TAX in [part.strip() for part in fee_part.split(",")]
+
+
+def _quotation_invoice_amount(quotation: Any) -> Decimal:
+    """What a quotation adds to a service invoice: its full amount, its own tax included."""
+    return _money(quotation.amount).quantize(Decimal("0.01"))
+
+
 def _strip_fee_prefix(notes: Optional[str]) -> Optional[str]:
     """Remove __FEES__:..:: prefix from stored notes before returning to client."""
     notes = strip_invoice_edit_metadata(notes)
@@ -739,6 +757,7 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
         "total_amount": labor_total,
     }
     rows.append(labor_row)
+    with_tax = _quotes_with_tax(invoice.notes)
     if travel_override is not None and travel_override > Decimal("0"):
         rows.append({
             "item_number": sr.request_number,
@@ -776,6 +795,20 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
                 "setup_fee": Decimal("0"),
                 "condition": None,
                 "total_amount": quotation_amount_before_tax(quotation),
+            })
+        quotation_tax_amount = _money(quotation.tax_amount)
+        if with_tax and quotation_tax_amount > 0:
+            # Its own tax, as the customer accepted it: part of what the invoice charges for it.
+            rate = _money(getattr(quotation, "tax_rate", None))
+            rows.append({
+                "item_number": quotation.quotation_number,
+                "description": f"Tax on {quotation.quotation_number}" + (f" ({rate.normalize():f}%)" if rate > 0 else ""),
+                "quantity": Decimal("1"),
+                "unit_price": quotation_tax_amount,
+                "shipping_fee": Decimal("0"),
+                "setup_fee": Decimal("0"),
+                "condition": None,
+                "total_amount": quotation_tax_amount,
             })
     # No hours and no labour charged: no hours line, unless it is all there is.
     # Invoices from before the Service Call Fee stay as they were issued.
@@ -1906,7 +1939,8 @@ def generate_service_invoice(
     travel_charges = _money(payload.travel_charges).quantize(Decimal("0.01"))
     # A quotation goes onto the invoice at its amount before its own tax:
     # the invoice is taxed as a whole instead.
-    quotation_amount = sum((quotation_amount_before_tax(quotation) for quotation in selected_quotations), Decimal("0"))
+    # Each quotation at its full amount, its own tax included, as the customer accepted it.
+    quotation_amount = sum((_quotation_invoice_amount(quotation) for quotation in selected_quotations), Decimal("0"))
     subtotal = (service_call_fee + service_amount + travel_charges + quotation_amount).quantize(Decimal("0.01"))
     taxable_amount = service_invoice_taxable_amount(
         service_call_fee, service_amount, quotation_amount, includes_quotation=bool(selected_quotations),
@@ -1950,7 +1984,7 @@ def generate_service_invoice(
         due_date=payload.due_date or date.today() + timedelta(days=30),
         payment_terms="Net 30",
         payment_method=payload.payment_method,
-        notes=f"__FEES__:labor={service_amount},travel={travel_charges},service_call={service_call_fee}::{payload.notes or f'Service invoice for {db_sr.request_number}.'}",
+        notes=f"__FEES__:labor={service_amount},travel={travel_charges},service_call={service_call_fee},{QUOTES_WITH_TAX}::{payload.notes or f'Service invoice for {db_sr.request_number}.'}",
         service_work_entries=service_work_entries(
             db_sr, {edit.key: edit.model_dump() for edit in payload.work_entries or []},
         ),
@@ -1972,7 +2006,7 @@ def generate_service_invoice(
             "included_in_service_invoice",
             current_user,
             # Billed at its amount before tax: the invoice is taxed as a whole.
-            amount=quotation_amount_before_tax(quotation),
+            amount=_quotation_invoice_amount(quotation),
             details={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
         )
 
@@ -2049,8 +2083,8 @@ def _revise_service_invoice(
     if payload.payment_method is not None:
         invoice.payment_method = payload.payment_method
     # Rebuilt from the request: Billing's hand-edited lines, if any, are replaced.
-    invoice.notes = "__FEES__:labor={},travel={},service_call={}::{}".format(
-        service_amount, travel_charges, service_call_fee, note_text)
+    invoice.notes = "__FEES__:labor={},travel={},service_call={},{}::{}".format(
+        service_amount, travel_charges, service_call_fee, QUOTES_WITH_TAX, note_text)
     invoice.service_work_entries = service_work_entries(
         db_sr, {edit.key: edit.model_dump() for edit in payload.work_entries or []},
     )
@@ -2064,7 +2098,7 @@ def _revise_service_invoice(
         quotation.updated_at = datetime.utcnow()
         _append_quotation_ledger(
             db, quotation, "included_in_service_invoice", user,
-            amount=quotation_amount_before_tax(quotation),
+            amount=_quotation_invoice_amount(quotation),
             details={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
         )
 

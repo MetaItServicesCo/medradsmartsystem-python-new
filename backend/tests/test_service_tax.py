@@ -4,10 +4,12 @@ A quotation paid on its own is taxed on its part and other lines, not labor:
 Part $150 + Labor $100 is $250 + $12.38 tax = $262.38.
 
 A service invoice adds no tax of its own: the Service Fee, labor and travel
-are not taxed, and a quotation included goes on at its amount only, without
-its tax: Service Fee $150 + Labor $150 + quotation $150 = $450, no tax.
-Billing can still type a tax amount. Quotations from before service tax keep
-their amounts.
+are not taxed. A quotation included goes on at its full amount, its own tax
+included, as the customer accepted it: Service Fee $150 + Labor $150 +
+quotation $162.38 ($150 + $12.38 tax) = $462.38, nothing more. Billing can
+still type a tax amount. Quotations from before service tax keep their amounts.
+An invoice issued before this, with its quotations before their tax, prints
+as it was issued.
 
     cd backend
     DATABASE_URL=sqlite:// venv312/Scripts/python.exe tests/test_service_tax.py
@@ -240,19 +242,22 @@ r = client.put(f"{API}/quotations/{LEGACY}", json={"description": "Old repair, r
 ok("its amount stays $300.00, with no tax", r.status_code == 200 and money(r.json()["amount"]) == D("300.00")
    and money(r.json()["tax_amount"]) == D("0.00") and money(r.json()["subtotal"]) == D("300.00"), r.text[:300])
 
-print("\nAn invoice that includes a quotation adds its amount only, no tax")
+print("\nAn invoice that includes a quotation adds its full amount, its tax included; no tax of its own")
 included = create_quotation(SR_TAXED, [PART_150])
 ok("the quotation alone would be $162.38", money(included["amount"]) == D("162.38"), included)
 complete(SR_TAXED)
 r = generate(SR_TAXED, include_quotations=True, quotation_ids=[included["id"]], travel_charges=40)
 inv = r.json()
-ok("Service Fee $150 + Labor $150 + Part $150 + Travel $40: subtotal $490.00",
-   r.status_code == 200 and money(inv["subtotal"]) == D("490.00"), r.text[:400])
+ok("Service Fee $150 + Labor $150 + the quotation's $162.38 + Travel $40: subtotal $502.38",
+   r.status_code == 200 and money(inv["subtotal"]) == D("502.38"), r.text[:400])
 ok("  no tax: not on the Service Fee, the labor, the quotation or travel", money(inv["tax_amount"]) == D("0.00"), inv.get("tax_amount"))
-ok("  total $490.00, all of it due", money(inv["total_amount"]) == D("490.00") and money(inv["balance_due"]) == D("490.00"), inv.get("total_amount"))
+ok("  total $502.38, all of it due", money(inv["total_amount"]) == D("502.38") and money(inv["balance_due"]) == D("502.38"), inv.get("total_amount"))
 quote_lines = [line for line in inv.get("line_items", []) if line.get("item_number") == included["quotation_number"]]
-ok("  the quotation's line is on it at $150.00, before its own tax",
-   len(quote_lines) == 1 and money(quote_lines[0]["total_amount"]) == D("150.00"), quote_lines)
+ok("  the quotation's part line at $150.00, then its own tax, $12.38: its $162.38 in full",
+   [(line["description"], money(line["total_amount"])) for line in quote_lines]
+   == [("Pump", D("150.00")), (f"Tax on {included['quotation_number']} (8.25%)", D("12.38"))], quote_lines)
+ok("  the invoice's lines add up to its total", sum(money(line["total_amount"]) for line in inv.get("line_items", [])) == money(inv["total_amount"]),
+   [(line["description"], line["total_amount"]) for line in inv.get("line_items", [])])
 db = Session()
 row = db.get(ServiceRequestQuotation, included["id"])
 entry = db.query(QuotationLedgerEntry).filter(QuotationLedgerEntry.quotation_id == included["id"],
@@ -260,7 +265,17 @@ entry = db.query(QuotationLedgerEntry).filter(QuotationLedgerEntry.quotation_id 
 history = [h for h in (db.get(ServiceRequest, SR_TAXED).history or []) if h.get("action") == "service_invoice_generated"]
 db.close()
 ok("  the quotation is marked as on the invoice", row.status == "included_in_invoice", row.status)
-ok("  its ledger records $150.00 billed", entry is not None and money(entry.amount) == D("150.00"), entry and entry.amount)
+ok("  its ledger records $162.38 billed, its full amount", entry is not None and money(entry.amount) == D("162.38"), entry and entry.amount)
+from app.api.v1.endpoints.service_requests import _service_invoice_line_items  # noqa: E402
+db = Session()
+issued_before = db.get(Invoice, inv["id"])
+issued_before.notes = issued_before.notes.replace(",quotes=with_tax", "")
+db.flush()
+old_lines = _service_invoice_line_items(issued_before)
+db.rollback()
+db.close()
+ok("an invoice issued before this (its quotations before their tax) prints as it was issued: no tax line added",
+   not any(str(line["description"]).startswith("Tax on") for line in old_lines), [line["description"] for line in old_lines])
 changes = history[-1].get("changes", {}) if history else {}
 ok("  the request's history records it: nothing taxed, none entered",
    changes.get("taxable_amount") == "0.00" and changes.get("tax_amount") == "0.00" and changes.get("tax_entered") is False, changes)
@@ -280,13 +295,13 @@ print("\nThe administrator can still set the tax")
 typed = create_quotation(SR_TYPED, [PART_150])
 complete(SR_TYPED)
 r = generate(SR_TYPED, include_quotations=True, quotation_ids=[typed["id"]], tax_amount=10)
-ok("a typed $10.00 is charged instead: $460.00", r.status_code == 200 and money(r.json()["tax_amount"]) == D("10.00")
-   and money(r.json()["total_amount"]) == D("460.00"), r.text[:300])
+ok("a typed $10.00 is charged as entered: $462.38 + $10.00 = $472.38", r.status_code == 200 and money(r.json()["tax_amount"]) == D("10.00")
+   and money(r.json()["total_amount"]) == D("472.38"), r.text[:300])
 zero = create_quotation(SR_ZERO, [PART_150])
 complete(SR_ZERO)
 r = generate(SR_ZERO, include_quotations=True, quotation_ids=[zero["id"]], tax_amount=0)
-ok("$0.00 for a tax-exempt facility: $450.00", r.status_code == 200 and money(r.json()["tax_amount"]) == D("0.00")
-   and money(r.json()["total_amount"]) == D("450.00"), r.text[:300])
+ok("$0.00 typed: $462.38", r.status_code == 200 and money(r.json()["tax_amount"]) == D("0.00")
+   and money(r.json()["total_amount"]) == D("462.38"), r.text[:300])
 complete(SR_NEG)
 r = generate(SR_NEG, tax_amount=-5)
 ok("a negative tax is refused", r.status_code == 422, r.status_code)

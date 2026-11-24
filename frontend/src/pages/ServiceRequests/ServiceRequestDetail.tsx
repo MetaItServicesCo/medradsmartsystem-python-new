@@ -62,7 +62,7 @@ import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipmen
 import { useAuthStore } from '@/stores/authStore'
 import { actsAsTechnician, hasPermission } from '@/config/permissions'
 import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
-import { DEFAULT_SERVICE_TAX_RATE, quotationBeforeTax, serviceInvoiceTaxable, serviceTaxOn } from '@/utils/serviceTax'
+import { DEFAULT_SERVICE_TAX_RATE, quotationInvoiceAmount, serviceInvoiceTaxable, serviceTaxOn } from '@/utils/serviceTax'
 import { fetchServiceProgressReport } from '@/api/reports'
 import ReplayIcon from '@mui/icons-material/Replay'
 import { downloadServiceProgressReport } from '@/utils/serviceReportPdf'
@@ -1059,7 +1059,8 @@ const ServiceRequestDetail = () => {
     ? billableQuotations.filter(q => selectedQuotationIds.includes(q.id))
     : []
   // Included at their amount before their own tax: the invoice is taxed as a whole.
-  const selectedQuotationTotal = selectedQuotations.reduce((sum, q) => sum + quotationBeforeTax(q), 0)
+  // Each quotation at its full amount, its own tax included, as the customer accepted it.
+  const selectedQuotationTotal = selectedQuotations.reduce((sum, q) => sum + quotationInvoiceAmount(q), 0)
   const invoiceLaborAmount = invoiceLaborFees.trim() === '' ? calculatedServiceCost : Number(invoiceLaborFees || 0)
   // What is seen here is what is charged: empty or below zero bills no fee.
   const invoiceServiceCallAmount = Math.max(Number(invoiceServiceCallFee || 0), 0)
@@ -2690,7 +2691,12 @@ const ServiceRequestDetail = () => {
                             </Box>
                           }
                         />
-                        <Typography sx={{ fontWeight: 950, color: '#047857' }}>${quotationBeforeTax(q).toFixed(2)}</Typography>
+                        <Box sx={{ textAlign: 'right' }}>
+                          <Typography sx={{ fontWeight: 950, color: '#047857' }}>${quotationInvoiceAmount(q).toFixed(2)}</Typography>
+                          {Number(q.tax_amount || 0) > 0 && (
+                            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#64748B' }}>incl. ${Number(q.tax_amount).toFixed(2)} tax</Typography>
+                          )}
+                        </Box>
                       </Box>
                     ))}
                   </Box>
@@ -2731,7 +2737,7 @@ const ServiceRequestDetail = () => {
                     <span data-invoice-tax-basis>
                       {invoiceTaxOverride !== null
                         ? 'Entered by hand'
-                        : 'No tax: the Service Fee, labor and quotations are not taxed. Enter an amount to charge tax.'}
+                        : 'No extra tax: the Service Fee and labor are not taxed, and quotations are included with their own tax. Enter an amount to charge tax.'}
                     </span>
                     {invoiceTaxOverride !== null && (
                       <Box component="span" role="button" tabIndex={0} onClick={() => setInvoiceTaxOverride(null)}
