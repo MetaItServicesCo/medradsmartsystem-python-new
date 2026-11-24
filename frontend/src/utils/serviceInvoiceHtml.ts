@@ -10,7 +10,8 @@ import type { ServiceInvoiceDocument } from '@/api/serviceRequests'
 import { printStyles } from '@/utils/invoiceDocumentStyles'
 import { facilityAddressLines } from '@/utils/facilityAddress'
 
-const COMPANY = {
+/** The company, as every invoice heads it. */
+export const COMPANY = {
   name: 'Mr. BioMed Tech Services',
   address: '555 N. 5th Street Suite 109 · Garland, TX 75040',
   contact: 'omar@mbmts.com · (469) 767-8853 · Fax 972-276-0757',

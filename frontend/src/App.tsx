@@ -28,6 +28,7 @@ const MyTimesheets = lazyWithReload(() => import('./pages/MyTimesheets'))
 const MyAttendance = lazyWithReload(() => import('./pages/MyAttendance'))
 const PublicServiceInvoice = lazyWithReload(() => import('./pages/ServiceRequests/PublicServiceInvoice'))
 const PublicInspectionInvoice = lazyWithReload(() => import('./pages/Inspections/PublicInspectionInvoice'))
+const PublicBulkInvoice = lazyWithReload(() => import('./pages/Sales/PublicBulkInvoice'))
 const CompanyNotices = lazyWithReload(() => import('./pages/CompanyNotices'))
 const MyLeave = lazyWithReload(() => import('./pages/MyLeave'))
 const ClientQuotation = lazyWithReload(() => import('./pages/Sales/ClientQuotation'))
@@ -110,6 +111,7 @@ function App() {
         <Route path="/payment/sales/:token" element={<PublicSalesPayment />} />
         <Route path="/invoice/service/:token" element={<PublicServiceInvoice />} />
         <Route path="/invoice/inspection/:token" element={<PublicInspectionInvoice />} />
+        <Route path="/invoice/bulk/:token" element={<PublicBulkInvoice />} />
         <Route path="/rental/:token" element={<ClientRental />} />
         <Route path="/lease/:token" element={<ClientLease />} />
         <Route path="/rental-extension/:extensionToken" element={<ClientRental />} />

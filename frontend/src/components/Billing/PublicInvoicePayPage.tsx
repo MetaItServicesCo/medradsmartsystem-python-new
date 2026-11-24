@@ -51,14 +51,16 @@ type PublicInvoice<D> = Omit<PublicServiceInvoice, 'document'> & { document: D |
 interface Props<D> {
   token: string
   /** Its cache key, and the start of its card payment's retry scope ("service-invoice"). */
-  kind: 'service-invoice' | 'inspection-invoice'
+  kind: 'service-invoice' | 'inspection-invoice' | 'bulk-invoice'
   fetchInvoice: (token: string) => Promise<PublicInvoice<D>>
   payByCard: (token: string, data: CardPayment) => Promise<PublicInvoice<D>>
   reportPayment: (token: string, report: LinkPaymentReport) => Promise<PublicInvoice<D>>
   buildHtml: (document: D) => Promise<string> | string
+  /** How Print prints the document; the page's own way when not given. */
+  print?: (title: string, html: string) => void
 }
 
-function PublicInvoicePayPage<D>({ token, kind, fetchInvoice, payByCard, reportPayment, buildHtml }: Props<D>) {
+function PublicInvoicePayPage<D>({ token, kind, fetchInvoice, payByCard, reportPayment, buildHtml, print = printDocument }: Props<D>) {
   const queryClient = useQueryClient()
   const queryKey = [`public-${kind}`, token]
   const [html, setHtml] = useState('')
@@ -147,6 +149,14 @@ function PublicInvoicePayPage<D>({ token, kind, fetchInvoice, payByCard, reportP
     )
   }
   if (!data) return null
+  if (data.state === 'in_bulk') {
+    return (
+      <Notice>
+        <Typography sx={{ fontWeight: 900, fontSize: 18, mb: 1 }}>Invoice {data.invoice_number} is part of invoice {data.bulk_number}</Typography>
+        <Typography sx={{ color: '#475569' }}>It is paid together with the other invoices in {data.bulk_number}. Please pay it through the link we sent you for that invoice.</Typography>
+      </Notice>
+    )
+  }
   if (data.state === 'under_review') {
     return (
       <Notice>
@@ -176,7 +186,7 @@ function PublicInvoicePayPage<D>({ token, kind, fetchInvoice, payByCard, reportP
             </Box>
           )}
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button startIcon={<PrintIcon />} disabled={!html} onClick={() => printDocument(`Invoice ${data.invoice_number}`, html)} sx={{ fontWeight: 800 }}>
+            <Button startIcon={<PrintIcon />} disabled={!html} onClick={() => print(`Invoice ${data.invoice_number}`, html)} sx={{ fontWeight: 800 }}>
               Print
             </Button>
             {offersOther && (

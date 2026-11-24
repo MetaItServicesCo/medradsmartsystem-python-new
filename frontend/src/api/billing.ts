@@ -16,7 +16,8 @@ export interface PaymentProof {
   id: number
   invoice_id?: number | null
   service_quotation_id?: number | null
-  target_type: 'invoice' | 'service_quotation'
+  target_type: 'invoice' | 'service_quotation' | 'bulk_invoice'
+  bulk_invoice_id?: number | null
   target_number?: string | null
   customer_name?: string | null
   payment_method: string

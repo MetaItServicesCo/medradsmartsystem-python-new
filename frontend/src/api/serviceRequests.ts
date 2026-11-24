@@ -816,8 +816,10 @@ export interface ServiceInvoiceShareResult {
 }
 
 export interface PublicServiceInvoice {
-  state: 'payable' | 'paid' | 'under_review'
+  /** 'in_bulk': it is paid through a bulk invoice, named in bulk_number; this link takes no payment. */
+  state: 'payable' | 'paid' | 'under_review' | 'in_bulk'
   invoice_number: string
+  bulk_number?: string
   balance_due?: string
   /** What a card payment charges now: the balance, the card processing fee, and both. */
   base_amount?: string

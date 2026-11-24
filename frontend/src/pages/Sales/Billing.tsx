@@ -15,6 +15,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
 import LinkIcon from '@mui/icons-material/Link'
+import MoveToInboxRoundedIcon from '@mui/icons-material/MoveToInboxRounded'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FilterListIcon from '@mui/icons-material/FilterList'
@@ -69,6 +70,8 @@ import { useServiceInvoiceHtml } from './useServiceInvoiceHtml'
 import { rentalTaxForLines } from '@/utils/rentalTax'
 import ServiceInvoiceShareDialog, { type ServiceInvoiceShareTarget } from './ServiceInvoiceShareDialog'
 import CardPaymentPanel from '@/components/Billing/CardPaymentPanel'
+import BulkInvoicesDialog from '@/components/Billing/BulkInvoicesDialog'
+import { fetchBulkMemberships, type BulkMembership } from '@/api/bulkInvoices'
 import {
   approveInvoiceForBilling,
   approveInvoicePaymentProof,
@@ -515,6 +518,12 @@ const Billing = () => {
   const [proofQueueStatus, setProofQueueStatus] = useState<'pending_verification' | 'approved' | 'rejected'>('pending_verification')
   const [proofReviewNotes, setProofReviewNotes] = useState<Record<number, string>>({})
   const [expandedProofOcr, setExpandedProofOcr] = useState<Record<number, boolean>>({})
+  // Bulk invoices: their list and screens, opened here or from a notification's link (?bulk=INV-BULK-...).
+  const bulkParam = searchParams.get('bulk') || ''
+  const [bulkDialog, setBulkDialog] = useState<{ startNew?: boolean; openNumber?: string | null } | null>(null)
+  useEffect(() => {
+    if (bulkParam && canApproveBilling) setBulkDialog({ openNumber: bulkParam })
+  }, [bulkParam, canApproveBilling])
 
   const publishBillingActivity = (item: BillingItem, message: string) => {
     focusRecord(`billing-${item.key}`, item.number, {
@@ -594,6 +603,21 @@ const Billing = () => {
     staleTime: 15_000,
     refetchInterval: proofQueueOpen && proofQueueStatus === 'pending_verification' ? 3_000 : 15_000,
   })
+  // Invoices in a bulk invoice say so, and are paid only through it (the server holds them to that).
+  const bulkMembershipsQ = useQuery({
+    queryKey: ['bulk-invoice-memberships'],
+    queryFn: fetchBulkMemberships,
+    enabled: (canApproveBilling || isFacilityBillingUser) && hasPermission(user, 'billing'),
+    staleTime: 15_000,
+  })
+  const bulkByInvoice = useMemo(
+    () => new Map((bulkMembershipsQ.data || []).map(row => [row.invoice_id, row])),
+    [bulkMembershipsQ.data],
+  )
+  const bulkOf = (item: BillingItem | null): BulkMembership | undefined => (
+    !item || (item.source === 'service' && item.billingKind !== 'service_invoice') ? undefined : bulkByInvoice.get(item.id)
+  )
+  const inBulk = (item: BillingItem | null) => Boolean(bulkOf(item)?.locked)
 
   const viewInvoiceId = viewItem && !(viewItem.source === 'service' && viewItem.billingKind !== 'service_invoice')
     ? viewItem.id
@@ -899,6 +923,9 @@ const Billing = () => {
   }, [inspectionQ.data?.summary, inspectionServerPage, items])
 
   const invalidateBilling = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['bulk-invoice-memberships'] }),
+    queryClient.invalidateQueries({ queryKey: ['bulk-invoices'] }),
+    queryClient.invalidateQueries({ queryKey: ['bulk-invoice'] }),
     queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] }),
     queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] }),
     queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] }),
@@ -1512,6 +1539,15 @@ const Billing = () => {
             sx={{ ml: 'auto', fontWeight: 900, cursor: 'pointer', bgcolor: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}
           />
         )}
+        {canApproveBilling && (
+          <Chip
+            icon={<MoveToInboxRoundedIcon sx={{ color: '#fff !important' }} />}
+            label="Bulk invoices"
+            onClick={() => setBulkDialog({})}
+            data-bulk-invoices
+            sx={{ fontWeight: 900, cursor: 'pointer', color: '#fff', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)', '&:hover': { opacity: 0.92 } }}
+          />
+        )}
       </Card>
 
       <Card sx={{ borderRadius: '24px', border: '1px solid #EEF0F6', overflow: 'hidden', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
@@ -1670,6 +1706,29 @@ const Billing = () => {
                       </TableCell>
                       <TableCell>
                         <ValueBox value={item.number} maxWidth={116} color="#5B21B6" fontWeight={700} fontFamily="monospace" bgcolor="#F7F0FF" borderColor="#E9D5FF" onClick={() => viewBillingItem(item)} />
+                        {bulkOf(item) && (
+                          <Tooltip
+                            arrow
+                            title={bulkOf(item)!.locked
+                              ? `Paid through bulk invoice ${bulkOf(item)!.bulk_number}`
+                              : `Paid as part of bulk invoice ${bulkOf(item)!.bulk_number}`}
+                          >
+                            <Chip
+                              size="small"
+                              icon={<MoveToInboxRoundedIcon sx={{ fontSize: '14px !important' }} />}
+                              label={bulkOf(item)!.bulk_number}
+                              onClick={canApproveBilling ? () => setBulkDialog({ openNumber: bulkOf(item)!.bulk_number }) : undefined}
+                              data-bulk-chip={bulkOf(item)!.bulk_number}
+                              sx={{
+                                mt: 0.5, height: 20, maxWidth: 124, fontSize: 10.5, fontWeight: 800,
+                                bgcolor: bulkOf(item)!.locked ? '#EDE9FE' : '#ECFDF5',
+                                color: bulkOf(item)!.locked ? '#5B21B6' : '#047857',
+                                cursor: canApproveBilling ? 'pointer' : 'default',
+                                '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', px: 0.75 },
+                              }}
+                            />
+                          </Tooltip>
+                        )}
                       </TableCell>
                       <TableCell>
                         <ValueBox value={item.relatedNumber} maxWidth={116} fontWeight={700} fontFamily="monospace" bgcolor="#F5F7FF" borderColor="#D8E1FF" onClick={() => viewBillingItem(item)} />
@@ -1818,14 +1877,16 @@ const Billing = () => {
           && (!(actionItem.source === 'service' && actionItem.billingKind === 'service_quotation') || ['authorized', 'partially_paid'].includes(actionItem.status)) && (
           <MenuItem
             sx={ACTION_MENU_ITEM}
-            disabled={paymentInReview(actionItem)}
+            disabled={paymentInReview(actionItem) || inBulk(actionItem)}
             onClick={() => {
               openPayment(actionItem)
               closeActions()
             }}
           >
             <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
-            {paymentInReview(actionItem) ? 'Pay (a payment is waiting for approval)' : 'Pay'}
+            {inBulk(actionItem)
+              ? `Pay (through ${bulkOf(actionItem)!.bulk_number})`
+              : paymentInReview(actionItem) ? 'Pay (a payment is waiting for approval)' : 'Pay'}
           </MenuItem>
         )}
         {/* Invoices only: a service quotation is paid through its own authorization. */}
@@ -1833,7 +1894,7 @@ const Billing = () => {
           && actionItem.balance > 0 && !['paid', 'cancelled'].includes(String(actionItem.status)) && (
           <MenuItem
             sx={ACTION_MENU_ITEM}
-            disabled={paymentInReview(actionItem)}
+            disabled={paymentInReview(actionItem) || inBulk(actionItem)}
             onClick={() => {
               setMarkPaidItem(actionItem)
               setMarkPaidMethod('cheque')
@@ -1843,7 +1904,9 @@ const Billing = () => {
             }}
           >
             <ListItemIcon><PriceCheckIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
-            {paymentInReview(actionItem) ? 'Mark as Paid (a payment is waiting for review)' : 'Mark as Paid'}
+            {inBulk(actionItem)
+              ? `Mark as Paid (through ${bulkOf(actionItem)!.bulk_number})`
+              : paymentInReview(actionItem) ? 'Mark as Paid (a payment is waiting for review)' : 'Mark as Paid'}
           </MenuItem>
         )}
         {actionItem && canEditInvoices && !(actionItem.source === 'service' && actionItem.billingKind !== 'service_invoice') && (
@@ -1854,6 +1917,12 @@ const Billing = () => {
           }}>
             <ListItemIcon><EditOutlinedIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
             Edit Invoice
+          </MenuItem>
+        )}
+        {actionItem && canApproveBilling && bulkOf(actionItem) && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setBulkDialog({ openNumber: bulkOf(actionItem)!.bulk_number }); closeActions() }}>
+            <ListItemIcon><MoveToInboxRoundedIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            Open Bulk Invoice {bulkOf(actionItem)!.bulk_number}
           </MenuItem>
         )}
         {actionItem && (
@@ -1882,7 +1951,7 @@ const Billing = () => {
             <MenuItem
               key={option.channel}
               sx={ACTION_MENU_ITEM}
-              disabled={actionItem.billingApprovalStatus !== 'approved'}
+              disabled={actionItem.billingApprovalStatus !== 'approved' || inBulk(actionItem)}
               onClick={() => {
                 setShareTarget({
                   invoiceId: actionItem.id,
@@ -1894,7 +1963,9 @@ const Billing = () => {
               }}
             >
               <ListItemIcon>{option.icon}</ListItemIcon>
-              {actionItem.billingApprovalStatus === 'approved' ? option.label : `${option.label} (approve for billing first)`}
+              {inBulk(actionItem)
+                ? `${option.label} (sent as part of ${bulkOf(actionItem)!.bulk_number})`
+                : actionItem.billingApprovalStatus === 'approved' ? option.label : `${option.label} (approve for billing first)`}
             </MenuItem>
           ))
         )}
@@ -1952,6 +2023,22 @@ const Billing = () => {
       </Dialog>
 
       <ServiceInvoiceShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
+
+      <BulkInvoicesDialog
+        open={Boolean(bulkDialog)}
+        onClose={() => {
+          setBulkDialog(null)
+          if (bulkParam) {
+            const next = new URLSearchParams(searchParams)
+            next.delete('bulk')
+            setSearchParams(next, { replace: true })
+          }
+        }}
+        startNew={Boolean(bulkDialog?.startNew)}
+        openNumber={bulkDialog?.openNumber || null}
+        isSuperAdmin={user?.role === 'superadmin'}
+        onChanged={() => { void invalidateBilling() }}
+      />
 
       <InvoicePrintDialog
         open={Boolean(viewItem)}
@@ -2133,7 +2220,12 @@ const Billing = () => {
                   <Card key={proof.id} variant="outlined" sx={{ p: 2, borderRadius: '16px', borderColor: proof.mismatch_flags.length ? '#F59E0B88' : '#CBD5E1' }}>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
                       <Box>
-                        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{proof.target_number || `Payment proof #${proof.id}`}</Typography>
+                        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                          {proof.target_number || `Payment proof #${proof.id}`}
+                          {proof.target_type === 'bulk_invoice' && (
+                            <Chip size="small" label="Bulk invoice" sx={{ ml: 1, height: 20, fontSize: 11, fontWeight: 800, bgcolor: '#EDE9FE', color: '#5B21B6' }} />
+                          )}
+                        </Typography>
                         <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 700 }}>
                           {proof.customer_name || 'Customer'} · {methodLabel(proof.payment_method)} · Claimed {money(proof.claimed_amount)}
                         </Typography>

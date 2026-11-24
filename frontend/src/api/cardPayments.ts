@@ -32,13 +32,14 @@ export interface CardPaymentView extends CardCharge {
   quotation_number?: string
 }
 
-export type CardPaymentTarget = { kind: 'invoice' | 'quotation'; id: number; number: string }
+export type CardPaymentTarget = { kind: 'invoice' | 'quotation' | 'bulk'; id: number; number: string }
 
-const base = (target: CardPaymentTarget) => (
-  target.kind === 'invoice'
+const base = (target: CardPaymentTarget) => {
+  if (target.kind === 'bulk') return `/billing/bulk-invoices/${target.id}`
+  return target.kind === 'invoice'
     ? `/billing/invoices/${target.id}`
     : `/service-requests/quotations/${target.id}`
-)
+}
 
 /** The amounts and the secure card form's settings, from the server. */
 export const fetchCardPayment = async (target: CardPaymentTarget): Promise<CardPaymentView> => {
