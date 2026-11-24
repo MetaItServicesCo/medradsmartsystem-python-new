@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NumericField } from '../../components/NumericField'
+import MbmtsAchForm from '@/components/Billing/MbmtsAchForm'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Box, Card, Typography, Button, TextField, IconButton, Chip,
@@ -921,40 +922,8 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             </Box>
           )}
 
-          {/* MBMTS ACH — Read-only company banking details */}
-          {payMethod === 'ach' && achChoice === 'mbmts_ach' && (
-            <Box sx={{
-              p: 2.5, bgcolor: '#FDF4FF', borderRadius: '12px',
-              border: '1px solid rgba(162,28,175,0.15)',
-            }}>
-              <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#A21CAF', mb: 0.5, textAlign: 'center' }}>
-                ACH Authorization Form
-              </Typography>
-              <Typography sx={{ fontSize: '0.75rem', color: '#9CA3AF', mb: 2, textAlign: 'center' }}>
-                Please use the listed below information for ACH payment.
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              {[
-                { label: 'Business Name', value: 'Mr. Biomed Tech Services' },
-                { label: 'Owner Name', value: 'Omar Ahmad' },
-                { label: 'Address', value: '555 N. 5th Street Suite 109B' },
-                { label: 'City, State, Zip', value: 'Garland, TX 75040' },
-                { label: 'Name of Bank', value: 'Chase Business Banking' },
-                { label: 'Account #', value: '818388071' },
-                { label: '9-Digit Routing #', value: '111000614' },
-                { label: 'Type of Account', value: 'Checking' },
-              ].map((row) => (
-                <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.8, borderBottom: '1px solid #F3E8FF' }}>
-                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: '#6B7280' }}>{row.label}</Typography>
-                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E1B4B' }}>{row.value}</Typography>
-                </Box>
-              ))}
-              <Divider sx={{ mt: 2, mb: 1.5 }} />
-              <Typography sx={{ fontSize: '0.7rem', color: '#9CA3AF', textAlign: 'center', fontStyle: 'italic' }}>
-                Only authorized authority can use the listed above information.
-              </Typography>
-            </Box>
-          )}
+          {/* MBMTS ACH: the company's banking details */}
+          {payMethod === 'ach' && achChoice === 'mbmts_ach' && <MbmtsAchForm />}
           {payMethod !== 'credit_card' && (
             <Box sx={{ mt: 2, p: 2, borderRadius: '12px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
               <Typography sx={{ color: '#9A3412', fontWeight: 800, fontSize: '0.85rem', mb: 1 }}>

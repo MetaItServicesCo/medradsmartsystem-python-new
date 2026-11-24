@@ -10,6 +10,7 @@ import {
 } from '@mui/material'
 import AttachFileIcon from '@mui/icons-material/AttachFile'
 import type { LinkPaymentMethod, LinkPaymentReport } from '@/api/serviceRequests'
+import MbmtsAchForm from '@/components/Billing/MbmtsAchForm'
 
 const money = (value: number) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const EMAIL_PATTERN = /^[^@\s,;:<>()[\]"\\]+@[^@\s,;:<>()[\]"\\]+\.[^@\s,;:<>()[\]"\\]+$/
@@ -91,6 +92,7 @@ const LinkPaymentReportDialog = ({
             ))}
           </ToggleButtonGroup>
         </Box>
+        {method === 'mbmts_ach' && <MbmtsAchForm />}
         <TextField
           label="Amount paid ($)"
           type="number"

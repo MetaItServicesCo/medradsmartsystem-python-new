@@ -39,6 +39,7 @@ import {
   type BulkInvoiceStatus,
 } from '@/api/bulkInvoices'
 import CardPaymentPanel from '@/components/Billing/CardPaymentPanel'
+import MbmtsAchForm from '@/components/Billing/MbmtsAchForm'
 import ServiceInvoiceFrame from '@/components/Billing/ServiceInvoiceFrame'
 import BulkInvoiceWorkspace from '@/components/Billing/BulkInvoiceWorkspace'
 import { buildBulkInvoiceHtml } from '@/utils/bulkInvoiceHtml'
@@ -498,6 +499,7 @@ const BulkInvoicesDialog = ({ open, onClose, startNew, openNumber, isSuperAdmin,
           <TextField select label="How it was paid" value={record.method} onChange={event => setRecord(current => ({ ...current, method: event.target.value }))}>
             {RECORD_METHODS.map(method => <MenuItem key={method.value} value={method.value}>{method.label}</MenuItem>)}
           </TextField>
+          {record.method === 'mbmts_ach' && <MbmtsAchForm />}
           <TextField label="Reference (optional)" placeholder="Cheque number, transaction ID…" value={record.reference}
             onChange={event => setRecord(current => ({ ...current, reference: event.target.value }))} inputProps={{ maxLength: 120 }} />
           <TextField label="Note (optional)" value={record.notes} onChange={event => setRecord(current => ({ ...current, notes: event.target.value }))}

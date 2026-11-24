@@ -70,6 +70,7 @@ import { useServiceInvoiceHtml } from './useServiceInvoiceHtml'
 import { rentalTaxForLines } from '@/utils/rentalTax'
 import ServiceInvoiceShareDialog, { type ServiceInvoiceShareTarget } from './ServiceInvoiceShareDialog'
 import CardPaymentPanel from '@/components/Billing/CardPaymentPanel'
+import MbmtsAchForm from '@/components/Billing/MbmtsAchForm'
 import BulkInvoicesDialog from '@/components/Billing/BulkInvoicesDialog'
 import { fetchBulkMemberships, type BulkMembership } from '@/api/bulkInvoices'
 import {
@@ -2503,28 +2504,7 @@ const Billing = () => {
             </Box>
           )}
 
-          {payMethod === 'ach' && achChoice === 'mbmts_ach' && (
-            <Box sx={{ p: 2.5, bgcolor: '#FDF4FF', borderRadius: '14px', border: '1px solid rgba(162,28,175,0.15)' }}>
-              <Typography sx={{ fontWeight: 900, color: '#A21CAF', mb: 0.5, textAlign: 'center' }}>ACH Authorization Form</Typography>
-              <Typography sx={{ fontSize: 12, color: '#9CA3AF', mb: 2, textAlign: 'center' }}>Use the listed information for MBMTS ACH payment.</Typography>
-              <Divider sx={{ mb: 2 }} />
-              {[
-                { label: 'Business Name', value: 'Mr. Biomed Tech Services' },
-                { label: 'Owner Name', value: 'Omar Ahmad' },
-                { label: 'Address', value: '555 N. 5th Street Suite 109B' },
-                { label: 'City, State, Zip', value: 'Garland, TX 75040' },
-                { label: 'Name of Bank', value: 'Chase Business Banking' },
-                { label: 'Account #', value: '818388071' },
-                { label: '9-Digit Routing #', value: '111000614' },
-                { label: 'Type of Account', value: 'Checking' },
-              ].map(row => (
-                <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.8, borderBottom: '1px solid #F3E8FF', gap: 2 }}>
-                  <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#6B7280' }}>{row.label}</Typography>
-                  <Typography sx={{ fontSize: 13, fontWeight: 900, color: '#1E1B4B', textAlign: 'right' }}>{row.value}</Typography>
-                </Box>
-              ))}
-            </Box>
-          )}
+          {payMethod === 'ach' && achChoice === 'mbmts_ach' && <MbmtsAchForm />}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={closePayDialog} sx={{ fontWeight: 900 }}>Cancel</Button>
