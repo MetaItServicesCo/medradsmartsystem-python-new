@@ -327,6 +327,28 @@ ok("Billing search narrows it", [g["facility_name"] for g in as_user("admin").ge
 for who, code in (("tech", 403), ("facadmin", 403)):
     ok(f"  {who} cannot list them", as_user(who).get(f"{BULK}/candidates").status_code == code)
 
+
+def found(term):
+    groups = as_user("admin").get(f"{BULK}/candidates", params={"search": term}).json()["groups"]
+    return sorted(inv["invoice_number"] for group in groups for inv in group["invoices"])
+
+
+ok("search: every word must match, in any order", found("clinic bravo rental") == ["INV-RENTAL-000300", "INV-RENTAL-000301"], found("clinic bravo rental"))
+ok("  part of a facility's name", found("brav clin") == found("Bravo Clinic") and "INV-SALES-000102" in found("brav clin"))
+ok("  a service request number finds its invoice", found("SR-000036") == ["INV-SERVICE-000008"], found("SR-000036"))
+ok("  a work order or sales quotation number", found("WO-000010") == ["INV-SALES-000102"] and found("SQ-000010") == ["INV-SALES-000102"])
+ok("  a rental agreement number", found("RNT-000200") == ["INV-RENTAL-000300"])
+ok("  an invoice number, in part", found("000041") == ["INV-INSP-000041"])
+ok("  % and _ in a word are just characters, not wildcards (0000_1 does not find 000041)",
+   found("0000_1") == [] and found("00%41") == [] and found("000041") == ["INV-INSP-000041"], (found("0000_1"), found("00%41")))
+ok("  a search of punctuation only is ignored", found("-") == found(""))
+ok("  words that match nothing together find nothing", found("alpha rental") == [])
+ok("  case does not matter", found("ALPHA service") == found("alpha SERVICE") != [])
+groups = as_user("admin").get(f"{BULK}/candidates").json()["groups"]
+ok("each facility says how many can go in, and how many cannot",
+   [(g["facility_name"], g["eligible_count"], g["locked_count"]) for g in groups] == [("Alpha Clinic", 2, 1), ("Bravo Clinic", 4, 3)],
+   [(g["facility_name"], g["eligible_count"], g["locked_count"]) for g in groups])
+
 # ---------------------------------------------------------------- B. creating one
 
 section("B. Creating a bulk invoice")

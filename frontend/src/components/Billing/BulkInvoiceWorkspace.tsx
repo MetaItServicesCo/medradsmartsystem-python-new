@@ -75,7 +75,8 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [box, setBox] = useState<Map<number, Line>>(new Map())
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Facilities opened or closed by hand, against what is open by default.
+  const [toggled, setToggled] = useState<Set<string>>(new Set())
   const [dragOver, setDragOver] = useState(false)
   const [billTo, setBillTo] = useState({ facility_id: null as number | null, name: '', email: '', address: '' })
   const [billToTouched, setBillToTouched] = useState(false)
@@ -98,7 +99,7 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
     })
     setBillToTouched(Boolean(bulk))
     setNote(bulk?.note || '')
-    setExpanded(new Set())
+    setToggled(new Set())
   }, [open, bulk])
 
   useEffect(() => {
@@ -115,8 +116,20 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
   const groups = candidatesQ.data?.groups || []
 
   // A search opens every facility it found; otherwise a facility is opened by hand.
-  const isOpen = (key: string) => Boolean(search) || expanded.has(key)
-  const toggle = (key: string) => setExpanded((current) => {
+  // A new search starts from what it found.
+  useEffect(() => { setToggled(new Set()) }, [search])
+
+  /** Open by default: with a search, a facility it found among a few, or the one holding the invoice number typed. */
+  const openByDefault = (group: BulkCandidateGroup) => {
+    if (!search) return false
+    if (groups.length <= 4) return true
+    const words = search.toLowerCase().split(/[\s,]+/).filter(word => /\d/.test(word))
+    return words.length > 0 && group.invoices.some(invoice => words.some(word => (
+      invoice.invoice_number.toLowerCase().includes(word) || (invoice.related_number || '').toLowerCase().includes(word)
+    )))
+  }
+  const isOpen = (group: BulkCandidateGroup) => (toggled.has(group.key) ? !openByDefault(group) : openByDefault(group))
+  const toggle = (key: string) => setToggled((current) => {
     const next = new Set(current)
     if (next.has(key)) next.delete(key)
     else next.add(key)
@@ -261,7 +274,7 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
             <Typography sx={{ color: '#64748B', fontSize: 12.5, fontWeight: 700, px: 0.5 }}>
               Open invoices, by facility. Drag an invoice (or a whole facility) into the box, or press +.
             </Typography>
-            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'grid', alignContent: 'start', gap: 1.25, pr: 0.5 }} data-bulk-facilities>
+            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pr: 0.5, '& > *:not(:last-child)': { mb: 1.25 } }} data-bulk-facilities>
               {candidatesQ.isLoading && <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>}
               {candidatesQ.isError && <Alert severity="error">The open invoices could not be loaded.</Alert>}
               {!candidatesQ.isLoading && !groups.length && !candidatesQ.isError && (
@@ -270,9 +283,11 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
               {groups.map((group) => {
                 const addable = group.invoices.filter(invoice => canAdd(invoice) && !box.has(invoice.id))
                 const openBalance = group.invoices.filter(canAdd).reduce((sum, invoice) => sum + Number(invoice.balance_due || 0), 0)
-                const groupOpen = isOpen(group.key)
+                const groupOpen = isOpen(group)
+                const canGoIn = group.invoices.filter(canAdd).length
+                const lockedCount = group.invoices.length - canGoIn
                 return (
-                  <Box key={group.key} sx={{ bgcolor: '#fff', borderRadius: '18px', border: '1px solid #E9E5F5', boxShadow: '0 8px 22px rgba(49,46,129,0.06)', overflow: 'hidden' }}>
+                  <Box key={group.key} data-bulk-group={group.facility_name} sx={{ bgcolor: '#fff', borderRadius: '18px', border: '1px solid #E9E5F5', boxShadow: '0 8px 22px rgba(49,46,129,0.06)', overflow: 'hidden', flexShrink: 0 }}>
                     <Box
                       draggable={addable.length > 0}
                       onDragStart={event => dragStart(event, addable)}
@@ -284,7 +299,10 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 900, color: '#1E1B4B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.facility_name}</Typography>
                         <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
-                          {group.invoices.length} open · {money(openBalance)} can go in
+                          {canGoIn
+                            ? `${canGoIn} can go in · ${money(openBalance)}`
+                            : 'None can go in'}
+                          {lockedCount > 0 ? ` · ${lockedCount} locked` : ''}
                         </Typography>
                       </Box>
                       <Button
@@ -295,7 +313,7 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
                         onClick={(event) => { event.stopPropagation(); add(addable) }}
                         sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none', whiteSpace: 'nowrap' }}
                       >
-                        Add all ({addable.length})
+                        {addable.length ? `Add all (${addable.length})` : canGoIn ? 'All in the box' : 'Add all'}
                       </Button>
                     </Box>
                     <Collapse in={groupOpen} unmountOnExit>
@@ -400,7 +418,7 @@ const BulkInvoiceWorkspace = ({ open, bulk, onClose, onSaved }: Props) => {
                   </Box>
                 </Box>
               ) : (
-                <Box sx={{ display: 'grid', gap: 1.25 }}>
+                <Box sx={{ '& > *:not(:last-child)': { mb: 1.25 } }}>
                   {boxedGroups.map(group => (
                     <Box key={group.name} sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #EDE9FE', p: 1.25 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.75 }}>

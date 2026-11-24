@@ -11,13 +11,14 @@ app.utils.bulk_invoices.
 from __future__ import annotations
 
 import html
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.config import settings
@@ -25,7 +26,11 @@ from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.bulk_invoice import BulkInvoice, BulkInvoicePayment, BulkInvoiceStatus
 from app.models.facility import Facility
+from app.models.inspection import Inspection, InspectionBatch
 from app.models.invoice import Invoice, InvoiceStatus
+from app.models.rental import Rental
+from app.models.sales import SalesQuotation
+from app.models.service_request import ServiceRequest
 from app.models.user import User, UserRole
 from app.utils import bulk_invoices as bulk_rules
 from app.utils.bulk_invoices import (
@@ -86,6 +91,43 @@ def _bulk_query(db: Session):
         selectinload(BulkInvoice.invoices).options(*_invoice_options()),
         selectinload(BulkInvoice.payments).joinedload(BulkInvoicePayment.created_by),
         joinedload(BulkInvoice.created_by),
+    )
+
+
+def _search_words(search: Optional[str]) -> list[str]:
+    """The words searched for; a word of punctuation only is dropped."""
+    return [word for word in re.split(r"[\s,]+", (search or "").strip()) if re.search(r"[A-Za-z0-9]", word)][:8]
+
+
+def _like(word: str) -> str:
+    """%word%, with the word's own % and _ matched as they are."""
+    return "%" + word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _invoice_matches(word: str):
+    """An invoice this word finds: by its number, its facility or customer, or what it bills for
+    (the service request, inspection, sales quotation or work order, or rental)."""
+    like = _like(word)
+    return or_(
+        Invoice.invoice_number.ilike(like, escape="\\"),
+        Invoice.customer_name.ilike(like, escape="\\"),
+        Invoice.facility_id.in_(select(Facility.id).where(Facility.name.ilike(like, escape="\\"))),
+        Invoice.service_request_id.in_(
+            select(ServiceRequest.id).where(ServiceRequest.request_number.ilike(like, escape="\\"))
+        ),
+        Invoice.rental_id.in_(select(Rental.id).where(Rental.rental_number.ilike(like, escape="\\"))),
+        Invoice.sales_quotation_id.in_(
+            select(SalesQuotation.id).where(or_(
+                SalesQuotation.quotation_number.ilike(like, escape="\\"),
+                SalesQuotation.work_order.ilike(like, escape="\\"),
+            ))
+        ),
+        Invoice.inspection_batch_id.in_(
+            select(InspectionBatch.id).where(InspectionBatch.batch_number.ilike(like, escape="\\"))
+        ),
+        Invoice.inspection_id.in_(
+            select(Inspection.id).where(Inspection.inspection_number.ilike(like, escape="\\"))
+        ),
     )
 
 
@@ -184,17 +226,13 @@ def list_bulk_invoices(
     query = _bulk_query(db)
     if status:
         query = query.filter(BulkInvoice.status == status)
-    term = (search or "").strip()
-    if term:
-        like = f"%{term}%"
-        holding = db.query(Invoice.bulk_invoice_id).outerjoin(Facility, Invoice.facility_id == Facility.id).filter(
-            Invoice.bulk_invoice_id.isnot(None),
-            or_(Invoice.invoice_number.ilike(like), Facility.name.ilike(like), Invoice.customer_name.ilike(like)),
-        )
+    for word in _search_words(search):
+        like = _like(word)
+        holding = db.query(Invoice.bulk_invoice_id).filter(Invoice.bulk_invoice_id.isnot(None), _invoice_matches(word))
         query = query.filter(or_(
-            BulkInvoice.bulk_number.ilike(like),
-            BulkInvoice.bill_to_name.ilike(like),
-            BulkInvoice.bill_to_email.ilike(like),
+            BulkInvoice.bulk_number.ilike(like, escape="\\"),
+            BulkInvoice.bill_to_name.ilike(like, escape="\\"),
+            BulkInvoice.bill_to_email.ilike(like, escape="\\"),
             BulkInvoice.id.in_(holding),
         ))
     bulks = query.order_by(BulkInvoice.created_at.desc(), BulkInvoice.id.desc()).limit(300).all()
@@ -247,10 +285,8 @@ def list_candidates(
     )
     query = db.query(Invoice).options(*_invoice_options()).outerjoin(Facility, Invoice.facility_id == Facility.id)
     query = query.filter(or_(open_filter, Invoice.bulk_invoice_id == bulk_id) if bulk_id else open_filter)
-    term = (search or "").strip()
-    if term:
-        like = f"%{term}%"
-        query = query.filter(or_(Invoice.invoice_number.ilike(like), Facility.name.ilike(like), Invoice.customer_name.ilike(like)))
+    for word in _search_words(search):
+        query = query.filter(_invoice_matches(word))
     invoices = query.order_by(Facility.name, Invoice.issue_date, Invoice.id).limit(1500).all()
     busy = busy_invoice_ids(db, [invoice.id for invoice in invoices])
     groups: list[dict[str, Any]] = []
@@ -279,7 +315,10 @@ def list_candidates(
             "reason": reason,
             "in_this_bulk": bool(bulk_id and invoice.bulk_invoice_id == bulk_id),
         })
-    groups.sort(key=lambda group: group["facility_name"].lower())
+    for group in groups:
+        group["eligible_count"] = sum(1 for invoice in group["invoices"] if invoice["eligible"] or invoice["in_this_bulk"])
+        group["locked_count"] = len(group["invoices"]) - group["eligible_count"]
+    groups.sort(key=lambda group: (group["eligible_count"] == 0, group["facility_name"].lower()))
     return {"groups": groups, "truncated": len(invoices) >= 1500}
 
 
