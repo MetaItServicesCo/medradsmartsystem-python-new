@@ -47,7 +47,11 @@ export const quotationTax = (lines: QuotationTaxLine[], rate: unknown = DEFAULT_
 export const quotationBeforeTax = (quotation: { amount?: number | string | null; tax_amount?: number | string | null }) =>
   (cents(quotation.amount) - cents(quotation.tax_amount)) / 100
 
-/** What a new service invoice is taxed on: nothing without a quotation. */
+/**
+ * What a service invoice is taxed on by itself: nothing. The Service Fee and
+ * labor are not taxed, and a quotation goes on at its amount without its tax.
+ * A tax entered by hand is charged as entered. (The server applies the same rule.)
+ */
 export const serviceInvoiceTaxable = (
-  serviceFee: unknown, labor: unknown, quotationsBeforeTax: unknown, includesQuotation: boolean,
-) => (includesQuotation ? (cents(serviceFee) + cents(labor) + cents(quotationsBeforeTax)) / 100 : 0)
+  _serviceFee: unknown, _labor: unknown, _quotationsBeforeTax: unknown, _includesQuotation: boolean,
+) => 0

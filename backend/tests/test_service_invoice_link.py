@@ -163,6 +163,7 @@ SR_A = service_request("SR-A", bed_a, staffed)
 SR_B = service_request("SR-B", bed_b, empty, hours="0", history=[])
 SR_OLD = service_request("SR-OLD", bed_a, staffed)
 SR_PAY = service_request("SR-PAY", bed_a, staffed)
+SR_HIDE = service_request("SR-HIDE", bed_a, staffed)
 IDS = {name: user.id for name, user in PEOPLE.items()}
 GONE = gone.id
 seed.commit()
@@ -298,6 +299,20 @@ _check.commit()
 _check.close()
 _doc = document(invoice_a["id"]).json()
 ok("  with nobody assigned, no technician is named", _doc["technician"] is None and all(e["technician"] == "" for e in _doc["work_entries"]), _doc["work_entries"])
+
+# Billing can leave a row off the invoice; the work order keeps it.
+r = generate(SR_HIDE, work_entries=[{"key": "a-1", "hidden": True}, {"key": "s-1", "work_done": "Reworded"}])
+ok("a row Billing removes is left off the invoice", r.status_code == 200, r.text[:200])
+_hide_doc = document(r.json()["id"]).json()
+ok("  only the visit is on it, with its new wording", [e["key"] for e in _hide_doc["work_entries"]] == ["s-1"]
+   and _hide_doc["work_entries"][0]["work_done"] == "Reworded", _hide_doc["work_entries"])
+ok("  the hours billed are unchanged", _hide_doc["total_hours"] == 2.0, _hide_doc["total_hours"])
+_check = Session()
+_saved = _check.get(Invoice, r.json()["id"]).service_work_entries
+_history = _check.get(ServiceRequest, SR_HIDE).history
+_check.close()
+ok("  the invoice's saved rows leave it out", [e["key"] for e in _saved] == ["s-1"], _saved)
+ok("  the work order still has it", any(h.get("action") == "work_order_addition" and (h.get("changes") or {}).get("addition_id") == "a-1" for h in _history))
 _check = Session()
 _check.get(ServiceRequest, SR_A).assigned_technician_id = IDS["tech"]
 _check.commit()

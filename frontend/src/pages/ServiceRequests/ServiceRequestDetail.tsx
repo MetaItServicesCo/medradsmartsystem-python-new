@@ -552,7 +552,7 @@ const ServiceRequestDetail = () => {
       travel_charges: invoiceTravelAmount,
       labor_fee_override: invoiceLaborFees.trim() === '' ? undefined : Number(invoiceLaborFees || 0),
       service_call_fee: invoiceServiceCallAmount,
-      work_entries: invoiceWorkEntries.map(({ key, diagnosis, work_done }) => ({ key, diagnosis, work_done })),
+      work_entries: invoiceWorkEntries.map(({ key, diagnosis, work_done, hidden }) => ({ key, diagnosis, work_done, hidden: Boolean(hidden) })),
     }),
     onSuccess: (invoice) => {
       // Read from the request as it stood: reopened and closed again means the invoice was updated.
@@ -675,10 +675,7 @@ const ServiceRequestDetail = () => {
       }
     }
     if (!partQuantitiesAreValid()) return
-    if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0 && selectedServiceParts.length === 0) {
-      toast.info('Add diagnosis, work done, notes, test equipment, or parts before updating the work order')
-      return
-    }
+    // Diagnosis, work done, notes, parts and test equipment are all optional: the time alone is a session.
     workSessionMutation.mutate()
   }
 
@@ -1699,7 +1696,7 @@ const ServiceRequestDetail = () => {
                 </Box>
                 </>)}
                 <TextField
-                  label="Diagnosis"
+                  label="Diagnosis (optional)"
                   multiline
                   minRows={2}
                   fullWidth
@@ -1708,7 +1705,7 @@ const ServiceRequestDetail = () => {
                   placeholder="What was diagnosed during this session?"
                 />
                 <TextField
-                  label="Work Done"
+                  label="Work Done (optional)"
                   multiline
                   minRows={2}
                   fullWidth
@@ -2519,23 +2516,42 @@ const ServiceRequestDetail = () => {
                       {' '}The invoice shows the visits at the {timeSpentHours.toFixed(2)} hrs billed; the technician&apos;s logged time stays on the work order.
                     </Alert>
                   )}
+                  {invoiceWorkEntries.length > 0 && invoiceWorkEntries.every(entry => entry.hidden) && (
+                    <Alert severity="info" sx={{ borderRadius: '12px' }}>No work rows will be shown on the invoice.</Alert>
+                  )}
                   {invoiceWorkEntries.map((entry, index) => (
-                    <Box key={entry.key} sx={{ display: 'grid', gap: 1 }}>
+                    <Box key={entry.key} sx={{ display: 'grid', gap: 1, ...(entry.hidden ? { p: 1, borderRadius: '10px', bgcolor: '#F1F5F9' } : {}) }} data-invoice-work-row={entry.key}>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
                       <Box>
-                        <Typography sx={{ color: '#475569', fontWeight: 800, fontSize: 12 }}>
+                        <Typography sx={{ color: entry.hidden ? '#94A3B8' : '#475569', fontWeight: 800, fontSize: 12, textDecoration: entry.hidden ? 'line-through' : 'none' }}>
                           {[
                             entry.date,
                             entry.check_in || entry.check_out ? `${invoiceClock(entry.check_in) || '—'} – ${invoiceClock(entry.check_out) || '—'}` : '',
                             entry.hours != null ? hoursText(entry.hours) : '',
                           ].filter(Boolean).join(' · ')}
                         </Typography>
-                        {entry.logged_hours != null && (
+                        {entry.logged_hours != null && !entry.hidden && (
                           <Typography sx={{ color: '#B45309', fontWeight: 700, fontSize: 12 }}>
                             Technician logged {hoursText(entry.logged_hours)}; shown as {hoursText(entry.hours)} to match the hours billed.
                           </Typography>
                         )}
+                        {entry.hidden && (
+                          <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 12 }}>
+                            Removed from the invoice. The work order keeps it; the hours billed do not change.
+                          </Typography>
+                        )}
                       </Box>
-                      {(['diagnosis', 'work_done'] as const).map(field => (
+                      <Button
+                        size="small"
+                        startIcon={entry.hidden ? undefined : <DeleteOutlineIcon fontSize="small" />}
+                        onClick={() => setInvoiceWorkEntries(rows => rows.map((row, at) => (at === index ? { ...row, hidden: !row.hidden } : row)))}
+                        sx={{ fontWeight: 800, textTransform: 'none', flexShrink: 0, color: entry.hidden ? '#7C3AED' : '#B91C1C' }}
+                        data-invoice-work-toggle={entry.key}
+                      >
+                        {entry.hidden ? 'Undo' : 'Remove'}
+                      </Button>
+                      </Box>
+                      {!entry.hidden && (['diagnosis', 'work_done'] as const).map(field => (
                         <TextField
                           key={field}
                           label={field === 'diagnosis' ? 'Diagnose' : 'Action Taken'}
@@ -2694,15 +2710,13 @@ const ServiceRequestDetail = () => {
                     <span data-invoice-tax-basis>
                       {invoiceTaxOverride !== null
                         ? 'Entered by hand'
-                        : selectedQuotations.length > 0
-                          ? `${serviceTaxRate}% of $${invoiceTaxableAmount.toFixed(2)} (travel is not taxed)`
-                          : 'No tax: no quotation is included'}
+                        : 'No tax: the Service Fee, labor and quotations are not taxed. Enter an amount to charge tax.'}
                     </span>
                     {invoiceTaxOverride !== null && (
                       <Box component="span" role="button" tabIndex={0} onClick={() => setInvoiceTaxOverride(null)}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setInvoiceTaxOverride(null) }}
                         sx={{ color: '#7C3AED', fontWeight: 800, cursor: 'pointer' }}>
-                        Use {serviceTaxRate}% tax
+                        No tax
                       </Box>
                     )}
                   </Box>

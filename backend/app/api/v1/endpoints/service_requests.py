@@ -158,6 +158,8 @@ class ServiceInvoiceWorkEntryEdit(BaseModel):
     key: str = Field(max_length=120)
     diagnosis: Optional[str] = Field(default=None, max_length=5000)
     work_done: Optional[str] = Field(default=None, max_length=5000)
+    # Left off the invoice by Billing; the work order keeps it.
+    hidden: bool = False
 
 
 class ServiceInvoiceCreate(BaseModel):
@@ -2312,8 +2314,7 @@ def create_manual_work_session(
     part_usages = list(session.part_usages or [])
     if duration_hours <= 0:
         raise HTTPException(status_code=400, detail="Work-session duration must be greater than zero after break time")
-    if not diagnosis and not work_done and not notes and not test_equipment_used and not part_usages:
-        raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, test equipment, or parts before saving the session")
+    # Diagnosis, work done, notes, parts and test equipment are all optional: the time alone is a session.
 
     now = datetime.utcnow()
     if db_sr.status == ServiceRequestStatus.NEW:
@@ -2474,8 +2475,7 @@ def clock_out_service_request(
     total_mileage = Decimal(str(clock_out.total_mileage)) if clock_out.total_mileage is not None else Decimal("0")
     if total_mileage < 0:
         raise HTTPException(status_code=400, detail="Total mileage cannot be negative")
-    if not diagnosis and not work_done and not notes and not test_equipment_ids and not part_usages:
-        raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, test equipment, or parts before clocking out")
+    # Diagnosis, work done, notes, parts and test equipment are all optional when clocking out.
 
     test_equipment_used = []
     if test_equipment_ids:

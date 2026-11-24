@@ -744,6 +744,8 @@ export interface ServiceInvoiceWorkEntry {
   hours: number | null
   /** The technician's logged hours, when an hours correction changed this row (Billing only). */
   logged_hours?: number | null
+  /** Left off the invoice by Billing (the work order keeps it). */
+  hidden?: boolean
 }
 
 export interface ServiceHoursCorrection {

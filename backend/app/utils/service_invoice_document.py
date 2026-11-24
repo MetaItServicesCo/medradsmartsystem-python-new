@@ -65,7 +65,8 @@ def _day(*values: Any) -> Optional[str]:
 
 def service_work_entries(sr: ServiceRequest, edits: Optional[dict[str, dict[str, Any]]] = None) -> list[dict[str, Any]]:
     """One row per visit or addition, in the order they happened. `edits` holds
-    the administrator's wording by row key; hours and times are never edited."""
+    the administrator's wording by row key, and the rows left off the invoice
+    ("hidden"); hours and times are never edited. The work order keeps every row."""
     rows: list[dict[str, Any]] = []
     for index, session in enumerate(_sessions(sr)):
         rows.append({
@@ -115,7 +116,7 @@ def service_work_entries(sr: ServiceRequest, edits: Optional[dict[str, dict[str,
             for field in ("diagnosis", "work_done"):
                 if edit.get(field) is not None:
                     row[field] = _text(edit[field])[:MAX_WORK_TEXT]
-    return rows
+    return [row for row in rows if not ((edits or {}).get(str(row["key"])) or {}).get("hidden")]
 
 
 def _latest_correction_at(history: list[dict[str, Any]]) -> Optional[int]:

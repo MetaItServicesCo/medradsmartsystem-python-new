@@ -33,8 +33,9 @@ ok('a quotation goes on an invoice at its amount before tax', quotationBeforeTax
 ok('  and one from before service tax at its amount', quotationBeforeTax({ amount: 300 }) === 300)
 
 ok('an invoice without a quotation is taxed on nothing', serviceInvoiceTaxable(150, 150, 0, false) === 0)
-ok('an invoice with one: Service Fee + labor + quotations', serviceInvoiceTaxable(150, 150, 150, true) === 450)
-ok('  $450 of it: $37.13 tax', serviceTaxOn(serviceInvoiceTaxable(150, 150, 150, true)) === 37.13)
+ok('an invoice with one is taxed on nothing either: the quotation goes on without its tax', serviceInvoiceTaxable(150, 150, 150, true) === 0)
+ok('  so it adds no tax', serviceTaxOn(serviceInvoiceTaxable(150, 150, 150, true)) === 0)
+ok('the tax rule itself is unchanged for quotations: 8.25% of $450 is $37.13', serviceTaxOn(450) === 37.13)
 
 if (fails.length) {
   console.log(`\n${fails.length} FAILED`)

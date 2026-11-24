@@ -402,6 +402,17 @@ r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/work-sessions",
                          json={"session_id": "session-00002", "total_work_hours": "1.25", "work_done": "Recalibrated"})
 ok("a work session with hours still adds them", r.status_code == 200 and state(ACTIVE)["hours"] == hours_before + D("1.25"),
    f"{r.status_code} {state(ACTIVE)['hours']}")
+hours_before = state(ACTIVE)["hours"]
+r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/work-sessions",
+                         json={"session_id": "session-00004", "total_work_hours": "0.75"})
+ok("a work session with only its time is accepted: diagnosis and work done are optional",
+   r.status_code == 200 and state(ACTIVE)["hours"] == hours_before + D("0.75"), f"{r.status_code} {r.text[:200]}")
+r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/clock-in")
+ok("  clocking in", r.status_code == 200, f"{r.status_code} {r.text[:200]}")
+r = as_user("tech").post(f"/api/v1/service-requests/{ACTIVE}/clock-out", json={})
+ok("  and clocking out with nothing written is accepted too", r.status_code == 200, f"{r.status_code} {r.text[:200]}")
+r = add(ACTIVE)
+ok("  an addition (no hours) with nothing in it is still refused", r.status_code == 400, f"{r.status_code} {r.text[:200]}")
 r = as_user("tech").post(f"/api/v1/service-requests/{INVOICED}/work-sessions",
                          json={"session_id": "session-00003", "total_work_hours": "1", "work_done": "late"})
 ok("a completed request still takes no work session (only additions)", r.status_code == 400, str(r.status_code))

@@ -3,11 +3,11 @@
 A quotation paid on its own is taxed on its part and other lines, not labor:
 Part $150 + Labor $100 is $250 + $12.38 tax = $262.38.
 
-A service invoice is taxed only when it includes a quotation, and then on the
-whole invoice but travel, with each quotation at its amount before its own
-tax: Service Fee $150 + Labor $150 + quotation $150 = $450 + $37.13 tax.
-Travel is never taxed. Without a quotation there is no tax. Quotations from
-before service tax keep their amounts.
+A service invoice adds no tax of its own: the Service Fee, labor and travel
+are not taxed, and a quotation included goes on at its amount only, without
+its tax: Service Fee $150 + Labor $150 + quotation $150 = $450, no tax.
+Billing can still type a tax amount. Quotations from before service tax keep
+their amounts.
 
     cd backend
     DATABASE_URL=sqlite:// venv312/Scripts/python.exe tests/test_service_tax.py
@@ -82,8 +82,8 @@ ok("  other lines are taxed, labor in any case is not", (taxable, tax) == (D("40
 ok("  labor alone: no tax", quotation_tax([{"item_type": "labor", "total": "300"}])[2] == D("0.00"))
 ok("an invoice without a quotation is taxed on nothing",
    service_invoice_taxable_amount("150", "150", "0", includes_quotation=False) == D("0.00"))
-ok("an invoice with one: the Service Fee, labor and quotations",
-   service_invoice_taxable_amount("150", "150", "150", includes_quotation=True) == D("450.00"))
+ok("an invoice with one is taxed on nothing either: the quotation goes on without its tax",
+   service_invoice_taxable_amount("150", "150", "150", includes_quotation=True) == D("0.00"))
 
 
 if os.environ.get("SERVICE_TAX_TEST_DB"):
@@ -240,7 +240,7 @@ r = client.put(f"{API}/quotations/{LEGACY}", json={"description": "Old repair, r
 ok("its amount stays $300.00, with no tax", r.status_code == 200 and money(r.json()["amount"]) == D("300.00")
    and money(r.json()["tax_amount"]) == D("0.00") and money(r.json()["subtotal"]) == D("300.00"), r.text[:300])
 
-print("\nAn invoice that includes a quotation is taxed as a whole, but travel")
+print("\nAn invoice that includes a quotation adds its amount only, no tax")
 included = create_quotation(SR_TAXED, [PART_150])
 ok("the quotation alone would be $162.38", money(included["amount"]) == D("162.38"), included)
 complete(SR_TAXED)
@@ -248,8 +248,8 @@ r = generate(SR_TAXED, include_quotations=True, quotation_ids=[included["id"]], 
 inv = r.json()
 ok("Service Fee $150 + Labor $150 + Part $150 + Travel $40: subtotal $490.00",
    r.status_code == 200 and money(inv["subtotal"]) == D("490.00"), r.text[:400])
-ok("  tax 8.25% of $450.00 (no travel) is $37.13", money(inv["tax_amount"]) == D("37.13"), inv.get("tax_amount"))
-ok("  total $527.13, all of it due", money(inv["total_amount"]) == D("527.13") and money(inv["balance_due"]) == D("527.13"), inv.get("total_amount"))
+ok("  no tax: not on the Service Fee, the labor, the quotation or travel", money(inv["tax_amount"]) == D("0.00"), inv.get("tax_amount"))
+ok("  total $490.00, all of it due", money(inv["total_amount"]) == D("490.00") and money(inv["balance_due"]) == D("490.00"), inv.get("total_amount"))
 quote_lines = [line for line in inv.get("line_items", []) if line.get("item_number") == included["quotation_number"]]
 ok("  the quotation's line is on it at $150.00, before its own tax",
    len(quote_lines) == 1 and money(quote_lines[0]["total_amount"]) == D("150.00"), quote_lines)
@@ -262,9 +262,8 @@ db.close()
 ok("  the quotation is marked as on the invoice", row.status == "included_in_invoice", row.status)
 ok("  its ledger records $150.00 billed", entry is not None and money(entry.amount) == D("150.00"), entry and entry.amount)
 changes = history[-1].get("changes", {}) if history else {}
-ok("  the request's history records how the tax was worked out",
-   changes.get("taxable_amount") == "450.00" and changes.get("tax_amount") == "37.13" and changes.get("tax_entered") is False
-   and changes.get("tax_rate") == "8.25", changes)
+ok("  the request's history records it: nothing taxed, none entered",
+   changes.get("taxable_amount") == "0.00" and changes.get("tax_amount") == "0.00" and changes.get("tax_entered") is False, changes)
 
 print("\nWithout a quotation, no tax")
 complete(SR_PLAIN)
