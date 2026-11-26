@@ -42,44 +42,6 @@ const Row = ({ label, value }: { label: string; value: string }) => (
   <div className="ui-row"><span>{label}</span><strong>{value}</strong></div>
 )
 
-/** The hero's window: one service request, worked and priced, ready to invoice. */
-export function HeroRequest() {
-  return (
-    <div className="ui ui-window lp-hero-window" role="img" aria-label="A MedRad service request for an infusion pump: diagnosis, work done, 2.5 hours and a total of $434.00, ready to invoice">
-      <div className="ui-window__bar">
-        <span className="ui-dots" aria-hidden="true"><i /><i /><i /></span>
-        <span className="ui-window__title">Service requests</span>
-      </div>
-      <div className="ui-window__body">
-        <div className="ui-head">
-          <div>
-            <span className="ui-mono">SR-002184</span>
-            <strong className="ui-head__title">Infusion pump, occlusion alarm</strong>
-            <span className="ui-muted">Brookvale Dialysis Center · Room 4</span>
-          </div>
-          <Chip tone="done">Completed</Chip>
-        </div>
-        <div className="ui-block">
-          <span className="ui-label">Diagnosis</span>
-          <p>Occlusion alarm at 2 psi. Pressure sensor out of tolerance.</p>
-        </div>
-        <div className="ui-block">
-          <span className="ui-label">Work done</span>
-          <p>Replaced the pressure sensor, calibrated, passed a flow test at 125 mL/h.</p>
-        </div>
-        <div className="ui-block ui-block--rows">
-          <span className="ui-label">Billing calculation</span>
-          <Row label="Service fee" value="$95.00" />
-          <Row label="Labor, 2.5 h at $110.00" value="$275.00" />
-          <Row label="Pressure sensor × 1" value="$64.00" />
-          <div className="ui-row ui-row--total"><span>Total</span><strong>$434.00</strong></div>
-        </div>
-        <div className="ui-actions"><span className="ui-button ui-button--primary">Create invoice</span><span className="ui-button">Print report</span></div>
-      </div>
-    </div>
-  )
-}
-
 const REQUESTS = [
   { facility: 'Brookvale Dialysis Center', item: 'Infusion pump · occlusion alarm', number: '2184', tone: 'work', status: 'In progress' },
   { facility: 'Harlow Street Surgery', item: 'Defibrillator · battery check', number: '2183', tone: 'open', status: 'Assigned' },
@@ -93,15 +55,32 @@ const REQUESTS = [
   { facility: 'Harlow Street Surgery', item: 'Electrosurgical unit · PM visit', number: '2161', tone: 'done', status: 'Completed' },
 ] as const
 
-const PLATFORM_BEATS = [0, 900, 1800, 2100]
-/** The product itself: the request list beside the open request. The open request is the loop. */
-export function PlatformApp({ running }: { running: boolean }) {
-  const step = useCycle(running, PLATFORM_BEATS)
-  const completed = step >= 1
-  const pressed = step === 2
-  const invoiced = step >= 3
+/** The request's state at each step of the platform story: 0 received ... 4 paid. */
+const STAGES = [
+  { chip: 'New', tone: 'open' },
+  { chip: 'Assigned', tone: 'open' },
+  { chip: 'In progress', tone: 'work' },
+  { chip: 'Completed', tone: 'done' },
+  { chip: 'Paid', tone: 'paid' },
+] as const
+const ACTIVITY = [
+  ['09:02', 'Request received from Brookvale Dialysis Center', 0],
+  ['09:12', 'Assigned to field technician 2', 1],
+  ['10:47', 'On site, diagnosis recorded', 2],
+  ['13:05', 'Work done and 2.5 h logged', 2],
+  ['13:06', 'Invoice INV-SERVICE-000214 created', 3],
+  ['13:40', 'Paid $434.00 by card through Square', 4],
+] as const
+
+/**
+ * The product itself: the request list beside the open request. The page's
+ * scroll story sets the stage; each step fills in what the job has reached.
+ */
+export function PlatformApp({ stage }: { stage: number }) {
+  const at = Math.max(0, Math.min(4, stage))
+  const state = STAGES[at]
   return (
-    <div className="ui lp-app" role="img" aria-label="MedRad's service request list beside the open request: the work is completed, then an invoice is created from it">
+    <div className="ui lp-app" data-stage={at} role="img" aria-label="MedRad's service request list beside the open request, which goes from received to assigned, worked, invoiced and paid">
       <div className="lp-app__pane lp-app__pane--list">
         <div className="ui-window__bar"><span className="ui-dots" aria-hidden="true"><i /><i /><i /></span><span className="ui-window__title">Service requests</span></div>
         <div className="ui-list">
@@ -117,16 +96,14 @@ export function PlatformApp({ running }: { running: boolean }) {
                 </div>
                 <div className="ui-list__end">
                   <span className="ui-mono">SR-00{request.number}</span>
-                  {index === 0
-                    ? <Chip tone={completed ? 'done' : 'work'}>{completed ? 'Completed' : 'In progress'}</Chip>
-                    : <Chip tone={request.tone}>{request.status}</Chip>}
+                  {index === 0 ? <Chip tone={state.tone}>{state.chip}</Chip> : <Chip tone={request.tone}>{request.status}</Chip>}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
-      <div className={`lp-app__pane lp-app__pane--open${step === 0 && running ? ' is-reset' : ''}`}>
+      <div className="lp-app__pane lp-app__pane--open">
         <div className="ui-window__body">
           <div className="ui-head">
             <div>
@@ -134,41 +111,44 @@ export function PlatformApp({ running }: { running: boolean }) {
               <strong className="ui-head__title">Infusion pump, occlusion alarm</strong>
               <span className="ui-muted">Brookvale Dialysis Center · Room 4 · Serial 14C220871</span>
             </div>
-            <Chip tone={completed ? 'done' : 'work'}>{completed ? 'Completed' : 'In progress'}</Chip>
+            <Chip tone={state.tone}>{state.chip}</Chip>
+          </div>
+          <div className="ui-assignee">
+            <span className="ui-label">Technician</span>
+            <span className={`ui-select${at >= 1 ? '' : ' is-empty'}`}>{at >= 1 ? 'Field technician 2' : 'Choose a technician'}</span>
           </div>
           <div className="ui-grid2">
-            <div className="ui-block"><span className="ui-label">Diagnosis</span><p>Occlusion alarm at 2 psi. Pressure sensor out of tolerance.</p></div>
-            <div className="ui-block"><span className="ui-label">Work done</span><p>Replaced the pressure sensor, calibrated, passed a flow test at 125 mL/h.</p></div>
+            <div className={`ui-block ui-fill${at >= 2 ? ' is-on' : ''}`}><span className="ui-label">Diagnosis</span><p>{at >= 2 ? 'Occlusion alarm at 2 psi. Pressure sensor out of tolerance.' : 'Waiting for the technician'}</p></div>
+            <div className={`ui-block ui-fill${at >= 2 ? ' is-on' : ''}`}><span className="ui-label">Work done</span><p>{at >= 2 ? 'Replaced the pressure sensor, calibrated, passed a flow test at 125 mL/h.' : 'Waiting for the technician'}</p></div>
           </div>
           <div className="ui-grid2">
-            <div className="ui-block ui-block--rows">
+            <div className={`ui-block ui-block--rows ui-fill${at >= 2 ? ' is-on' : ''}`}>
               <span className="ui-label">Hours and parts</span>
-              <Row label="Labor" value="2.5 h" />
-              <Row label="Pressure sensor" value="× 1" />
-              <Row label="Mileage" value="18 mi" />
+              <Row label="Labor" value={at >= 2 ? '2.5 h' : '-'} />
+              <Row label="Pressure sensor" value={at >= 2 ? '× 1' : '-'} />
+              <Row label="Mileage" value={at >= 2 ? '18 mi' : '-'} />
             </div>
-            <div className="ui-block ui-block--rows">
+            <div className={`ui-block ui-block--rows ui-fill${at >= 3 ? ' is-on' : ''}`}>
               <span className="ui-label">Billing calculation</span>
-              <Row label="Service fee" value="$95.00" />
-              <Row label="Labor, 2.5 h at $110.00" value="$275.00" />
-              <Row label="Parts" value="$64.00" />
-              <div className="ui-row ui-row--total"><span>Total</span><strong>$434.00</strong></div>
+              <Row label="Service fee" value={at >= 3 ? '$95.00' : '-'} />
+              <Row label="Labor, 2.5 h at $110.00" value={at >= 3 ? '$275.00' : '-'} />
+              <Row label="Parts" value={at >= 3 ? '$64.00' : '-'} />
+              <div className="ui-row ui-row--total"><span>Total</span><strong>{at >= 3 ? '$434.00' : '-'}</strong></div>
             </div>
           </div>
           <div className="ui-actions">
-            <span className={`ui-button ui-button--primary${pressed ? ' is-pressed' : ''}`}>Create invoice</span>
+            <span className={`ui-button ui-button--primary${at === 3 ? ' is-pressed' : ''}`}>Create invoice</span>
             <span className="ui-button">Print report</span>
-            <span className={`ui-toast${invoiced ? ' is-shown' : ''}`} aria-hidden={!invoiced}>
-              <i className="ui-tick" aria-hidden="true" /> INV-SERVICE-000214 created
+            <span className={`ui-toast${at >= 3 ? ' is-shown' : ''}${at >= 4 ? ' is-paid' : ''}`} aria-hidden={at < 3}>
+              <i className="ui-tick" aria-hidden="true" /> {at >= 4 ? 'Paid $434.00 by card' : 'INV-SERVICE-000214 created'}
             </span>
           </div>
           <div className="ui-block">
             <span className="ui-label">Activity</span>
             <ul className="ui-activity">
-              <li><span className="ui-mono">09:12</span> Assigned to field technician</li>
-              <li><span className="ui-mono">10:47</span> On site, diagnosis recorded</li>
-              <li><span className="ui-mono">13:05</span> Work done and hours logged</li>
-              <li><span className="ui-mono">13:06</span> Report signed by the facility</li>
+              {ACTIVITY.map(([time, text, from]) => (
+                <li key={time} className={at >= from ? 'is-on' : ''}><span className="ui-mono">{time}</span> {text}</li>
+              ))}
             </ul>
           </div>
         </div>

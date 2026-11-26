@@ -32,6 +32,8 @@ export function useLandingHead({ title, description, themeColor }: { title: stri
     }
     document.title = title
     html.setAttribute('data-type', 'software')
+    // The app locks the document's scroll (it scrolls inside its own panels); the landing page scrolls the window.
+    html.classList.add('lp-page')
     document.body.style.backgroundColor = themeColor
     meta('name', 'description', description)
     meta('name', 'page-type', 'software')
@@ -45,7 +47,7 @@ export function useLandingHead({ title, description, themeColor }: { title: stri
     if (!document.querySelector('link[data-landing-fonts]')) {
       const fonts = document.createElement('link')
       fonts.rel = 'stylesheet'
-      fonts.href = 'https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&display=swap'
+      fonts.href = 'https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=Instrument+Serif:ital@1&display=swap'
       fonts.setAttribute('data-landing-fonts', '')
       document.head.appendChild(fonts)
     }
@@ -55,6 +57,7 @@ export function useLandingHead({ title, description, themeColor }: { title: stri
       if (previous.type === null) html.removeAttribute('data-type')
       else html.setAttribute('data-type', previous.type)
       document.body.style.backgroundColor = previous.bodyBackground
+      html.classList.remove('lp-page')
     }
   }, [title, description, themeColor])
 }
@@ -107,43 +110,6 @@ export function usePausableLoop() {
   const [still] = useState(holdStill)
   const [paused, setPaused] = useState(false)
   return { running: !still && !paused, still, paused, toggle: () => setPaused(value => !value) }
-}
-
-/**
- * The hero frame's one effect, the dealt gradient mesh: the kit's effects
- * runtime, loaded as plain files from /landing-kit. A phone and reduced
- * motion keep the CSS ground the frame already paints.
- */
-export function useGradientMesh(hostRef: RefObject<HTMLElement>, paused: boolean) {
-  const controller = useRef<{ pause(): void; resume(): void; destroy(): void } | null>(null)
-  useEffect(() => {
-    const host = hostRef.current
-    if (!host || holdStill()) return
-    let cancelled = false
-    // A plain file served from /public: built into a full URL at run time so the bundler never touches it.
-    const runtime = new URL('/landing-kit/effects/fx.js', window.location.origin).href
-    import(/* @vite-ignore */ runtime)
-      .then(async fx => {
-        if (cancelled) return
-        const mounted = await fx.mount(host, 'gradient-mesh', {
-          palette: { bg: '#ffffff', surface: '#f4f4f4', ink: '#111111', muted: '#6b6b6b', accent: '#1a4be0', accentInk: '#ffffff' },
-          params: { speed: 0.06, softness: 0.6, tint: 0.55, calm: 0.45, calmX: 0.3, calmY: 0.75 },
-          seed: 2184,
-        })
-        if (cancelled) mounted.destroy()
-        else controller.current = mounted
-      })
-      .catch(() => { /* the CSS ground stays: the frame is never empty */ })
-    return () => {
-      cancelled = true
-      controller.current?.destroy()
-      controller.current = null
-    }
-  }, [hostRef])
-  useEffect(() => {
-    if (paused) controller.current?.pause()
-    else controller.current?.resume()
-  }, [paused])
 }
 
 /**
@@ -233,6 +199,132 @@ export function useScrollMotion(rootRef: RefObject<HTMLElement>) {
       html.classList.remove('lp-motion')
     }
   }, [rootRef])
+}
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
+const smoothstep = (from: number, to: number, value: number) => {
+  const x = clamp01((value - from) / (to - from))
+  return x * x * (3 - 2 * x)
+}
+
+/**
+ * The pinned product stage (MotionSites: sticky cinematic stage with CSS-variable
+ * choreography). The section is a long runway; its stage sticks for the length of
+ * it. Scroll is smoothed (lerp .14) and written as --enter (the window rising into
+ * place) and --progress (the timeline), and the story's step is returned so the
+ * window can show what the job has reached. Reduced motion keeps the mapping, with
+ * no smoothing.
+ */
+export function useStoryStage(sectionRef: RefObject<HTMLElement>, steps: number) {
+  const [step, setStep] = useState(() => (prefersReducedMotion() ? steps - 1 : 0))
+  useEffect(() => {
+    const section = sectionRef.current
+    if (!section) return
+    const reduce = prefersReducedMotion()
+    let target = 0
+    let smooth = 0
+    let ready = false
+    let frame = 0
+    let lastStep = -1
+    const update = () => {
+      frame = 0
+      const rect = section.getBoundingClientRect()
+      const height = window.innerHeight
+      const run = Math.max(1, section.offsetHeight - height)
+      target = Math.min(run, Math.max(0, -rect.top))
+      smooth = !ready || reduce ? target : smooth + (target - smooth) * 0.14
+      ready = true
+      if (Math.abs(smooth - target) < 0.08) smooth = target
+      const enter = reduce ? 1 : smoothstep(0, height * 0.9, height - rect.top)
+      const progress = clamp01(smooth / run)
+      const storyProgress = clamp01((progress - 0.06) / 0.86)
+      const next = Math.min(steps - 1, Math.floor(storyProgress * steps))
+      section.style.setProperty('--enter', enter.toFixed(4))
+      section.style.setProperty('--progress', storyProgress.toFixed(4))
+      if (next !== lastStep) { lastStep = next; setStep(next) }
+      if (smooth !== target) frame = window.requestAnimationFrame(update)
+    }
+    const request = () => { if (!frame) frame = window.requestAnimationFrame(update) }
+    window.addEventListener('scroll', request, { passive: true })
+    window.addEventListener('resize', request)
+    update()
+    return () => {
+      window.removeEventListener('scroll', request)
+      window.removeEventListener('resize', request)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [sectionRef, steps])
+  return step
+}
+
+/**
+ * Sticky stacking cards that scale down (MotionSites scroll recipe 5): each card
+ * pins under the one before; the deck underneath shrinks a step as the next one
+ * slides over it. Reduced motion keeps the deck, without the scaling.
+ */
+export function useStackCards(sectionRef: RefObject<HTMLElement>) {
+  useEffect(() => {
+    const section = sectionRef.current
+    if (!section || prefersReducedMotion()) return
+    const cards = Array.from(section.querySelectorAll<HTMLElement>('.lp-stack__card'))
+    const count = cards.length
+    let frame = 0
+    const update = () => {
+      frame = 0
+      const rect = section.getBoundingClientRect()
+      const progress = clamp01(-rect.top / Math.max(1, rect.height - window.innerHeight))
+      cards.forEach((card, index) => {
+        const targetScale = 1 - (count - 1 - index) * 0.035
+        const t = clamp01((progress - index / count) / (1 - index / count))
+        card.style.setProperty('--deal', (1 + (targetScale - 1) * t).toFixed(4))
+        card.style.setProperty('--dim', ((1 - targetScale) * Math.max(0, t - 0.35) / 0.65 * 3.2).toFixed(4))
+      })
+    }
+    const request = () => { if (!frame) frame = window.requestAnimationFrame(update) }
+    window.addEventListener('scroll', request, { passive: true })
+    window.addEventListener('resize', request)
+    update()
+    return () => {
+      window.removeEventListener('scroll', request)
+      window.removeEventListener('resize', request)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [sectionRef])
+}
+
+/** A soft light follows the pointer across the cards it hovers (fine pointers only). */
+export function useCursorLight(rootRef: RefObject<HTMLElement>, selector: string) {
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root || !media('(hover: hover) and (pointer: fine)')) return
+    const move = (event: PointerEvent) => {
+      const card = (event.target as Element | null)?.closest<HTMLElement>(selector)
+      if (!card) return
+      const rect = card.getBoundingClientRect()
+      card.style.setProperty('--mx', `${event.clientX - rect.left}px`)
+      card.style.setProperty('--my', `${event.clientY - rect.top}px`)
+    }
+    root.addEventListener('pointermove', move, { passive: true })
+    return () => root.removeEventListener('pointermove', move)
+  }, [rootRef, selector])
+}
+
+/**
+ * The hero's background film: plays muted and looping; reduced motion keeps its
+ * still poster. A visitor can pause it (anything moving past five seconds).
+ */
+export function useHeroVideo(videoRef: RefObject<HTMLVideoElement>) {
+  const [still] = useState(prefersReducedMotion)
+  const [paused, setPaused] = useState(false)
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (still || paused) { video.pause(); return }
+    video.muted = true
+    const playing = video.play()
+    if (playing && typeof playing.catch === 'function') playing.catch(() => setPaused(true))
+  }, [videoRef, still, paused])
+  return { still, paused, toggle: () => setPaused(value => !value) }
 }
 
 /** The mega panel opens after 150 ms of hover intent and closes at once on leave. */
