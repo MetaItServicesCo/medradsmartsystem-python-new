@@ -286,9 +286,9 @@ export function FlowDiagram() {
     ['Payment', 'Paid by card', 'Recorded on the invoice'],
   ] as const
   return (
-    <ol className="lp-flow" aria-label="One job in MedRad: service request SR-002184, work done, invoice INV-SERVICE-000214, paid by card">
+    <ol className="lp-flow" data-scrub="flow" aria-label="One job in MedRad: service request SR-002184, work done, invoice INV-SERVICE-000214, paid by card">
       {steps.map(([title, ref, line], index) => (
-        <li key={title} className="lp-flow__step">
+        <li key={title} className="lp-flow__step" data-reveal style={{ ['--i' as string]: index }}>
           <span className="lp-flow__node" aria-hidden="true">{index + 1}</span>
           <strong>{title}</strong>
           <span className="ui-mono">{ref}</span>

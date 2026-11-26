@@ -175,6 +175,66 @@ export function useKitMoments(rootRef: RefObject<HTMLElement>) {
   }, [rootRef])
 }
 
+/**
+ * Scroll motion across the page (asked for by the client, beyond the kit's one
+ * dealt moment). Two kinds, one passive scroll listener, transform and opacity
+ * only, the page scrolling natively:
+ *   [data-reveal]   rises in once as it enters (staggered by --i);
+ *   [data-scrub]    follows the scrollbar: --p runs 0 to 1 as its top travels from
+ *                   the screen's foot to 35% down; the hero's --x runs 0 to 1 as
+ *                   the hero leaves.
+ * Content is only ever hidden under html.lp-motion, which this hook sets, so the
+ * page reads in full without script and under reduced motion.
+ */
+export function useScrollMotion(rootRef: RefObject<HTMLElement>) {
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root || prefersReducedMotion()) return
+    const html = document.documentElement
+    const reveals = Array.from(root.querySelectorAll<HTMLElement>('[data-reveal]'))
+    const scrubs = Array.from(root.querySelectorAll<HTMLElement>('[data-scrub]'))
+    const hero = root.querySelector<HTMLElement>('.lp-hero')
+    // Anything already scrolled past (a jump to an anchor, a reload half way down) shows at once.
+    reveals.forEach(element => { if (element.getBoundingClientRect().bottom < 0) element.classList.add('is-in') })
+    html.classList.add('lp-motion')
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return
+        entry.target.classList.add('is-in')
+        observer.unobserve(entry.target)
+      })
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.12 })
+    reveals.forEach(element => { if (!element.classList.contains('is-in')) observer.observe(element) })
+
+    let frame = 0
+    const draw = () => {
+      frame = 0
+      const height = window.innerHeight
+      scrubs.forEach(element => {
+        const rect = element.getBoundingClientRect()
+        if (rect.top > height * 1.2 || rect.bottom < -height * 0.2) return
+        const progress = Math.min(1, Math.max(0, (height - rect.top) / (height * 0.65)))
+        element.style.setProperty('--p', progress.toFixed(4))
+      })
+      if (hero) {
+        const leaving = Math.min(1, Math.max(0, -hero.getBoundingClientRect().top / Math.max(1, hero.offsetHeight)))
+        hero.style.setProperty('--x', leaving.toFixed(4))
+      }
+    }
+    const request = () => { if (!frame) frame = window.requestAnimationFrame(draw) }
+    window.addEventListener('scroll', request, { passive: true })
+    window.addEventListener('resize', request)
+    draw()
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', request)
+      window.removeEventListener('resize', request)
+      if (frame) window.cancelAnimationFrame(frame)
+      html.classList.remove('lp-motion')
+    }
+  }, [rootRef])
+}
+
 /** The mega panel opens after 150 ms of hover intent and closes at once on leave. */
 export function useHoverIntent(delay = 150) {
   const [open, setOpen] = useState(false)

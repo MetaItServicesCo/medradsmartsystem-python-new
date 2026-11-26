@@ -376,7 +376,7 @@ html:has(.medrad-landing) { scroll-padding-top: 0; scroll-behavior: auto; }
   .medrad-landing .lp-tour__frame { height: 460px; }
   .medrad-landing .lp-faq { margin-top: var(--s-6); }
   .medrad-landing .lp-closing { height: auto; min-height: 100svh; }
-  .medrad-landing .lp-close__word { margin-block: var(--s-7); }
+  .medrad-landing .lp-close__mask { margin-block: var(--s-6); }
   .medrad-landing .lp-directory .lp-grid { row-gap: var(--s-5); }
   .medrad-landing .lp-directory .lp-grid > .lp-directory__col { grid-column: span 6; }
 }
@@ -427,6 +427,34 @@ html:has(.medrad-landing) { scroll-padding-top: 0; scroll-behavior: auto; }
 }
 @media (max-width: 399px) {
   .medrad-landing .lp-nav__cta { display: none; }
+}
+
+/* ---------------------------------------------------------------- scroll motion (html.lp-motion is set by script) */
+/* reveals: rise in once as they enter, staggered by --i */
+html.lp-motion .medrad-landing [data-reveal] { opacity: 0; transform: translateY(36px); transition: opacity 700ms var(--ease-enter), transform 900ms var(--ease-enter); transition-delay: calc(var(--i, 0) * 90ms); }
+html.lp-motion .medrad-landing [data-reveal].is-in { opacity: 1; transform: none; }
+/* the hero: as it leaves, the window and the paid card part at two depths and the words lift away */
+.medrad-landing .lp-hero { --x: 0; }
+html.lp-motion .medrad-landing .lp-hero__text { transform: translateY(calc(var(--x) * -70px)); opacity: calc(1 - var(--x) * .7); }
+html.lp-motion .medrad-landing [data-depth] .lp-hero-window { transform: translateY(calc(var(--x) * -90px)); }
+html.lp-motion .medrad-landing [data-depth] .lp-float { transform: translateY(calc(var(--x) * -190px)); }
+html.lp-motion .medrad-landing [data-depth] .lp-hero__mesh { transform: scale(calc(1 + var(--x) * .12)); }
+/* scrubbed: --p runs 0 to 1 with the scrollbar */
+.medrad-landing [data-scrub] { --p: 1; }
+html.lp-motion .medrad-landing [data-scrub] { --p: 0; }
+html.lp-motion .medrad-landing #platform .lp-wrap { perspective: 1600px; }
+html.lp-motion .medrad-landing [data-scrub="rise"] { transform-origin: 50% 0; transform: translateY(calc((1 - var(--p)) * 90px)) rotateX(calc((1 - var(--p)) * 14deg)) scale(calc(.9 + var(--p) * .1)); opacity: calc(.35 + var(--p) * .65); }
+html.lp-motion .medrad-landing [data-scrub="wipe"] { clip-path: inset(calc((1 - var(--p)) * 38%) 0 0 0 round var(--r-lg)); }
+html.lp-motion .medrad-landing [data-scrub="wipe"] .lp-tour__stage { transform: translateY(calc((1 - var(--p)) * 70px)); }
+html.lp-motion .medrad-landing [data-scrub="phone"] .lp-phone { transform: translateY(calc((1 - var(--p)) * 160px)) rotate(calc((1 - var(--p)) * -9deg)); }
+/* the job's line draws from node to node as the steps come up */
+html.lp-motion .medrad-landing [data-scrub="flow"] .lp-flow__step:not(:last-child)::before { transform-origin: 0 50%; transform: scaleX(clamp(0, calc(var(--p) * 3.4 - var(--i, 0)), 1)); }
+/* the closing name rises out of its line */
+.medrad-landing .lp-close__mask { overflow: clip; margin-top: var(--s-6); }
+.medrad-landing .lp-close__mask .lp-close__word { margin-top: 0; padding-top: .14em; }
+html.lp-motion .medrad-landing [data-scrub="word"] .lp-close__word { transform: translateY(calc((1 - var(--p)) * 85%)); }
+@media (max-width: 639px) {
+  html.lp-motion .medrad-landing [data-scrub="flow"] .lp-flow__step:not(:last-child)::before { transform-origin: 50% 0; transform: scaleY(clamp(0, calc(var(--p) * 3.4 - var(--i, 0)), 1)); }
 }
 
 /* ---------------------------------------------------------------- reduced motion: everything rests */

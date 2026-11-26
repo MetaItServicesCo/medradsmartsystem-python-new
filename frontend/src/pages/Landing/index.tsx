@@ -9,7 +9,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { BulkPanel, FlowDiagram, HeroRequest, PauseButton, PayLinkPanel, PdfPanel, PlatformApp, ReceiptPanel, RentalPanel, RoleScreen, SquarePanel, TechnicianPhone } from './mocks'
-import { useGradientMesh, useHeroEntrance, useHoverIntent, useKitMoments, useLandingHead, usePausableLoop } from './motion'
+import { useGradientMesh, useHeroEntrance, useHoverIntent, useKitMoments, useLandingHead, usePausableLoop, useScrollMotion } from './motion'
 import './landing.css'
 
 /** Where "Request a demo" leads. There is no demo-request inbox yet, so it opens sign-in as before. */
@@ -73,6 +73,7 @@ export default function Landing() {
   const heroRef = useRef<HTMLElement>(null)
   const meshRef = useRef<HTMLDivElement>(null)
   const mainRef = useRef<HTMLElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
   const [indicator, setIndicator] = useState<{ x: number; y: number; w: number } | null>(null)
   const mega = useHoverIntent(150)
   const heroLoop = usePausableLoop()
@@ -82,6 +83,7 @@ export default function Landing() {
   useHeroEntrance(heroRef)
   useGradientMesh(meshRef, heroLoop.paused)
   useKitMoments(mainRef)
+  useScrollMotion(pageRef)
 
   // The tab indicator travels to the chosen tab by transform; it takes the tab's width at once.
   useLayoutEffect(() => {
@@ -107,6 +109,7 @@ export default function Landing() {
 
   return (
     <div
+      ref={pageRef}
       className={`medrad-landing${menuOpen ? ' is-menu-open' : ''}`}
       onKeyDown={event => {
         if (event.key !== 'Escape') return
@@ -177,7 +180,7 @@ export default function Landing() {
                 <a className="lp-btn lp-btn--secondary" href="#platform">See the platform</a>
               </div>
             </div>
-            <div className="lp-hero__visual frame" data-visual>
+            <div className="lp-hero__visual frame" data-visual data-depth>
               <div ref={meshRef} className="lp-hero__mesh" aria-hidden="true" />
               <HeroRequest />
               <div className="lp-float">
@@ -193,10 +196,10 @@ export default function Landing() {
         <section id="platform" className="lp-section" aria-labelledby="lp-platform-h">
           <div className="lp-wrap wrap">
             <div className="lp-grid lp-head">
-              <h2 id="lp-platform-h" className="lp-span-5">Every service request in one place</h2>
-              <p className="lp-span-6 lp-start-7 lp-head__line">Requests arrive with their facility and equipment. The technician records the diagnosis, work done and hours, and the request becomes an invoice. <a className="lp-link" href="#billing">See billing</a></p>
+              <h2 id="lp-platform-h" className="lp-span-5" data-reveal>Every service request in one place</h2>
+              <p className="lp-span-6 lp-start-7 lp-head__line" data-reveal style={{ ['--i' as string]: 1 }}>Requests arrive with their facility and equipment. The technician records the diagnosis, work done and hours, and the request becomes an invoice. <a className="lp-link" href="#billing">See billing</a></p>
             </div>
-            <div className="lp-app-wrap" data-visual>
+            <div className="lp-app-wrap" data-visual data-scrub="rise">
               <PlatformApp running={appLoop.running} />
               {!appLoop.still && <PauseButton paused={appLoop.paused} onToggle={appLoop.toggle} label="the service request" />}
             </div>
@@ -207,11 +210,11 @@ export default function Landing() {
           <div className="lp-wrap wrap lp-g2">
             <div className="lp-g2__row">
               <div className="lp-grid lp-head">
-                <h2 id="lp-billing-h" className="lp-span-5">Service invoices that get paid</h2>
-                <p className="lp-span-6 lp-start-7 lp-head__line">Service, inspection, rental and sales invoices share one billing screen, and every payment lands on the invoice it pays.</p>
+                <h2 id="lp-billing-h" className="lp-span-5" data-reveal>Service invoices that get paid</h2>
+                <p className="lp-span-6 lp-start-7 lp-head__line" data-reveal style={{ ['--i' as string]: 1 }}>Service, inspection, rental and sales invoices share one billing screen, and every payment lands on the invoice it pays.</p>
               </div>
               <div className="lp-grid lp-cards">
-                <article className="lp-card lp-span-8">
+                <article className="lp-card lp-span-8" data-reveal>
                   <h3>Sends every invoice as a payment link</h3>
                   <p>Customers open the link, see the invoice in full and pay by card, ACH or cheque.</p>
                   <div className="lp-panel lp-panel--wide" data-visual>
@@ -219,7 +222,7 @@ export default function Landing() {
                     {!payLoop.still && <PauseButton paused={payLoop.paused} onToggle={payLoop.toggle} label="the payment link" />}
                   </div>
                 </article>
-                <article className="lp-card lp-span-4">
+                <article className="lp-card lp-span-4" data-reveal style={{ ['--i' as string]: 1 }}>
                   <h3>Bills many facilities at once</h3>
                   <p>A bulk invoice puts several facilities on one bill.</p>
                   <div className="lp-panel" data-visual><BulkPanel /></div>
@@ -228,17 +231,17 @@ export default function Landing() {
             </div>
             <div className="lp-g2__row">
               <div className="lp-grid lp-cards">
-                <article className="lp-card lp-span-4">
+                <article className="lp-card lp-span-4" data-reveal>
                   <h3>Charges rentals every month</h3>
                   <p>Rental agreements charge the card on file on their date.</p>
                   <div className="lp-panel" data-visual><RentalPanel /></div>
                 </article>
-                <article className="lp-card lp-span-4">
+                <article className="lp-card lp-span-4" data-reveal style={{ ['--i' as string]: 1 }}>
                   <h3>Takes cards through Square</h3>
                   <p>Card numbers stay with Square and never reach MedRad.</p>
                   <div className="lp-panel" data-visual><SquarePanel /></div>
                 </article>
-                <article className="lp-card lp-span-4">
+                <article className="lp-card lp-span-4" data-reveal style={{ ['--i' as string]: 2 }}>
                   <h3>Saves reports as PDF</h3>
                   <p>Inspection reports and invoices print or save as PDF.</p>
                   <div className="lp-panel" data-visual><PdfPanel /></div>
@@ -248,10 +251,10 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="flow" className="lp-section lp-statement" aria-labelledby="lp-flow-h" data-moment="letters-assemble">
+        <section id="flow" className="lp-section lp-statement" aria-labelledby="lp-flow-h" data-moment="letters-assemble" data-moment-opts='{"to": 0.28, "spread": 1.2}'>
           <div className="lp-wrap wrap">
             <h2 id="lp-flow-h" className="mo-la__type">Request to receipt</h2>
-            <p className="mo-la__sub">A request carries its facility, equipment, hours and parts straight into the invoice, so nobody types a job twice.</p>
+            <p className="mo-la__sub" data-reveal>A request carries its facility, equipment, hours and parts straight into the invoice, so nobody types a job twice.</p>
             <FlowDiagram />
           </div>
         </section>
@@ -259,9 +262,9 @@ export default function Landing() {
         <section id="roles" className="lp-section" aria-labelledby="lp-roles-h">
           <div className="lp-wrap wrap lp-grid lp-tour">
             <div className="lp-span-5">
-              <h2 id="lp-roles-h">A MedRad view for each role</h2>
-              <p className="lp-head__line lp-tour__line">Seven roles share one record. Each person signs in to the part that is theirs.</p>
-              <div className="lp-tabs" role="tablist" aria-label="Roles">
+              <h2 id="lp-roles-h" data-reveal>A MedRad view for each role</h2>
+              <p className="lp-head__line lp-tour__line" data-reveal style={{ ['--i' as string]: 1 }}>Seven roles share one record. Each person signs in to the part that is theirs.</p>
+              <div className="lp-tabs" role="tablist" aria-label="Roles" data-reveal style={{ ['--i' as string]: 2 }}>
                 <span className={`lp-tabs__ind${indicator ? ' is-placed' : ''}`} aria-hidden="true" style={indicator ? { width: indicator.w, transform: `translate(${indicator.x}px, ${indicator.y}px)` } : undefined} />
                 {ROLES.map((item, index) => (
                   <button
@@ -284,7 +287,7 @@ export default function Landing() {
                 <p>{role.text}</p>
               </div>
             </div>
-            <div className="lp-span-6 lp-start-7 lp-tour__frame" data-visual>
+            <div className="lp-span-6 lp-start-7 lp-tour__frame" data-visual data-scrub="wipe">
               <div className="lp-tour__stage" key={role.id}><RoleScreen role={role.screen} /></div>
             </div>
           </div>
@@ -294,22 +297,22 @@ export default function Landing() {
           <div className="lp-wrap wrap lp-grid">
             <div className="lp-span-8 lp-phone-copy">
               <h2 id="lp-phone-h" className="mo-lt__type">Close jobs from a phone</h2>
-              <p className="lp-statement__sub">Technicians open their assigned requests on site, record the diagnosis, work done and hours, and the office sees the update.</p>
+              <p className="lp-statement__sub" data-reveal>Technicians open their assigned requests on site, record the diagnosis, work done and hours, and the office sees the update.</p>
             </div>
-            <div className="lp-span-4 lp-phone-col" data-visual><TechnicianPhone /></div>
+            <div className="lp-span-4 lp-phone-col" data-visual data-scrub="phone"><TechnicianPhone /></div>
           </div>
         </section>
 
         <section id="questions" className="lp-section" aria-labelledby="lp-questions-h">
           <div className="lp-wrap wrap lp-grid">
             <div className="lp-span-5">
-              <h2 id="lp-questions-h">Questions</h2>
+              <h2 id="lp-questions-h" data-reveal>Questions</h2>
               <p className="lp-head__line">What teams ask before they move their service work to MedRad.</p>
-              <div className="lp-faq__visual" data-visual><ReceiptPanel /></div>
+              <div className="lp-faq__visual" data-visual data-scrub="rise"><ReceiptPanel /></div>
             </div>
             <div className="lp-span-6 lp-start-7 lp-faq">
-              {QUESTIONS.map(([question, answer]) => (
-                <div className="lp-faq__item" key={question}><h3>{question}</h3><p>{answer}</p></div>
+              {QUESTIONS.map(([question, answer], index) => (
+                <div className="lp-faq__item" key={question} data-reveal style={{ ['--i' as string]: index }}><h3>{question}</h3><p>{answer}</p></div>
               ))}
             </div>
           </div>
@@ -319,11 +322,11 @@ export default function Landing() {
       <footer id="contact" className="lp-closing closing" aria-labelledby="lp-close-h">
         <div className="lp-wrap wrap lp-closing__wrap">
           <div className="lp-close">
-            <div className="lp-close__head">
+            <div className="lp-close__head" data-reveal>
               <h2 id="lp-close-h">See MedRad run your service work</h2>
               <Link className="lp-btn lp-btn--primary lp-btn--inverse" to={DEMO_HREF}>Request a demo<svg className="lp-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg></Link>
             </div>
-            <p className="lp-close__word" aria-hidden="true">MedRad</p>
+            <div className="lp-close__mask" data-scrub="word"><p className="lp-close__word" aria-hidden="true">MedRad</p></div>
           </div>
           <div className="lp-directory">
             <div className="lp-grid">
