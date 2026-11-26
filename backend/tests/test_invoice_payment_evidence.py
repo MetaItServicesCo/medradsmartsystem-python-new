@@ -167,3 +167,68 @@ def test_manual_card_ledger_exposes_only_optional_masked_metadata():
     serialized = str(response).lower()
     assert "cvv" not in serialized
     assert "4111111111111111" not in serialized
+
+
+def _rental_card_pair(*, receipt_amount="1120.39", receipt_minute=4, receipt_last4="1786"):
+    # A rental card payment taken in Billing before the fix: the receipt kept the
+    # ledger's first number while the ledger line was renamed to the Square ID.
+    receipt = SimpleNamespace(
+        id=31,
+        payment_reference="PAY-INV-RENTAL-002524-06",
+        payment_method="square_card",
+        amount=Decimal(receipt_amount),
+        card_brand="VISA",
+        card_last4=receipt_last4,
+        status="sent",
+        created_at=datetime(2026, 11, 26, 15, receipt_minute),
+    )
+    transaction = SimpleNamespace(
+        id=77,
+        transaction_type="payment",
+        payment_method="square_card",
+        reference_number="8Hp66xzYSb9M8LcbuvZ8rXTDE0VZY",
+        amount=Decimal("1120.39"),
+        card_brand="VISA",
+        card_last4="1786",
+        created_at=datetime(2026, 11, 26, 15, 4),
+        created_by=SimpleNamespace(full_name="Rana Muhammad Sultan", username="rana"),
+    )
+    return receipt, transaction
+
+
+def test_renamed_rental_card_payment_shows_once():
+    receipt, transaction = _rental_card_pair()
+
+    items = invoice_payment_evidence_response(_invoice(receipts=[receipt], transactions=[transaction]))["items"]
+
+    assert len(items) == 1
+    assert items[0]["status"] == "confirmed"
+    assert items[0]["reference_number"] == "8Hp66xzYSb9M8LcbuvZ8rXTDE0VZY"
+    assert items[0]["submitted_by_name"] == "Rana Muhammad Sultan"
+    assert items[0]["amount"] == Decimal("1120.39")
+
+
+def test_payments_that_differ_are_never_merged():
+    for kwargs in ({"receipt_amount": "560.00"}, {"receipt_minute": 40}, {"receipt_last4": "4242"}):
+        receipt, transaction = _rental_card_pair(**kwargs)
+        items = invoice_payment_evidence_response(_invoice(receipts=[receipt], transactions=[transaction]))["items"]
+        assert len(items) == 2, kwargs
+
+
+def test_a_receipt_matching_its_ledger_number_is_unchanged():
+    receipt = SimpleNamespace(
+        id=5, payment_reference="PAY-INV-RENTAL-000090-02", payment_method="cash", amount=Decimal("80.00"),
+        card_brand=None, card_last4=None, status="sent", created_at=datetime(2026, 11, 1, 9, 0),
+    )
+    ledger = SimpleNamespace(
+        id=6, transaction_type="payment", payment_method="cash", reference_number="PAY-INV-RENTAL-000090-02",
+        amount=Decimal("80.00"), created_at=datetime(2026, 11, 1, 9, 0), created_by=None,
+    )
+    card = SimpleNamespace(
+        id=7, transaction_type="payment", payment_method="square_card", reference_number="sq-other",
+        amount=Decimal("80.00"), card_last4=None, created_at=datetime(2026, 11, 1, 9, 1), created_by=None,
+    )
+
+    items = invoice_payment_evidence_response(_invoice(receipts=[receipt], transactions=[ledger, card]))["items"]
+
+    assert {item["reference_number"] for item in items} == {"PAY-INV-RENTAL-000090-02", "sq-other"}

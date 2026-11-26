@@ -44,7 +44,7 @@ from app.db.base import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.equipment import Equipment  # noqa: E402
 from app.models.facility import Facility  # noqa: E402
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType, PaymentProof  # noqa: E402
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType, PaymentProof, PaymentReceiptDelivery  # noqa: E402
 from app.models.modality import Modality, ModalityCategory  # noqa: E402
 from app.models.payment_operation import PaymentOperation  # noqa: E402
 from app.models.rental import BillingFrequency, Rental  # noqa: E402
@@ -189,6 +189,7 @@ rental = Rental(rental_number="RA-FEE-1", customer_name="Dr. Roe", customer_emai
 seed.add(rental)
 seed.flush()
 RENTAL_INV = invoice(InvoiceType.RENTAL, total="200.00", rental_id=rental.id)
+RENTAL_BILLING_CARD = invoice(InvoiceType.RENTAL, total="100.00", rental_id=rental.id)
 seed.commit()
 IDS = {name: user.id for name, user in people.items()}
 RENTAL_ID = rental.id
@@ -427,6 +428,20 @@ db.close()
 inv = row(RENTAL_INV)
 ok("$200 charges $207.00 to the card on file", result == "charged" and square.charges[-1][1] == D("207.00"), (result, square.charges[-1]))
 ok("  the invoice carries the $7.00 fee and is paid", inv.card_fee_amount == D("7.00") and inv.total_amount == D("207.00") and inv.status == InvoiceStatus.PAID, (inv.card_fee_amount, inv.total_amount, inv.status))
+
+print("\nA rental invoice paid by card in Billing")
+current["who"] = "boss"
+r = pay(RENTAL_BILLING_CARD, "rental-billing-card-1", "103.50")
+db = Session()
+payments = db.query(InvoiceTransaction).filter(InvoiceTransaction.invoice_id == RENTAL_BILLING_CARD,
+                                               InvoiceTransaction.transaction_type == "payment").all()
+receipts = db.query(PaymentReceiptDelivery).filter(PaymentReceiptDelivery.invoice_id == RENTAL_BILLING_CARD).all()
+db.close()
+square_id = square.charges and f"SQ-{len(square.charges)}"
+ok("the card payment is recorded once, under its Square ID", r.status_code == 200 and [t.reference_number for t in payments] == [square_id], (r.text, [t.reference_number for t in payments]))
+ok("  its receipt names the same Square ID", [x.payment_reference for x in receipts] == [square_id], [x.payment_reference for x in receipts])
+evidence = client.get(f"/api/v1/billing/invoices/{RENTAL_BILLING_CARD}/payment-evidence").json()["items"]
+ok("  Payment Evidence shows it once", len(evidence) == 1 and evidence[0]["reference_number"] == square_id and evidence[0]["status"] == "confirmed", evidence)
 
 print()
 if failures:

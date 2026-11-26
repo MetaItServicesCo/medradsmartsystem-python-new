@@ -828,6 +828,11 @@ def pay_invoice_by_card(
         )
         if payment_transaction is not None:
             payment_transaction.reference_number = payment_id
+            # A rental receipt was queued under the ledger's own number; it follows
+            # the payment to its Square ID, so the receipt, the ledger and a later
+            # Square webhook all name one payment.
+            if receipt_delivery is not None:
+                receipt_delivery.payment_reference = payment_id
     if excess > 0:
         add_invoice_transaction(
             db, invoice, "overpayment_review", excess, "square_card",

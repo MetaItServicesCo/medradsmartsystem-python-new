@@ -8,7 +8,8 @@ PANs, CVVs, source tokens, and saved-card provider IDs never enter the response.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -34,6 +35,33 @@ def _timestamp(value: Any) -> str:
 def _is_card_method(value: Any) -> bool:
     normalized = str(_value(value) or "").strip().lower()
     return "card" in normalized or "square" in normalized
+
+
+def _amount(value: Any) -> Decimal | None:
+    try:
+        return Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+# A rental card payment taken in Billing used to queue its receipt under the
+# ledger's own number (PAY-...) and then rename the ledger line to the Square
+# payment ID, so the two no longer shared a reference. Such a receipt and its
+# ledger line are the same payment when the amount and card match and they were
+# written together.
+_SAME_PAYMENT_WINDOW = timedelta(minutes=10)
+
+
+def _same_payment(receipt: Any, transaction: Any) -> bool:
+    if _amount(receipt.amount) is None or _amount(receipt.amount) != _amount(transaction.amount):
+        return False
+    receipt_last4 = str(receipt.card_last4 or "")[-4:]
+    transaction_last4 = str(getattr(transaction, "card_last4", None) or "")[-4:]
+    if receipt_last4 and transaction_last4 and receipt_last4 != transaction_last4:
+        return False
+    if not isinstance(receipt.created_at, datetime) or not isinstance(transaction.created_at, datetime):
+        return False
+    return abs(receipt.created_at - transaction.created_at) <= _SAME_PAYMENT_WINDOW
 
 
 def invoice_payment_evidence_response(
@@ -94,11 +122,19 @@ def invoice_payment_evidence_response(
             item["mismatch_flags"] = proof.mismatch_flags or []
         items.append(item)
 
+    transaction_references = {
+        str(transaction.reference_number or "").strip()
+        for transaction in getattr(invoice, "transactions", None) or []
+        if str(transaction.reference_number or "").strip()
+    }
+    # Receipts whose reference names no ledger line: candidates for the pairing above.
+    orphan_receipts: dict[int, tuple[Any, dict[str, Any]]] = {}
+
     for receipt in getattr(invoice, "receipt_deliveries", None) or []:
         reference = str(receipt.payment_reference or "").strip()
         if reference:
             receipt_references.add(reference)
-        items.append({
+        receipt_item = {
             "id": f"card-{receipt.id}",
             "evidence_type": "card_payment" if _is_card_method(receipt.payment_method) else "recorded_payment",
             "status": "confirmed",
@@ -117,7 +153,10 @@ def invoice_payment_evidence_response(
             "proof_filename": None,
             "proof_file_url": None,
             "receipt_delivery_status": receipt.status,
-        })
+        }
+        items.append(receipt_item)
+        if reference.startswith("PAY-") and reference not in transaction_references:
+            orphan_receipts[receipt.id] = (receipt, receipt_item)
 
     # Some legacy or manually recorded card payments predate receipt metadata.
     # Surface the ledger evidence without claiming a brand or last four digits.
@@ -131,6 +170,17 @@ def invoice_payment_evidence_response(
             continue
         if not _is_card_method(transaction.payment_method):
             continue
+        if transaction.transaction_type == "payment":
+            paired = next(
+                (key for key, (receipt, _) in orphan_receipts.items() if _same_payment(receipt, transaction)),
+                None,
+            )
+            if paired is not None:
+                # One payment: the confirmed receipt row stands, named by the ledger's reference.
+                _, receipt_item = orphan_receipts.pop(paired)
+                receipt_item["reference_number"] = reference or receipt_item["reference_number"]
+                receipt_item["submitted_by_name"] = _name(getattr(transaction, "created_by", None))
+                continue
         items.append({
             "id": f"ledger-{transaction.id}",
             "evidence_type": "card_refund" if transaction.transaction_type == "refund" else "card_payment",
