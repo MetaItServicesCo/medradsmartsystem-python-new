@@ -46,10 +46,17 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
+/**
+ * Sign-in and registration answer 401 for a wrong username or password. That is
+ * an answer for the form to show ("Incorrect username or password"), not an
+ * expired session, so it must not sign out and reload the page.
+ */
+const isCredentialRequest = (url?: string): boolean => /(^|\/)auth\/(login|register)\/?(\?|$)/.test(url || '')
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isCredentialRequest(error.config?.url)) {
       useAuthStore.getState().logout()
       window.location.href = '/login'
     }
