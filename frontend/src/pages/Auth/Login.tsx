@@ -1,7 +1,7 @@
 /*
-  Sign-in page, redesigned to match the public landing page: the same "Circuit Glow" film tinted
-  in MedRad's violet and pink, a deep indigo ground, liquid-glass card, the violet-to-pink action
-  and the serif accent (MotionSites: split hero, blur-rise entrance, frosted rows, grain; taste-skill
+  Sign-in page, in the app's own look as the landing page is: the "Circuit Glow" film shown as
+  faint violet circuitry on the light lavender ground, a white card, the violet-to-pink action
+  and the gradient accent (MotionSites: split hero, blur-rise entrance, frosted rows, grain; taste-skill
   form rules: visible labels, 48px fields at 16px, one filled action, a status line; ui-ux-pro-max:
   autofill, paste, password toggle, focus rings, persistent errors). The sign-in logic is unchanged.
 */
@@ -52,7 +52,7 @@ const Login = () => {
     if (!document.querySelector('link[data-landing-fonts]')) {
       const fonts = document.createElement('link')
       fonts.rel = 'stylesheet'
-      fonts.href = 'https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=Instrument+Serif:ital@1&display=swap'
+      fonts.href = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400..500&display=swap'
       fonts.setAttribute('data-landing-fonts', '')
       document.head.appendChild(fonts)
     }
