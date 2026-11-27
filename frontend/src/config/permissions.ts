@@ -22,6 +22,7 @@ export type Module =
   | 'facility-inventory'
   | 'inventory'
   | 'test-equipment'
+  | 'leads'
   | 'reports'
   | 'attendance'
   | 'billing'
@@ -74,6 +75,7 @@ export const MODULES: Array<{ key: Module; label: string }> = [
   { key: 'facility-inventory', label: 'Facility Inventory' },
   { key: 'inventory', label: 'Parts Inventory' },
   { key: 'test-equipment', label: 'Test Equipment' },
+  { key: 'leads', label: 'Leads' },
   { key: 'reports', label: 'Reports' },
   { key: 'billing', label: 'Billing' },
   { key: 'hr', label: 'HR' },
@@ -114,6 +116,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'test-equipment':   _F,
     reports:            _F,
     billing:            _F,
+    leads:              _F,
     hr:                 _F,
     attendance:         _F,
     'my-timesheets':    _W,

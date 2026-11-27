@@ -201,6 +201,7 @@ const MODULE_TABLE: Array<{ prefix: string; theme: ModuleTheme }> = [
   { prefix: '/rentals', theme: { key: 'rentals', accent: '#0EA5E9', soft: '#7161D8' } },
   { prefix: '/inventory', theme: { key: 'inventory', accent: '#13A77B', soft: '#3B82F6' } },
   { prefix: '/test-equipment', theme: { key: 'test-equipment', accent: '#F59E0B', soft: '#F0528A' } },
+  { prefix: '/leads', theme: { key: 'sales', accent: '#7C3AED', soft: '#0EA5E9' } },
   { prefix: '/hr', theme: { key: 'hr', accent: '#6366F1', soft: '#EC4899' } },
   { prefix: '/my-timesheets', theme: { key: 'my-timesheets', accent: '#7161D8', soft: '#0EA5E9' } },
   { prefix: '/my-leave', theme: { key: 'my-leave', accent: '#F59E0B', soft: '#0EA5E9' } },

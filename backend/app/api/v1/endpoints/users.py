@@ -45,6 +45,7 @@ PERMISSION_MODULES = [
     {"key": "facility-inventory", "label": "Facility Inventory"},
     {"key": "inventory", "label": "Parts Inventory"},
     {"key": "test-equipment", "label": "Test Equipment"},
+    {"key": "leads", "label": "Leads"},
     {"key": "reports", "label": "Reports"},
     {"key": "billing", "label": "Billing"},
     {"key": "hr", "label": "HR"},

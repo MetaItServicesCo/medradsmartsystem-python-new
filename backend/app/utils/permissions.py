@@ -40,6 +40,8 @@ ALL_MODULES: list[str] = [
     # without being given the HR module, which also holds payroll,
     # terminations and everybody else's contracts.
     "my-attendance", "company-policies",
+    # Prospects and where they stand. A module of its own; nothing else reads it.
+    "leads",
 ]
 
 # ── Action sets ───────────────────────────────────────────────────────────────
@@ -72,6 +74,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "test-equipment":   _F,
         "reports":          _F,
         "billing":          _F,
+        "leads":            _F,
         "hr":               _F,   # admin co-manages HR alongside hr_manager
         "attendance":       _F,
         "my-timesheets":    _W,

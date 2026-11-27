@@ -36,6 +36,7 @@ from app.api.v1.endpoints import (
     billing,
     bulk_invoices,
     square_webhooks,
+    leads,
 )
 
 api_router = APIRouter()
@@ -65,6 +66,7 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboar
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(inspections.router, prefix="/inspections", tags=["inspections"])
 api_router.include_router(test_equipment.router, prefix="/test-equipment", tags=["test-equipment"])
+api_router.include_router(leads.router, prefix="/leads", tags=["leads"])
 api_router.include_router(sales.router, prefix="/sales", tags=["sales"])
 api_router.include_router(sales_portal.router, tags=["sales-portal"])
 api_router.include_router(rentals.router, prefix="/rentals", tags=["rentals"])

@@ -9,6 +9,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import InventoryIcon from '@mui/icons-material/Inventory'
 import ScienceIcon from '@mui/icons-material/Science'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import PeopleIcon from '@mui/icons-material/People'
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble'
@@ -47,6 +48,7 @@ const allMenuItems: SidebarItem[] = [
   { text: 'Facilities', description: 'Facilities and asset records', icon: <BusinessIcon />, path: '/facilities', module: 'facilities', group: 'Operations' },
   { text: 'Services', description: 'Service requests and work orders', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests', group: 'Operations' },
   { text: 'Inspections', description: 'Schedules, batches, and reports', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections', group: 'Operations' },
+  { text: 'Leads', description: 'Prospects and where they stand', icon: <TrendingUpIcon />, path: '/leads', module: 'leads', group: 'Commerce' },
   {
     text: 'Sales', description: 'Quotations, invoices, and sales', icon: <ShoppingCartIcon />, path: '/sales/quotations', module: 'sales', group: 'Commerce',
     subItems: [

@@ -16,6 +16,7 @@ const Rentals = lazyWithReload(() => import('./pages/Rentals'))
 const Inventory = lazyWithReload(() => import('./pages/Inventory'))
 const InventoryCapture = lazyWithReload(() => import('./pages/InventoryCapture'))
 const TestEquipment = lazyWithReload(() => import('./pages/TestEquipment'))
+const Leads = lazyWithReload(() => import('./pages/Leads'))
 const HR = lazyWithReload(() => import('./pages/HR'))
 const Reports = lazyWithReload(() => import('./pages/Reports'))
 const Users = lazyWithReload(() => import('./pages/Users'))
@@ -73,6 +74,7 @@ const modulePath: Record<Module, string> = {
   'facility-inventory': '/facilities',
   inventory: '/inventory',
   'test-equipment': '/test-equipment',
+  leads: '/leads',
   reports: '/reports',
   attendance: '/attendance',
   billing: '/billing',
@@ -140,6 +142,7 @@ function App() {
           <Route path="inventory-capture" element={<ProtectedPage module="inventory"><InventoryCapture /></ProtectedPage>} />
           <Route path="inventory/*" element={<ProtectedPage module="inventory"><Inventory /></ProtectedPage>} />
           <Route path="test-equipment/*" element={<ProtectedPage module="test-equipment"><TestEquipment /></ProtectedPage>} />
+          <Route path="leads" element={<ProtectedPage module="leads"><Leads /></ProtectedPage>} />
           <Route path="hr/*" element={<ProtectedPage module="hr"><HR /></ProtectedPage>} />
           <Route path="reports/*" element={<ProtectedPage module="reports"><Reports /></ProtectedPage>} />
           <Route path="attendance/*" element={<ProtectedPage module="attendance"><Attendance /></ProtectedPage>} />

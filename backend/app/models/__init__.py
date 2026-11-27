@@ -36,6 +36,7 @@ from app.models.lease import LeaseAgreement, LeaseInstallment, LeasePaymentAutho
 from app.models.inventory_capture import InventoryCapture
 from app.models.part_definition import PartDefinition
 from app.models.test_equipment import TestEquipment
+from app.models.lead import Lead
 from app.models.sales import (
     SalesInventoryReservation,
     SalesPaymentAuthorization,
