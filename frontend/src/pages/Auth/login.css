@@ -1,17 +1,18 @@
 /*
-  Public sign-in page, in the app's own look (as the landing page): the light lavender ground,
-  a white card, navy ink, Manrope, the violet-to-pink action. Scoped to .medrad-auth so the app
+  Public sign-in page: the landing page's dark, branded look. Scoped to .medrad-auth so the app
   theme is untouched. The page owns its scroll surface (global.css locks the document for the app).
 */
 .medrad-auth {
-  --bg: #f6f7ff; --bg-soft: #eef0fb; --surface: #ffffff;
-  --violet: #7161d8; --violet-deep: #5b4bc4; --pink: #f05d92; --mark: #6550bd; --mark-dot: #f05d92;
-  --ink: #1e1b4b; --text: #475467; --muted: #6b7280; --faint: #8b95a7;
-  --line: #e6e8f2; --line-strong: #d6d9ea;
+  --bg: #0b0a1f;
+  --violet: #7161d8; --violet-light: #9b8ef0; --pink: #f05d92; --mark: #6550bd; --mark-dot: #ed9aaa;
+  --ink: #f5f3ff; --text: rgba(245, 243, 255, .76); --muted: #a8a2cc; --faint: rgba(225, 220, 255, .5);
+  --line: rgba(196, 188, 255, .12); --line-strong: rgba(196, 188, 255, .24);
   --glow: 113, 97, 216; --glow-pink: 240, 93, 146;
-  --font-display: "Manrope", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-serif: "Instrument Serif", "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
   --ease: cubic-bezier(.2, .8, .2, 1); --ease-enter: cubic-bezier(.16, 1, .3, 1);
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   position: relative;
   isolation: isolate;
   height: 100vh;
@@ -28,109 +29,113 @@
   -moz-osx-font-smoothing: grayscale;
 }
 .medrad-auth *, .medrad-auth *::before, .medrad-auth *::after { box-sizing: border-box; }
-.medrad-auth ::selection { background: rgba(113, 97, 216, .22); color: var(--ink); }
-.medrad-auth :is(a, button, input):focus-visible { outline: 3px solid #c4b5fd; outline-offset: 3px; }
-/* the app's gradient text for the accent words */
-.medrad-auth .auth-accent { font-weight: 800; color: transparent; background: linear-gradient(110deg, #7161d8 0%, #9a5fd0 50%, #f05d92 100%); -webkit-background-clip: text; background-clip: text; padding-right: .04em; }
+.medrad-auth ::selection { background: rgba(113, 97, 216, .45); color: #fff; }
+.medrad-auth :is(a, button, input):focus-visible { outline: 2px solid var(--violet-light); outline-offset: 3px; }
+.medrad-auth .auth-accent { font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -.02em; color: transparent; background: linear-gradient(100deg, #b9afff 0%, #d9a6ff 55%, #f7a3c4 100%); -webkit-background-clip: text; background-clip: text; padding-right: .06em; }
 
-/* ---------------------------------------------------------------- the film, fixed behind everything, as faint circuitry on white */
-.medrad-auth .auth-film { position: fixed; inset: 0; z-index: -1; background: linear-gradient(180deg, #ffffff 0%, var(--bg) 100%); }
-.medrad-auth .auth-film__video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 40%; transform: scale(1.05); opacity: .45; filter: invert(1) hue-rotate(180deg) saturate(.6) contrast(.9); }
-.medrad-auth .auth-film__tint { position: absolute; inset: 0; mix-blend-mode: color; opacity: .55; background: linear-gradient(125deg, #7161d8 0%, #9a5fd0 45%, #f05d92 100%); }
-.medrad-auth .auth-film__glow { position: absolute; inset: 0; background: radial-gradient(55% 50% at 78% 30%, rgba(var(--glow), .16), transparent 70%), radial-gradient(40% 40% at 12% 80%, rgba(var(--glow-pink), .1), transparent 70%); }
-.medrad-auth .auth-film__scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(246, 247, 255, .92) 0%, rgba(246, 247, 255, .6) 45%, rgba(246, 247, 255, .35) 70%, rgba(246, 247, 255, .6) 100%), linear-gradient(180deg, rgba(255, 255, 255, .5) 0%, transparent 25%, transparent 70%, rgba(246, 247, 255, .9) 100%); }
-.medrad-auth .auth-film__grain { display: none; }
+/* ---------------------------------------------------------------- the film, fixed behind everything */
+.medrad-auth .auth-film { position: fixed; inset: 0; z-index: -1; background: var(--bg) url("/landing-kit/media/circuit-glow-poster.jpg") center / cover no-repeat; }
+.medrad-auth .auth-film__video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 40%; transform: scale(1.05); }
+.medrad-auth .auth-film__tint { position: absolute; inset: 0; mix-blend-mode: color; opacity: .62; background: linear-gradient(125deg, #7161d8 0%, #8a5bd6 45%, #f05d92 100%); }
+.medrad-auth .auth-film__glow { position: absolute; inset: 0; mix-blend-mode: screen; opacity: .5; background: radial-gradient(55% 50% at 78% 30%, rgba(var(--glow), .4), transparent 70%), radial-gradient(40% 40% at 12% 80%, rgba(var(--glow-pink), .18), transparent 70%); }
+.medrad-auth .auth-film__scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(11, 10, 31, .86) 0%, rgba(11, 10, 31, .5) 45%, rgba(11, 10, 31, .25) 70%, rgba(11, 10, 31, .55) 100%), linear-gradient(180deg, rgba(11, 10, 31, .5) 0%, transparent 25%, transparent 70%, rgba(11, 10, 31, .85) 100%); }
+.medrad-auth .auth-film__grain { position: absolute; inset: 0; pointer-events: none; opacity: .5; mix-blend-mode: overlay; background-image: var(--noise); }
 
 /* ---------------------------------------------------------------- header */
 .medrad-auth .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(100%, 1280px); margin-inline: auto; padding: 22px 0; }
-.medrad-auth .auth-brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--ink); font-size: 19px; font-weight: 800; letter-spacing: -.03em; text-decoration: none; }
-.medrad-auth .auth-mark { position: relative; display: grid; place-items: center; width: 28px; height: 32px; padding-right: 2px; border-radius: 7px 7px 7px 2px; background: var(--mark); color: #fff; font-size: 19px; font-weight: 800; letter-spacing: -.06em; }
-.medrad-auth .auth-mark::after { content: ''; position: absolute; right: -3px; bottom: 4px; width: 7px; height: 7px; border: 2px solid #fff; border-radius: 50%; background: var(--mark-dot); }
-.medrad-auth .auth-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255, 255, 255, .85); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); color: var(--text); font-size: 14px; font-weight: 700; text-decoration: none; transition: color .2s var(--ease), border-color .2s var(--ease); }
+.medrad-auth .auth-brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--ink); font-size: 19px; font-weight: 600; letter-spacing: -.03em; text-decoration: none; }
+.medrad-auth .auth-mark { position: relative; display: grid; place-items: center; width: 28px; height: 32px; padding-right: 2px; border-radius: 7px 7px 7px 2px; background: var(--mark); color: #fff; font-size: 19px; font-weight: 600; letter-spacing: -.06em; }
+.medrad-auth .auth-mark::after { content: ''; position: absolute; right: -3px; bottom: 4px; width: 7px; height: 7px; border: 2px solid var(--bg); border-radius: 50%; background: var(--mark-dot); }
+.medrad-auth .auth-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: rgba(14, 12, 38, .45); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); color: var(--text); font-size: 14px; text-decoration: none; transition: color .2s var(--ease), border-color .2s var(--ease); }
 .medrad-auth .auth-back svg { width: 15px; height: 15px; transition: transform .25s var(--ease); }
 @media (hover: hover) and (pointer: fine) {
-  .medrad-auth .auth-back:hover { color: var(--ink); border-color: var(--line-strong); }
+  .medrad-auth .auth-back:hover { color: #fff; border-color: var(--line-strong); }
   .medrad-auth .auth-back:hover svg { transform: translateX(-3px); }
 }
 
 /* ---------------------------------------------------------------- the split: what is inside, and the card */
 .medrad-auth .auth-main { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 460px); align-items: center; gap: clamp(40px, 7vw, 120px); width: min(100%, 1280px); margin-inline: auto; padding: clamp(16px, 4vh, 48px) 0; }
-.medrad-auth .auth-eyebrow { display: inline-flex; align-items: center; gap: 10px; margin: 0 0 22px; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--violet); }
-.medrad-auth .auth-eyebrow::before { content: ''; width: 28px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--violet), var(--pink)); }
-.medrad-auth .auth-headline { margin: 0; max-width: 13ch; font-size: clamp(40px, 4.6vw, 68px); font-weight: 800; line-height: 1.05; letter-spacing: -.045em; color: var(--ink); }
-.medrad-auth .auth-lead { margin: 22px 0 0; max-width: 44ch; font-size: 17px; line-height: 1.6; color: var(--text); font-weight: 500; }
-/* numbered rows on a white card */
-.medrad-auth .auth-rows { list-style: none; margin: 36px 0 0; padding: 4px 24px; max-width: 460px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255, 255, 255, .85); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 18px 45px -24px rgba(49, 46, 129, .25); }
+.medrad-auth .auth-eyebrow { display: inline-flex; align-items: center; gap: 10px; margin: 0 0 22px; font-family: var(--font-mono); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--faint); }
+.medrad-auth .auth-eyebrow::before { content: ''; width: 28px; height: 1px; background: currentColor; }
+.medrad-auth .auth-headline { margin: 0; max-width: 13ch; font-size: clamp(40px, 4.6vw, 72px); font-weight: 500; line-height: 1.02; letter-spacing: -.05em; }
+.medrad-auth .auth-lead { margin: 22px 0 0; max-width: 44ch; font-size: 17px; line-height: 1.6; color: var(--text); }
+/* frosted numbered rows (MotionSites frosted glass kit) */
+.medrad-auth .auth-rows { list-style: none; margin: 36px 0 0; padding: 4px 24px; max-width: 460px; border: 1px solid var(--line); border-radius: 18px; background: rgba(196, 188, 255, .05); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 .medrad-auth .auth-rows li { display: flex; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .medrad-auth .auth-rows li:last-child { border-bottom: 0; }
-.medrad-auth .auth-rows__index { padding-top: 3px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .15em; color: var(--violet); }
-.medrad-auth .auth-rows strong { display: block; font-size: 16px; font-weight: 800; }
+.medrad-auth .auth-rows__index { padding-top: 3px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .15em; color: var(--faint); }
+.medrad-auth .auth-rows strong { display: block; font-size: 16px; font-weight: 500; }
 .medrad-auth .auth-rows li div span { display: block; margin-top: 4px; font-size: 14px; line-height: 1.5; color: var(--muted); }
 
-/* the card: white, a hairline, a soft shadow */
+/* the card: liquid glass with a gradient hairline rim */
 .medrad-auth .auth-card {
   position: relative; width: 100%; padding: 40px;
-  border-radius: 24px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: 0 1px 2px rgba(30, 27, 75, .04), 0 40px 80px -36px rgba(49, 46, 129, .35);
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(23, 20, 58, .78), rgba(14, 12, 38, .82));
+  -webkit-backdrop-filter: blur(28px) saturate(140%); backdrop-filter: blur(28px) saturate(140%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .08), 0 50px 100px -40px rgba(0, 0, 0, .9), 0 0 90px -30px rgba(var(--glow), .45);
 }
-.medrad-auth .auth-card::before { content: none; }
-.medrad-auth .auth-title { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 32px; font-weight: 800; letter-spacing: -.035em; line-height: 1.15; }
-.medrad-auth .auth-description { margin: 12px 0 24px; color: var(--muted); font-family: var(--font-display); font-size: 15px; line-height: 1.6; font-weight: 500; }
+.medrad-auth .auth-card::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.2px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .34) 0%, rgba(255, 255, 255, .1) 22%, rgba(255, 255, 255, 0) 45%, rgba(255, 255, 255, 0) 62%, rgba(240, 93, 146, .14) 84%, rgba(155, 142, 240, .3) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor;
+          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude;
+}
+.medrad-auth .auth-title { margin: 0; color: var(--ink); font-family: var(--font-display); font-size: 34px; font-weight: 500; letter-spacing: -.045em; line-height: 1.1; }
+.medrad-auth .auth-description { margin: 12px 0 24px; color: var(--muted); font-family: var(--font-display); font-size: 15px; line-height: 1.6; }
 .medrad-auth .auth-status:empty { display: none; }
-.medrad-auth .auth-alert { margin-bottom: 20px; border-radius: 12px; font-family: var(--font-display); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
-.medrad-auth .auth-alert.MuiAlert-standardError { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
-.medrad-auth .auth-alert.MuiAlert-standardSuccess { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.medrad-auth .auth-alert { margin-bottom: 20px; border-radius: 12px; font-family: var(--font-display); font-size: 14px; overflow-wrap: anywhere; }
+.medrad-auth .auth-alert.MuiAlert-standardError { background: rgba(239, 68, 68, .12); color: #fecaca; border: 1px solid rgba(239, 68, 68, .3); }
+.medrad-auth .auth-alert.MuiAlert-standardSuccess { background: rgba(16, 185, 129, .12); color: #bbf7d0; border: 1px solid rgba(16, 185, 129, .3); }
 .medrad-auth .auth-alert .MuiAlert-icon { color: inherit; }
 
-/* fields: visible labels, 48px, 16px text */
+/* fields: visible labels, 48px, 16px text, glass */
 .medrad-auth .auth-field + .auth-field { margin-top: 18px; }
-.medrad-auth .auth-field label { display: block; margin-bottom: 8px; color: var(--ink); font-size: 14px; font-weight: 700; }
-.medrad-auth .auth-field .MuiOutlinedInput-root { min-height: 50px; color: var(--ink); font-family: var(--font-display); font-size: 16px; border-radius: 12px; background: #fff; box-shadow: none; transition: background-color .2s var(--ease), box-shadow .2s var(--ease); }
+.medrad-auth .auth-field label { display: block; margin-bottom: 8px; color: var(--ink); font-size: 14px; font-weight: 500; }
+.medrad-auth .auth-field .MuiOutlinedInput-root { min-height: 50px; color: var(--ink); font-family: var(--font-display); font-size: 16px; border-radius: 12px; background: rgba(255, 255, 255, .04); box-shadow: none; transition: background-color .2s var(--ease), box-shadow .2s var(--ease); }
 .medrad-auth .auth-field .MuiOutlinedInput-notchedOutline { border-color: var(--line-strong); }
-.medrad-auth .auth-field .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: #c4b5fd; }
-.medrad-auth .auth-field .MuiOutlinedInput-root.Mui-focused { box-shadow: 0 0 0 4px rgba(var(--glow), .16); }
-.medrad-auth .auth-field .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: var(--violet); border-width: 1px; }
+.medrad-auth .auth-field .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: rgba(196, 188, 255, .42); }
+.medrad-auth .auth-field .MuiOutlinedInput-root.Mui-focused { background: rgba(255, 255, 255, .06); box-shadow: 0 0 0 4px rgba(var(--glow), .22); }
+.medrad-auth .auth-field .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: var(--violet-light); border-width: 1px; }
 .medrad-auth .auth-field input { color: var(--ink); }
 /* the field itself shows focus (its violet ring above); no second outline on the input inside it */
 .medrad-auth .auth-field input:focus, .medrad-auth .auth-field input:focus-visible { outline: none; }
-.medrad-auth .auth-field input::placeholder { color: var(--faint); opacity: 1; }
-/* the browser's autofill keeps a white field and navy text */
+.medrad-auth .auth-field input::placeholder { color: var(--muted); opacity: .75; }
+/* the browser's autofill keeps the dark field and light text */
 .medrad-auth .auth-field input:-webkit-autofill,
 .medrad-auth .auth-field input:-webkit-autofill:hover,
-.medrad-auth .auth-field input:-webkit-autofill:focus { -webkit-text-fill-color: var(--ink); caret-color: var(--ink); -webkit-box-shadow: 0 0 0 1000px #f8f7ff inset; transition: background-color 9999s ease-out 0s; }
-.medrad-auth .auth-field-icon { color: var(--faint); font-size: 19px; }
-.medrad-auth .auth-password-toggle { width: 44px; height: 44px; border-radius: 10px; color: var(--violet); }
-.medrad-auth .auth-password-toggle:hover { transform: none; background: #f4f1ff; }
+.medrad-auth .auth-field input:-webkit-autofill:focus { -webkit-text-fill-color: var(--ink); caret-color: var(--ink); -webkit-box-shadow: 0 0 0 1000px #1a1740 inset; transition: background-color 9999s ease-out 0s; }
+.medrad-auth .auth-field-icon { color: var(--muted); font-size: 19px; }
+.medrad-auth .auth-password-toggle { width: 44px; height: 44px; border-radius: 10px; color: var(--violet-light); }
+.medrad-auth .auth-password-toggle:hover { transform: none; background: rgba(var(--glow), .16); }
 .medrad-auth .auth-hint { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 
 /* the one filled action: the app's violet-to-pink, with a sweep of light */
 .medrad-auth .auth-submit {
   position: relative; isolation: isolate; overflow: hidden;
-  min-height: 50px; margin-top: 26px; padding: 12px 20px; border-radius: 14px;
-  background: linear-gradient(135deg, #7161d8 0%, #f05d92 100%);
-  color: #fff; font-family: var(--font-display); font-size: 16px; font-weight: 800; letter-spacing: -.01em; text-transform: none;
-  border: 0;
-  box-shadow: 0 12px 28px -10px rgba(var(--glow), .55);
+  min-height: 50px; margin-top: 26px; padding: 12px 20px; border-radius: 999px;
+  background: linear-gradient(135deg, #7161d8 0%, #9a5fd0 52%, #f05d92 100%);
+  color: #fff; font-family: var(--font-display); font-size: 16px; font-weight: 500; letter-spacing: -.01em; text-transform: none;
+  border: 1px solid rgba(255, 255, 255, .18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 12px 32px -12px rgba(var(--glow), .8);
   transition: box-shadow .35s ease, transform .2s ease, background .35s ease;
 }
-.medrad-auth .auth-submit::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, .35) 48%, transparent 76%); transform: translateX(-130%); transition: transform .65s ease; }
+.medrad-auth .auth-submit::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, .3) 48%, transparent 76%); transform: translateX(-130%); transition: transform .65s ease; }
 @media (hover: hover) and (pointer: fine) {
-  .medrad-auth .auth-submit:hover { background: linear-gradient(135deg, #6151c7 0%, #e14a83 100%); box-shadow: 0 16px 34px -10px rgba(var(--glow), .6); transform: none; }
+  .medrad-auth .auth-submit:hover { background: linear-gradient(135deg, #6151c7 0%, #8b51c2 52%, #e14a83 100%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32), 0 0 30px rgba(var(--glow), .55), 0 0 60px -10px rgba(var(--glow-pink), .45); transform: none; }
   .medrad-auth .auth-submit:hover::after { transform: translateX(130%); }
 }
 .medrad-auth .auth-submit:active { transform: scale(.985); }
-.medrad-auth .auth-submit.Mui-disabled { background: #e4e4ec; color: #8b95a7; box-shadow: none; }
+.medrad-auth .auth-submit.Mui-disabled { background: rgba(155, 142, 240, .22); color: rgba(245, 243, 255, .7); box-shadow: none; }
 
 .medrad-auth .auth-switch { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0 6px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); text-align: center; }
 .medrad-auth .auth-switch > span { color: var(--muted); font-family: var(--font-display); font-size: 14px; line-height: 1.8; }
-.medrad-auth .auth-switch button { min-width: auto; min-height: 44px; padding: 8px 0; color: var(--violet-deep); font-family: var(--font-display); font-size: 14px; font-weight: 800; text-transform: none; }
+.medrad-auth .auth-switch button { min-width: auto; min-height: 44px; padding: 8px 0; color: #c4bbff; font-family: var(--font-display); font-size: 14px; font-weight: 500; text-transform: none; }
 .medrad-auth .auth-switch button:hover { background: transparent; box-shadow: none; transform: none; text-decoration: underline; text-underline-offset: 4px; }
 
 /* ---------------------------------------------------------------- footer */
 .medrad-auth .auth-footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(100%, 1280px); margin-inline: auto; padding: 20px 0 max(22px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
-.medrad-auth .auth-film-toggle { position: relative; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: rgba(255, 255, 255, .9); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--violet-deep); cursor: pointer; box-shadow: 0 4px 12px -6px rgba(49, 46, 129, .35); }
+.medrad-auth .auth-film-toggle { position: relative; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: rgba(14, 12, 38, .6); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: #fff; cursor: pointer; }
 .medrad-auth .auth-film-toggle svg { width: 13px; height: 13px; }
 .medrad-auth .auth-film-toggle::before { content: ''; position: absolute; inset: -6px; }
 
@@ -150,10 +155,10 @@
 @media (max-width: 1023px) {
   .medrad-auth .auth-main { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 28px; }
   .medrad-auth .auth-intro { width: 100%; max-width: 460px; text-align: left; }
-  .medrad-auth .auth-headline { font-size: clamp(34px, 7vw, 46px); max-width: 16ch; }
+  .medrad-auth .auth-headline { font-size: clamp(34px, 7vw, 48px); max-width: 16ch; }
   .medrad-auth .auth-lead, .medrad-auth .auth-rows { display: none; }
   .medrad-auth .auth-card { max-width: 460px; }
-  .medrad-auth .auth-film__scrim { background: linear-gradient(180deg, rgba(246, 247, 255, .7) 0%, rgba(246, 247, 255, .55) 40%, rgba(246, 247, 255, .9) 100%); }
+  .medrad-auth .auth-film__scrim { background: linear-gradient(180deg, rgba(11, 10, 31, .6) 0%, rgba(11, 10, 31, .45) 40%, rgba(11, 10, 31, .85) 100%); }
 }
 @media (max-width: 480px) {
   .medrad-auth { padding: 0 18px; }
@@ -161,7 +166,7 @@
   .medrad-auth .auth-back { padding: 0 14px; font-size: 13px; }
   .medrad-auth .auth-eyebrow { margin-bottom: 14px; }
   .medrad-auth .auth-card { padding: 28px 22px; border-radius: 22px; }
-  .medrad-auth .auth-title { font-size: 27px; }
+  .medrad-auth .auth-title { font-size: 28px; }
   .medrad-auth .auth-description { font-size: 14px; margin-bottom: 20px; }
   .medrad-auth .auth-footer { font-size: 12px; }
 }

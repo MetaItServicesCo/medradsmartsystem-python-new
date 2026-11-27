@@ -47,7 +47,7 @@ export function useLandingHead({ title, description, themeColor }: { title: stri
     if (!document.querySelector('link[data-landing-fonts]')) {
       const fonts = document.createElement('link')
       fonts.rel = 'stylesheet'
-      fonts.href = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400..500&display=swap'
+      fonts.href = 'https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=Instrument+Serif:ital@1&display=swap'
       fonts.setAttribute('data-landing-fonts', '')
       document.head.appendChild(fonts)
     }

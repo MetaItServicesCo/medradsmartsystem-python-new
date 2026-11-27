@@ -1,5 +1,5 @@
 /*
-  MedRad public landing page: an immersive SaaS page in the app's own light look.
+  MedRad public landing page: a dark, immersive SaaS page.
   Built from the MotionSites "Agent Wave" reference (a black viewport, a full-bleed film, the
   copy anchored low, chrome and frosted buttons, a stat strip) and its technique library: a
   pinned cinematic product stage, sticky stacking cards, liquid glass and film grain. The
@@ -100,7 +100,7 @@ export default function Landing() {
   useLandingHead({
     title: 'MedRad: service software for biomedical teams',
     description: 'MedRad runs a biomedical service business in one place: service requests, inspections, inventory, rentals, invoices and payments, with a view for every role.',
-    themeColor: '#f6f7ff',
+    themeColor: '#0b0a1f',
   })
   const [menuOpen, setMenuOpen] = useState(false)
   const [roleIndex, setRoleIndex] = useState(0)
