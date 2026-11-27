@@ -6,33 +6,6 @@
 */
 import { keyframes } from '@emotion/react'
 
-/*
-  The dark frame: the public landing page's materials (its deep indigo ground,
-  glass, violet and pink glow), used for everything around the work: the
-  surround, the sidebar, the top bar, page headers and count tiles. The working
-  surfaces (tables, forms, dialogs) stay white for readability.
-*/
-export const frame = {
-  ground: '#0b0a1f',
-  surface: '#121030',
-  ink: '#f5f3ff',
-  text: 'rgba(245, 243, 255, 0.78)',
-  muted: '#a8a2cc',
-  line: 'rgba(196, 188, 255, 0.14)',
-  lineStrong: 'rgba(196, 188, 255, 0.26)',
-  violetLight: '#c4bbff',
-  /** A glass panel: the landing page's stacking cards. */
-  glass: 'linear-gradient(180deg, #17143a 0%, #0e0c26 100%)',
-  /** The surround: the circuit film's still, dimmed, under the violet and pink glow. */
-  surround: [
-    'radial-gradient(55% 45% at 88% 0%, rgba(113, 97, 216, 0.38), transparent 70%)',
-    'radial-gradient(45% 40% at 0% 100%, rgba(240, 93, 146, 0.18), transparent 70%)',
-    'linear-gradient(rgba(11, 10, 31, 0.86), rgba(11, 10, 31, 0.86))',
-    'url("/landing-kit/media/circuit-glow-poster.jpg") center / cover no-repeat',
-    '#0b0a1f',
-  ].join(', '),
-} as const
-
 /** Below this width a list shows cards instead of a table. */
 export const COMPACT_LIST_QUERY = '(max-width:899.95px)'
 

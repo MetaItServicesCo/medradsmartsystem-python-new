@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { frame } from '@/components/ui/listStyles'
 import { Box } from '@mui/material'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
@@ -88,8 +87,7 @@ const Layout = () => {
         height: '100dvh',
         minHeight: '100dvh',
         overflow: 'hidden',
-        // The dark frame: the landing page's ground around the light working panel.
-        background: frame.surround,
+        background: 'linear-gradient(135deg, #E9EEFA 0%, #F4F7FC 52%, #E8EEFA 100%)',
         p: { xs: 0, md: 1.5 },
         gap: { xs: 0, md: 1.5 },
       }}>
@@ -104,8 +102,8 @@ const Layout = () => {
             overflow: 'hidden',
             bgcolor: '#F8FAFC',
             borderRadius: { xs: 0, md: '30px' },
-            border: { xs: 0, md: `1px solid ${frame.line}` },
-            boxShadow: { xs: 'none', md: '0 30px 80px -20px rgba(0, 0, 0, 0.6), 0 0 90px -40px rgba(113, 97, 216, 0.55)' },
+            border: { xs: 0, md: '1px solid rgba(255,255,255,0.72)' },
+            boxShadow: { xs: 'none', md: '0 24px 70px rgba(71,85,105,0.16)' },
             isolation: 'isolate',
           }}
         >

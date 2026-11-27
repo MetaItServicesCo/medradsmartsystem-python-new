@@ -13,7 +13,7 @@
 import type { ReactNode } from 'react'
 import { Box, Button, Card, Chip, CircularProgress, Pagination, Skeleton, Typography } from '@mui/material'
 import { useListContext } from '@/contexts/ListContext'
-import { cardSx, enterSx, frame } from './listStyles'
+import { cardSx, enterSx } from './listStyles'
 
 export * from './listStyles'
 
@@ -27,23 +27,17 @@ interface PageHeaderProps {
 }
 
 export const PageHeader = ({ title, subtitle, icon, actions }: PageHeaderProps) => (
-  <Card component="header" sx={{
-    ...cardSx, p: { xs: 2, md: 3 }, mb: 2, ...enterSx,
-    // The landing page's glass, with its violet light in the corner.
-    border: `1px solid ${frame.line}`,
-    background: `radial-gradient(60% 120% at 100% 0%, rgba(113, 97, 216, 0.32), transparent 70%), ${frame.glass}`,
-    boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.06), 0 24px 50px -30px rgba(11, 10, 31, 0.7)',
-  }}>
+  <Card component="header" sx={{ ...cardSx, p: { xs: 2, md: 3 }, mb: 2, background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', ...enterSx }}>
     <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', minWidth: 0 }}>
         {icon && (
-          <Box aria-hidden="true" sx={{ width: 48, height: 48, borderRadius: '14px', bgcolor: 'rgba(113, 97, 216, 0.26)', color: frame.violetLight, boxShadow: `inset 0 0 0 1px ${frame.lineStrong}`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <Box aria-hidden="true" sx={{ width: 48, height: 48, borderRadius: '14px', bgcolor: '#EFE7FF', color: '#7C3AED', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
             {icon}
           </Box>
         )}
         <Box sx={{ minWidth: 0 }}>
-          <Typography component="h1" sx={{ fontWeight: 900, color: frame.ink, fontSize: { xs: 22, md: 26 } }}>{title}</Typography>
-          <Typography sx={{ color: frame.text, fontWeight: 600, fontSize: 14 }}>{subtitle}</Typography>
+          <Typography component="h1" sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: { xs: 22, md: 26 } }}>{title}</Typography>
+          <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 14 }}>{subtitle}</Typography>
         </Box>
       </Box>
       {actions && <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'stretch', sm: 'flex-end' }, flexShrink: 0 }}>{actions}</Box>}
@@ -93,13 +87,10 @@ export const StatTiles = ({ ariaLabel, tiles, selected, onSelect, loading = fals
           onClick={() => onSelect(tile.value)}
           sx={{
             justifyContent: 'space-between', gap: 1, minHeight: 52, px: 1.75, borderRadius: '14px', textTransform: 'none', minWidth: 0,
-            // The landing page's glass; the chosen tile lit in its own colour.
-            border: '1px solid', borderColor: isSelected ? tile.color : frame.line,
-            background: isSelected ? `linear-gradient(180deg, rgba(113, 97, 216, 0.32) 0%, transparent 100%), ${frame.surface}` : frame.glass,
-            boxShadow: isSelected ? `inset 0 0 0 1px ${tile.color}, 0 10px 24px -14px ${tile.color}` : 'inset 0 1px 1px rgba(255, 255, 255, 0.05)',
-            color: frame.ink,
+            border: '1px solid', borderColor: isSelected ? tile.color : '#EEF0F6', bgcolor: isSelected ? '#FBFAFF' : '#fff',
+            boxShadow: isSelected ? `inset 0 0 0 1px ${tile.color}` : 'none', color: '#1E1B4B',
             transition: 'border-color 180ms cubic-bezier(0.4, 0, 0.2, 1), background-color 180ms cubic-bezier(0.4, 0, 0.2, 1)',
-            '&:hover': { borderColor: tile.color, background: `linear-gradient(180deg, rgba(113, 97, 216, 0.2) 0%, transparent 100%), ${frame.surface}` },
+            '&:hover': { bgcolor: '#F8F7FD', borderColor: tile.color },
             '&:focus-visible': { outline: '3px solid #C4B5FD', outlineOffset: 1 },
           }}
         >
@@ -111,7 +102,7 @@ export const StatTiles = ({ ariaLabel, tiles, selected, onSelect, loading = fals
             )}
             <Box component="span" sx={{ fontWeight: 800, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tile.label}</Box>
           </Box>
-          <Box component="span" sx={{ fontWeight: 900, fontSize: 16, color: isSelected ? '#fff' : frame.text }}>
+          <Box component="span" sx={{ fontWeight: 900, fontSize: 16, color: isSelected ? '#5B21B6' : '#344054' }}>
             {loading ? '…' : tile.count.toLocaleString()}
           </Box>
         </Button>

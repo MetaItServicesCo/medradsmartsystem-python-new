@@ -44,13 +44,11 @@ const RecentActivityMenu = () => {
           sx={{
             width: { xs: 38, sm: 44 },
             height: { xs: 38, sm: 44 },
-            // In the dark top bar: the landing page's glass button.
-            backgroundColor: 'rgba(255, 255, 255, 0.06)',
+            backgroundColor: '#fff',
             borderRadius: '16px',
-            border: '1px solid rgba(196, 188, 255, 0.26)',
-            boxShadow: 'none',
-            color: '#c4bbff',
-            '&:hover': { backgroundColor: 'rgba(113, 97, 216, 0.22)' },
+            border: '1px solid #E8ECF4',
+            boxShadow: '0 12px 30px rgba(71,85,105,0.06)',
+            '&:hover': { backgroundColor: '#F3F0FF' },
           }}
         >
           <Badge

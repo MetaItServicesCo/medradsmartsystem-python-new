@@ -114,7 +114,6 @@ import SearchFieldSelect from '@/components/SearchFieldSelect'
 import DebouncedSearchField from '@/components/DebouncedSearchField'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
-import { PageHeader, frame } from '@/components/ui'
 import { formatUSPhone } from '@/utils/formatters'
 
 const CHECK_FIELDS = [
@@ -3764,22 +3763,20 @@ const Inspections = () => {
       sx={{
         p: 2.2,
         borderRadius: '18px',
-        // The dark frame's glass, as the shared count tiles; the open tab lit in its colour.
-        border: tab === targetTab ? `2px solid ${color}` : `1px solid ${frame.line}`,
-        background: tab === targetTab ? `linear-gradient(180deg, ${color}40 0%, transparent 100%), ${frame.surface}` : frame.glass,
-        boxShadow: tab === targetTab ? `0 16px 34px -18px ${color}` : 'inset 0 1px 1px rgba(255, 255, 255, 0.05)',
+        border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
+        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(49,46,129,0.07)',
         cursor: 'pointer',
         transform: tab === targetTab ? 'translateY(-2px)' : 'none',
         transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
-        '&:hover': { transform: 'translateY(-3px)', borderColor: color },
+        '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 18px 40px ${color}20` },
         '&:focus-visible': { outline: `3px solid ${color}35`, outlineOffset: 2 },
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
-        <Avatar sx={{ bgcolor: `${color}2E`, color, borderRadius: '14px', boxShadow: `inset 0 0 0 1px ${color}55` }}>{icon}</Avatar>
+        <Avatar sx={{ bgcolor: `${color}18`, color, borderRadius: '14px' }}>{icon}</Avatar>
         <Box>
-          <Typography sx={{ color: frame.muted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography sx={{ color: frame.ink, fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : value}</Typography>
+          <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+          <Typography sx={{ color: '#1E1B4B', fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : value}</Typography>
         </Box>
       </Box>
     </Card>
@@ -5263,11 +5260,15 @@ const Inspections = () => {
 
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
-      <PageHeader
-        title="Inspections"
-        subtitle="Schedule equipment compliance inspections, run on-demand checks, complete technician reports and prepare billing."
-        icon={<AssignmentTurnedInIcon />}
-      />
+      <Card sx={{ p: 3, mb: 3, borderRadius: '24px', border: '1px solid #E6E8F2', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+          <Box>
+            <Typography variant="h4" sx={{ color: '#1E1B4B', fontWeight: 900 }}>Inspection Module</Typography>
+            <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Schedule equipment compliance inspections, initiate on-demand checks, complete technician reports, and prepare billing.</Typography>
+          </Box>
+          <Avatar sx={{ bgcolor: '#EFE7FF', color: '#7C3AED', width: 58, height: 58, borderRadius: '18px' }}><AssignmentTurnedInIcon /></Avatar>
+        </Box>
+      </Card>
 
       <Card sx={{ p: 2, mb: 2.5, borderRadius: '20px', border: '1px solid #EEF0F6', boxShadow: '0 12px 30px rgba(49,46,129,0.06)' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flexWrap: 'wrap' }}>
