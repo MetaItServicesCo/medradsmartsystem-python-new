@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { frame } from '@/components/ui/listStyles'
 import { Box, InputBase, Tooltip, Typography } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -148,12 +149,13 @@ const Sidebar = () => {
       sx={{
         width: { xs: '100%', sm: 72 },
         height: { xs: 'calc(64px + env(safe-area-inset-bottom))', sm: '100dvh', md: 'calc(100dvh - 24px)' },
-        // The landing page purple, --lp-purple, flat rather than the old
-        // violet gradient so the rail is the one colour the public pages use.
-        background: '#6550bd',
+        // The landing page's glass on its dark ground, so the frame of the
+        // app is the public pages' own look.
+        background: frame.glass,
+        border: { xs: 0, sm: `1px solid ${frame.line}` },
         display: 'flex', flexDirection: { xs: 'row', sm: 'column' }, alignItems: 'center',
         py: { xs: 1, sm: 3 }, px: { xs: 1.25, sm: 0 }, gap: 1, flexShrink: 0, overflow: 'visible',
-        boxShadow: '0 24px 60px rgba(101,80,189,0.22)',
+        boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.06), 0 30px 60px -30px rgba(0, 0, 0, 0.8)',
         position: { xs: 'fixed', sm: 'relative' },
         left: 0, right: 0, bottom: 0,
         zIndex: 1300,
@@ -205,8 +207,8 @@ const Sidebar = () => {
           <Box
             sx={{
               mt: { xs: 0, sm: 1 }, width: 40, height: 40, borderRadius: '14px', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.8)',
-              background: 'rgba(35,28,97,0.14)', '& svg': { fontSize: '1.2rem' },
+              alignItems: 'center', justifyContent: 'center', color: frame.violetLight,
+              background: 'rgba(113, 97, 216, 0.26)', boxShadow: `inset 0 0 0 1px ${frame.lineStrong}`, '& svg': { fontSize: '1.2rem' },
             }}
           >
             {currentItem.icon}

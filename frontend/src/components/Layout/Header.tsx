@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { frame } from '@/components/ui/listStyles'
 import {
   Box, Avatar, Badge, IconButton, Typography,
   Menu, MenuItem, ListItemIcon, Divider, Button, CircularProgress
@@ -118,9 +119,10 @@ const Header = ({ title }: HeaderProps) => {
         gap: { xs: 0.75, sm: 1.5, md: 3 },
         px: { xs: 1.5, sm: 2, md: 3 },
         py: { xs: 1.25, sm: 2 },
-        background: 'rgba(248, 250, 252, 0.92)',
+        // A dark band in the landing page's glass, above the light working panel.
+        background: frame.glass,
         backdropFilter: 'blur(18px)',
-        borderBottom: '1px solid rgba(226, 232, 240, 0.9)',
+        borderBottom: `1px solid ${frame.line}`,
         minHeight: { xs: 64, sm: 80 },
         flexShrink: 0,
         position: 'sticky',
@@ -130,7 +132,7 @@ const Header = ({ title }: HeaderProps) => {
     >
       {/* Page title */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography noWrap variant="h5" sx={{ fontWeight: 900, color: '#1E1B4B', lineHeight: 1.2, letterSpacing: '-0.5px', fontSize: { xs: '1rem', sm: '1.5rem' } }}>
+        <Typography noWrap variant="h5" sx={{ fontWeight: 900, color: frame.ink, lineHeight: 1.2, letterSpacing: '-0.5px', fontSize: { xs: '1rem', sm: '1.5rem' } }}>
           {title}
         </Typography>
       </Box>
@@ -144,16 +146,16 @@ const Header = ({ title }: HeaderProps) => {
         sx={{
           width: { xs: 38, sm: 44 },
           height: { xs: 38, sm: 44 },
-          backgroundColor: '#fff',
+          backgroundColor: 'rgba(255, 255, 255, 0.06)',
           borderRadius: '16px',
-          border: '1px solid #E8ECF4',
-          boxShadow: '0 12px 30px rgba(71,85,105,0.06)',
+          border: `1px solid ${frame.lineStrong}`,
+          boxShadow: 'none',
           transition: 'all 0.2s ease',
-          '&:hover': { backgroundColor: '#F3F0FF', transform: 'translateY(-1px)' },
+          '&:hover': { backgroundColor: 'rgba(113, 97, 216, 0.22)', transform: 'translateY(-1px)' },
         }}
       >
         <Badge badgeContent={unreadCount} color="secondary" sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', fontWeight: 800, background: 'linear-gradient(135deg, #EC4899, #F472B6)' } }}>
-          <NotificationsNoneIcon sx={{ fontSize: '1.4rem', color: '#7C3AED' }} />
+          <NotificationsNoneIcon sx={{ fontSize: '1.4rem', color: frame.violetLight }} />
         </Badge>
       </IconButton>
       <Menu
