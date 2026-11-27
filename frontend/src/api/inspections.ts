@@ -463,6 +463,9 @@ export const fetchInspections = async (
     unbatched_only?: boolean
     search?: string
     search_field?: string
+    /** Exact frequency (monthly, quarterly, semi_annual, annual, instant); blank reads as annual. */
+    frequency?: string
+    inspector_id?: number
     date_from?: string
     date_to?: string
     skip?: number
@@ -474,7 +477,7 @@ export const fetchInspections = async (
 }
 
 export const fetchInspectionBatches = async (
-  params: { status?: InspectionStatus; facility_id?: number; search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
+  params: { status?: InspectionStatus; facility_id?: number; search?: string; search_field?: string; frequency?: string; inspector_id?: number; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<InspectionBatchListResponse> => {
   const res = await apiClient.get('/inspections/batches', { params })
   return res.data

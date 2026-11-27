@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert, Autocomplete, InputAdornment,
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, FormControlLabel, IconButton, InputLabel, Menu, MenuItem, Radio, RadioGroup,
+  DialogTitle, Divider, Drawer, FormControl, FormControlLabel, IconButton, InputLabel, Menu, MenuItem, Radio, RadioGroup,
   Select, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
   TextField, Tooltip, Typography, useMediaQuery, useTheme,
 } from '@mui/material'
@@ -15,6 +15,8 @@ import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import BoltIcon from '@mui/icons-material/Bolt'
 import BuildIcon from '@mui/icons-material/Build'
 import CancelIcon from '@mui/icons-material/Cancel'
+import CloseIcon from '@mui/icons-material/Close'
+import FilterAltOffOutlinedIcon from '@mui/icons-material/FilterAltOffOutlined'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
@@ -132,7 +134,7 @@ type GridCellBlockType = 'label' | 'input' | 'radio' | 'checkbox' | 'textarea'
 type GridHorizontalAlign = 'left' | 'center' | 'right'
 type GridVerticalAlign = 'top' | 'middle' | 'bottom'
 type GridOptionLayout = 'vertical' | 'horizontal' | 'wrap'
-type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
+type UpcomingDateRange = '7d' | '1m' | '3m' | '6m' | '1y' | 'all'
 
 type InspectionDetailsDraft = {
   scheduledDate: string
@@ -248,12 +250,33 @@ const createGridCellBlock = (type: GridCellBlockType, index = 0): GridCellBlock 
   height: type === 'textarea' ? 90 : 40,
 })
 
-const UPCOMING_DATE_RANGES: { value: UpcomingDateRange; label: string; months?: number; years?: number }[] = [
-  { value: '1m', label: '1 Month', months: 1 },
-  { value: '3m', label: '3 Months', months: 3 },
-  { value: '6m', label: '6 Months', months: 6 },
-  { value: '1y', label: '1 Year', years: 1 },
+// "Due within" on Upcoming. Each window starts today; All upcoming has no dates,
+// so an upcoming inspection whose date has passed is still found there.
+const UPCOMING_DATE_RANGES: { value: UpcomingDateRange; label: string; phrase: string; days?: number; months?: number; years?: number }[] = [
+  { value: '7d', label: 'Next 7 days', phrase: 'the next 7 days', days: 7 },
+  { value: '1m', label: 'Next month', phrase: 'the next month', months: 1 },
+  { value: '3m', label: 'Next 3 months', phrase: 'the next 3 months', months: 3 },
+  { value: '6m', label: 'Next 6 months', phrase: 'the next 6 months', months: 6 },
+  { value: '1y', label: 'Next 12 months', phrase: 'the next 12 months', years: 1 },
+  { value: 'all', label: 'All upcoming', phrase: 'any date' },
 ]
+
+// The frequency filter on Upcoming: the values stored on an inspection or batch.
+const UPCOMING_FREQUENCIES: { value: string; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'semi_annual', label: 'Semi-annual' },
+  { value: 'annual', label: 'Annual' },
+  { value: 'instant', label: 'Instant' },
+]
+
+/** A stored frequency as people read it; blank reads as Annual, as before. */
+const frequencyLabel = (value?: string | null) => {
+  const key = String(value || 'annual').trim().toLowerCase().replace(/[-\s]+/g, '_')
+  return UPCOMING_FREQUENCIES.find(option => option.value && option.value === key)?.label
+    || key.replace(/_/g, '-').replace(/^\w/, letter => letter.toUpperCase())
+}
 
 const INSPECTION_SEARCH_FIELDS = [
   { value: 'all', label: 'All fields' },
@@ -734,12 +757,15 @@ const toLocalDateParam = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-const getUpcomingDateWindow = (range: UpcomingDateRange) => {
+const getUpcomingDateWindow = (range: UpcomingDateRange): { date_from?: string; date_to?: string } => {
+  if (range === 'all') return {}
   const today = new Date()
   const from = new Date(today.getFullYear(), today.getMonth(), today.getDate())
   const to = new Date(from)
-  const config = UPCOMING_DATE_RANGES.find(item => item.value === range) || UPCOMING_DATE_RANGES[0]
-  if (config.years) {
+  const config = UPCOMING_DATE_RANGES.find(item => item.value === range) || UPCOMING_DATE_RANGES[1]
+  if (config.days) {
+    to.setDate(to.getDate() + config.days)
+  } else if (config.years) {
     to.setFullYear(to.getFullYear() + config.years)
   } else {
     to.setMonth(to.getMonth() + (config.months || 1))
@@ -1084,7 +1110,7 @@ const Inspections = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { focusRecord: publishRecentActivity } = useListContext()
+  const { focusRecord: publishRecentActivity, isFocused: isListRecordFocused } = useListContext()
   const focusRecord = (
     key: string | number,
     label: string,
@@ -1266,6 +1292,14 @@ const Inspections = () => {
   }, { replace: true })
   const [debouncedFormSearch, setDebouncedFormSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
+  // Finding on Upcoming: these filter the lists only. Scheduling keeps its own
+  // facility, technician and frequency in the Schedule inspections panel.
+  const [upcomingFrequency, setUpcomingFrequency] = useState('')
+  const [upcomingFacilityFilter, setUpcomingFacilityFilter] = useState<number | ''>('')
+  const [upcomingTechnicianFilter, setUpcomingTechnicianFilter] = useState<number | ''>('')
+  const [upcomingView, setUpcomingView] = useState<'batches' | 'individual' | null>(null)
+  const [scheduleDrawerOpen, setScheduleDrawerOpen] = useState(false)
+  const upcomingCompact = useMediaQuery('(max-width:899.95px)')
   const [upcomingPage, setUpcomingPage] = useState(0)
   const [upcomingBatchPage, setUpcomingBatchPage] = useState(0)
   const [inProgressBatchPage, setInProgressBatchPage] = useState(0)
@@ -1386,7 +1420,7 @@ const Inspections = () => {
   useEffect(() => {
     setUpcomingPage(0)
     setUpcomingBatchPage(0)
-  }, [debouncedUpcomingSearch, upcomingSearchField, upcomingRange])
+  }, [debouncedUpcomingSearch, upcomingSearchField, upcomingRange, upcomingFrequency, upcomingFacilityFilter, upcomingTechnicianFilter])
 
   useEffect(() => {
     setClosedPage(0)
@@ -1489,15 +1523,23 @@ const Inspections = () => {
       ? { date_from: dateFrom || undefined, date_to: dateTo || undefined }
       : upcomingWindow
   ), [dateFrom, dateTo, upcomingWindow])
+  // The filters both Upcoming lists share (work orders and individual inspections).
+  const upcomingFilters = {
+    search: debouncedUpcomingSearch || undefined,
+    search_field: upcomingSearchField === 'all' ? undefined : upcomingSearchField,
+    frequency: upcomingFrequency || undefined,
+    facility_id: upcomingFacilityFilter ? Number(upcomingFacilityFilter) : undefined,
+    inspector_id: upcomingTechnicianFilter ? Number(upcomingTechnicianFilter) : undefined,
+  }
+  const upcomingFilterKey = [debouncedUpcomingSearch, upcomingSearchField, upcomingFrequency, upcomingFacilityFilter, upcomingTechnicianFilter]
   const upcomingQ = useQuery({
-    queryKey: ['inspections', 'upcoming', 'unbatched', upcomingPage, pageSize, debouncedUpcomingSearch, upcomingSearchField, upcomingRange, dateFrom, dateTo],
+    queryKey: ['inspections', 'upcoming', 'unbatched', upcomingPage, pageSize, ...upcomingFilterKey, upcomingRange, dateFrom, dateTo],
     queryFn: () => fetchInspections({
       status: 'upcoming',
       // Scheduled batches are listed one row each above; this is for the
       // inspections that belong to no batch, such as auto-generated ones.
       unbatched_only: true,
-      search: debouncedUpcomingSearch || undefined,
-      search_field: upcomingSearchField === 'all' ? undefined : upcomingSearchField,
+      ...upcomingFilters,
       date_from: effectiveUpcomingWindow.date_from,
       date_to: effectiveUpcomingWindow.date_to,
       skip: upcomingPage * pageSize,
@@ -1509,11 +1551,10 @@ const Inspections = () => {
     retry: 1,
   })
   const upcomingBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'upcoming', upcomingBatchPage, pageSize, debouncedUpcomingSearch, upcomingSearchField, upcomingRange, dateFrom, dateTo],
+    queryKey: ['inspection-batches', 'upcoming', upcomingBatchPage, pageSize, ...upcomingFilterKey, upcomingRange, dateFrom, dateTo],
     queryFn: () => fetchInspectionBatches({
       status: 'upcoming',
-      search: debouncedUpcomingSearch || undefined,
-      search_field: upcomingSearchField === 'all' ? undefined : upcomingSearchField,
+      ...upcomingFilters,
       date_from: effectiveUpcomingWindow.date_from,
       date_to: effectiveUpcomingWindow.date_to,
       skip: upcomingBatchPage * pageSize,
@@ -1524,6 +1565,45 @@ const Inspections = () => {
     placeholderData: previousData => previousData,
     retry: 1,
   })
+  const upcomingBatchTotal = upcomingBatchesQ.data?.total || 0
+  const upcomingIndividualTotal = upcomingQ.data?.total || 0
+  const upcomingWindowActive = Boolean(dateFrom || dateTo || upcomingRange !== 'all')
+  // When nothing matches inside the due window, how many match at any date:
+  // "Nothing due in the next month. 4 upcoming at other dates. Show all".
+  const upcomingOutsideQ = useQuery({
+    queryKey: ['inspection-batches', 'upcoming-any-date', ...upcomingFilterKey],
+    queryFn: async () => {
+      const [batches, individual] = await Promise.all([
+        fetchInspectionBatches({ status: 'upcoming', ...upcomingFilters, skip: 0, limit: 1 }),
+        fetchInspections({ status: 'upcoming', unbatched_only: true, ...upcomingFilters, skip: 0, limit: 1 }),
+      ])
+      return (batches.total || 0) + (individual.total || 0)
+    },
+    enabled: tab === 0 && !invalidDateRange && upcomingWindowActive
+      && upcomingBatchesQ.isSuccess && upcomingQ.isSuccess && !upcomingBatchesQ.isPlaceholderData && !upcomingQ.isPlaceholderData
+      && upcomingBatchTotal === 0 && upcomingIndividualTotal === 0,
+    staleTime: 30_000,
+    retry: 1,
+  })
+  // Work orders unless only individual inspections match, until a view is chosen.
+  const activeUpcomingView: 'batches' | 'individual' = upcomingView
+    ?? (upcomingBatchTotal === 0 && upcomingIndividualTotal > 0 ? 'individual' : 'batches')
+  const upcomingFiltersActive = Boolean(
+    debouncedUpcomingSearch || upcomingSearchField !== 'all' || upcomingFrequency || upcomingFacilityFilter || upcomingTechnicianFilter,
+  )
+  const clearUpcomingFilters = () => {
+    setUpcomingSearchField('all')
+    setDebouncedUpcomingSearch('')
+    setUpcomingFrequency('')
+    setUpcomingFacilityFilter('')
+    setUpcomingTechnicianFilter('')
+    setSearchResetSeed(seed => seed + 1)
+    if (activitySearch) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('context_search')
+      setSearchParams(next, { replace: true })
+    }
+  }
   const inProgressQ = useQuery({
     queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize, debouncedInProgressSearch, inProgressSearchField, dateFrom, dateTo],
     queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, search: debouncedInProgressSearch || undefined, search_field: inProgressSearchField === 'all' ? undefined : inProgressSearchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyInProgressPage * pageSize, limit: pageSize }),
@@ -1708,6 +1788,15 @@ const Inspections = () => {
       setSelectedEquipmentIds([])
       setSearchResetSeed((seed) => seed + 1)
       setDebouncedUpcomingSearch('')
+      // Show the new work order: no filter may hide it, and the window reaches its date.
+      setScheduleDrawerOpen(false)
+      setUpcomingSearchField('all')
+      setUpcomingFrequency('')
+      setUpcomingFacilityFilter('')
+      setUpcomingTechnicianFilter('')
+      setUpcomingView('batches')
+      const windowEnd = getUpcomingDateWindow(upcomingRange).date_to
+      if (batch?.scheduled_date && windowEnd && toLocalDateParam(new Date(batch.scheduled_date)) > windowEnd) setUpcomingRange('all')
       setUpcomingPage(0)
       setUpcomingBatchPage(0)
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
@@ -3806,33 +3895,160 @@ const Inspections = () => {
 
   // A scheduled inspection is one batch, listed as one row: its assets are
   // started, rescheduled and closed together, as they are in In Progress.
+  // The lists fit their panel at every width (fixed layout, secondary columns
+  // drop away, long text ends in an ellipsis with a tooltip) and turn into
+  // cards on narrow screens, so they never scroll sideways.
+  const upcomingHeadCell = { fontWeight: 900, color: '#475467', fontSize: 12.5, letterSpacing: '0.02em', py: 1.25 }
+  const upcomingTableSx = { width: '100%', tableLayout: 'fixed' as const, '& .MuiTableCell-root': { px: 1.5 } }
+  const hideBelow = (breakpoint: 'lg' | 'xl') => ({ display: { xs: 'none', [breakpoint]: 'table-cell' } })
+
+  const renderUpcomingEmpty = (kind: 'batches' | 'individual') => {
+    const otherTotal = kind === 'batches' ? upcomingIndividualTotal : upcomingBatchTotal
+    const windowPhrase = dateFrom || dateTo
+      ? 'the chosen dates'
+      : (UPCOMING_DATE_RANGES.find(option => option.value === upcomingRange)?.phrase || 'this window')
+    const anyDate = upcomingOutsideQ.data || 0
+    return (
+      <Box role="status" sx={{ py: 6, px: 2, textAlign: 'center' }}>
+        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.5 }}>
+          {upcomingFiltersActive
+            ? `No ${kind === 'batches' ? 'work orders' : 'individual inspections'} match in ${windowPhrase}.`
+            : `No ${kind === 'batches' ? 'work orders' : 'individual inspections'} due in ${windowPhrase}.`}
+        </Typography>
+        {otherTotal > 0 ? (
+          <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>
+            {otherTotal} {kind === 'batches' ? 'individual inspection' : 'work order'}{otherTotal === 1 ? '' : 's'} match.{' '}
+            <Button size="small" onClick={() => setUpcomingView(kind === 'batches' ? 'individual' : 'batches')} sx={{ fontWeight: 900, textTransform: 'none', verticalAlign: 'baseline' }}>
+              Show {kind === 'batches' ? 'individual inspections' : 'work orders'}
+            </Button>
+          </Typography>
+        ) : upcomingWindowActive && anyDate > 0 ? (
+          <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>
+            {anyDate} upcoming at other dates.{' '}
+            <Button
+              size="small"
+              onClick={() => { if (dateFrom || dateTo) clearDateFilters(); setUpcomingRange('all') }}
+              sx={{ fontWeight: 900, textTransform: 'none', verticalAlign: 'baseline' }}
+            >
+              Show all upcoming
+            </Button>
+          </Typography>
+        ) : upcomingFiltersActive ? (
+          <Button size="small" startIcon={<FilterAltOffOutlinedIcon />} onClick={clearUpcomingFilters} sx={{ fontWeight: 900, textTransform: 'none' }}>
+            Clear filters
+          </Button>
+        ) : null}
+      </Box>
+    )
+  }
+
+  const renderUpcomingCard = (
+    key: string,
+    label: string,
+    title: ReactNode,
+    lines: ReactNode[],
+    actions: ReactNode,
+  ) => {
+    const focused = isListRecordFocused(key)
+    return (
+      <Box
+        component="li"
+        key={key}
+        data-list-row-key={key}
+        data-list-row-focused={focused ? 'true' : undefined}
+        aria-current={focused ? 'true' : undefined}
+        aria-label={label}
+        sx={{
+          listStyle: 'none', p: 1.75, borderRadius: '16px', border: '1px solid', minWidth: 0,
+          borderColor: focused ? '#A78BFA' : '#EEF0F6', bgcolor: focused ? '#F7F4FF' : '#fff',
+          display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 1, alignItems: 'start',
+        }}
+      >
+        <Box sx={{ minWidth: 0, display: 'grid', gap: 0.35 }}>
+          {title}
+          {lines}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>{actions}</Box>
+      </Box>
+    )
+  }
+
+  const upcomingDateChip = (value?: string | null) => (
+    <Typography component="span" sx={{ fontSize: 12.5, fontWeight: 800, color: '#344054', whiteSpace: 'nowrap' }}>{formatDate(value)}</Typography>
+  )
+  const upcomingFrequencyChip = (value?: string | null) => (
+    <Chip size="small" label={frequencyLabel(value)} sx={{ fontWeight: 800, bgcolor: '#F4F1FF', color: '#5B21B6', maxWidth: '100%' }} />
+  )
+
   const renderUpcomingBatchRows = () => {
     const batches = upcomingBatchesQ.data?.items || []
-    const hasIndividual = (upcomingQ.data?.total || 0) > 0
+    const batchMenu = (batch: InspectionBatch) => canEditInspections && (
+      <IconButton
+        size="small"
+        aria-label={`Actions for ${batch.batch_number}`}
+        onClick={(event) => openUpcomingBatchActions(event, batch)}
+        sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+    )
+    const assetSummary = (batch: InspectionBatch) => {
+      const names = batch.asset_names || []
+      const shown = names.slice(0, 2).join(', ')
+      return { names, text: names.length > 2 ? `${shown} +${names.length - 2} more` : shown }
+    }
     return (
       <>
-      <TableContainer className="list-scroll-panel">
-        <Table stickyHeader>
+      {upcomingBatchesQ.isLoading ? (
+        <Box sx={{ p: 2 }}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={44} />)}</Box>
+      ) : batches.length === 0 ? renderUpcomingEmpty('batches') : upcomingCompact ? (
+        <Box component="ul" aria-label="Upcoming work orders" sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
+          {batches.map(batch => {
+            const total = batch.asset_count || 0
+            const { names, text } = assetSummary(batch)
+            return renderUpcomingCard(
+              `inspection-batch-${batch.id}`,
+              batch.batch_number,
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+                <ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} />
+                {upcomingFrequencyChip(batch.inspection_frequency)}
+              </Box>,
+              [
+                <ClippedTooltipText key="facility" value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} />,
+                <Typography key="when" sx={{ fontSize: 13, color: '#475467', fontWeight: 700 }}>
+                  {formatDate(batch.scheduled_date)} · {total} asset{total === 1 ? '' : 's'}{batch.inspector_name ? ` · ${batch.inspector_name}` : ''}
+                </Typography>,
+                text ? (
+                  <Tooltip key="assets" title={names.join(', ')}>
+                    <Typography sx={{ color: '#8B95A7', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</Typography>
+                  </Tooltip>
+                ) : null,
+              ],
+              <>
+                <Button size="small" variant="contained" onClick={() => setSelectedBatchId(batch.id)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>View</Button>
+                {batchMenu(batch)}
+              </>,
+            )
+          })}
+        </Box>
+      ) : (
+      <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
+        <Table stickyHeader sx={upcomingTableSx} aria-label="Upcoming work orders">
           <TableHead>
             <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-              <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Assets</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Frequency</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Scheduled</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+              <TableCell sx={{ ...upcomingHeadCell, width: 136 }}>Work order</TableCell>
+              <TableCell sx={{ ...upcomingHeadCell, width: '24%' }}>Facility</TableCell>
+              <TableCell sx={{ ...upcomingHeadCell, ...hideBelow('lg') }}>Assets</TableCell>
+              <TableCell sx={{ ...upcomingHeadCell, width: '12%' }}>Frequency</TableCell>
+              <TableCell sx={{ ...upcomingHeadCell, width: '15%', ...hideBelow('xl') }}>Technician</TableCell>
+              <TableCell sx={{ ...upcomingHeadCell, width: '12%' }}>Scheduled</TableCell>
+              <TableCell align="right" sx={{ ...upcomingHeadCell, width: { xs: 112, lg: 150 } }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {upcomingBatchesQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
-              <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
-            )) : batches.length === 0 ? (
-              <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{hasIndividual ? 'No upcoming inspection batches.' : 'No upcoming inspections scheduled.'}</TableCell></TableRow>
-            ) : batches.map(batch => {
+            {batches.map(batch => {
               const total = batch.asset_count || 0
-              const names = batch.asset_names || []
-              const shown = names.slice(0, 2).join(', ')
-              const assetText = names.length > 2 ? `${shown} +${names.length - 2} more` : shown
+              const { names, text } = assetSummary(batch)
               return (
                 <ContextTableRow
                   key={batch.id}
@@ -3841,37 +4057,34 @@ const Inspections = () => {
                   hover
                 >
                   <TableCell><ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} /></TableCell>
-                  <TableCell><ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} /></TableCell>
-                  <TableCell sx={{ maxWidth: 360 }}>
+                  <TableCell>
+                    <ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} />
+                    <Typography sx={{ display: { xs: 'block', lg: 'none' }, color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>{total} asset{total === 1 ? '' : 's'}</Typography>
+                  </TableCell>
+                  <TableCell sx={{ ...hideBelow('lg'), overflow: 'hidden' }}>
                     <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{total} asset{total === 1 ? '' : 's'}</Typography>
-                    {assetText && (
+                    {text && (
                       <Tooltip title={names.join(', ')}>
-                        <Typography sx={{ color: '#8B95A7', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assetText}</Typography>
+                        <Typography sx={{ color: '#8B95A7', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</Typography>
                       </Tooltip>
                     )}
                   </TableCell>
-                  <TableCell>{String(batch.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(batch.scheduled_date)}</TableCell>
+                  <TableCell sx={{ overflow: 'hidden' }}>{upcomingFrequencyChip(batch.inspection_frequency)}</TableCell>
+                  <TableCell sx={hideBelow('xl')}><ClippedTooltipText value={batch.inspector_name || 'Unassigned'} fontWeight={700} /></TableCell>
+                  <TableCell>{upcomingDateChip(batch.scheduled_date)}</TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center' }}>
                       <Button
                         startIcon={<AssessmentIcon />}
                         variant="contained"
+                        size="small"
+                        aria-label={`View batch ${batch.batch_number}`}
                         onClick={() => setSelectedBatchId(batch.id)}
-                        sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap' }}
+                        sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap', minWidth: 0, '& .MuiButton-startIcon': { mr: { xs: 0, lg: 0.75 }, ml: { xs: 0, lg: -0.5 } } }}
                       >
-                        View Batch
+                        <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}>View</Box>
                       </Button>
-                      {canEditInspections && (
-                        <IconButton
-                          size="small"
-                          aria-label={`Actions for ${batch.batch_number}`}
-                          onClick={(event) => openUpcomingBatchActions(event, batch)}
-                          sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
-                        >
-                          <MoreVertIcon fontSize="small" />
-                        </IconButton>
-                      )}
+                      {batchMenu(batch)}
                     </Box>
                   </TableCell>
                 </ContextTableRow>
@@ -3880,6 +4093,7 @@ const Inspections = () => {
           </TableBody>
         </Table>
       </TableContainer>
+      )}
       <Menu
         anchorEl={upcomingBatchAnchor}
         open={Boolean(upcomingBatchAnchor && upcomingBatchItem)}
@@ -3935,38 +4149,60 @@ const Inspections = () => {
     )
   }
 
-  const renderUpcomingRows = () => (
+  const renderUpcomingRows = () => {
+    const items = upcomingQ.data?.items || []
+    const rowMenu = (item: Inspection) => canEditInspections ? (
+      <IconButton
+        size="small"
+        aria-label={`Actions for ${item.inspection_number}`}
+        onClick={(event) => openUpcomingActions(event, item)}
+        sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+    ) : (
+      <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
+    )
+    return (
     <>
-    <TableContainer className="list-scroll-panel">
-      <Table stickyHeader sx={{ width: 1360, minWidth: 1360, tableLayout: 'fixed' }}>
-        <colgroup>
-          <col style={{ width: 150 }} />
-          <col style={{ width: 220 }} />
-          <col style={{ width: 280 }} />
-          <col style={{ width: 120 }} />
-          <col style={{ width: 130 }} />
-          <col style={{ width: 360 }} />
-          <col style={{ width: 160 }} />
-          <col style={{ width: 140 }} />
-        </colgroup>
+    {upcomingQ.isLoading ? (
+      <Box sx={{ p: 2 }}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={44} />)}</Box>
+    ) : items.length === 0 ? renderUpcomingEmpty('individual') : upcomingCompact ? (
+      <Box component="ul" aria-label="Upcoming individual inspections" sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
+        {items.map(item => renderUpcomingCard(
+          `inspection-${item.id}`,
+          item.inspection_number,
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+            <ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} />
+            {upcomingFrequencyChip(item.inspection_frequency)}
+          </Box>,
+          [
+            <ClippedTooltipText key="asset" value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />,
+            <ClippedTooltipText key="facility" value={item.facility_name || '-'} variant="caption" color="#475467" fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} />,
+            <Typography key="when" sx={{ fontSize: 13, color: '#475467', fontWeight: 700 }}>
+              {formatDate(item.scheduled_date)} · {item.criticality || 'standard'}{item.inspector_name ? ` · ${item.inspector_name}` : ''}
+            </Typography>,
+          ],
+          rowMenu(item),
+        ))}
+      </Box>
+    ) : (
+    <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
+      <Table stickyHeader sx={upcomingTableSx} aria-label="Upcoming individual inspections">
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Frequency</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Requirement</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Scheduled</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+            <TableCell sx={{ ...upcomingHeadCell, width: 128 }}>Inspection #</TableCell>
+            <TableCell sx={{ ...upcomingHeadCell, width: '18%' }}>Facility</TableCell>
+            <TableCell sx={{ ...upcomingHeadCell, width: '22%' }}>Equipment</TableCell>
+            <TableCell sx={{ ...upcomingHeadCell, width: '11%' }}>Frequency</TableCell>
+            <TableCell sx={{ ...upcomingHeadCell, width: '9%', ...hideBelow('lg') }}>Criticality</TableCell>
+            <TableCell sx={{ ...upcomingHeadCell, ...hideBelow('xl') }}>Requirement</TableCell>
+            <TableCell sx={{ ...upcomingHeadCell, width: '11%' }}>Scheduled</TableCell>
+            <TableCell align="right" sx={{ ...upcomingHeadCell, width: 72 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {upcomingQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
-            <TableRow key={i}><TableCell colSpan={8}><Skeleton /></TableCell></TableRow>
-          )) : (upcomingQ.data?.items || []).length === 0 ? (
-            <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No upcoming inspections scheduled.</TableCell></TableRow>
-          ) : upcomingQ.data!.items.map(item => (
+          {items.map(item => (
             <ContextTableRow
               key={item.id}
               recordKey={`inspection-${item.id}`}
@@ -3979,31 +4215,19 @@ const Inspections = () => {
                 <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />
                 <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={() => openInspectionInfo(item)} />
               </TableCell>
-              <TableCell>{(item.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
-              <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
-              <TableCell sx={{ overflow: 'hidden', maxWidth: 360, pr: 2 }}>
+              <TableCell sx={{ overflow: 'hidden' }}>{upcomingFrequencyChip(item.inspection_frequency)}</TableCell>
+              <TableCell sx={{ ...hideBelow('lg'), overflow: 'hidden' }}><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900, maxWidth: '100%' }} /></TableCell>
+              <TableCell sx={{ ...hideBelow('xl'), overflow: 'hidden' }}>
                 <ClippedTooltipText value={item.compliance_requirement || '-'} field maxWidth="100%" />
               </TableCell>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(item.scheduled_date)}</TableCell>
-              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                {canEditInspections ? (
-                  <IconButton
-                    size="small"
-                    aria-label={`Actions for ${item.inspection_number}`}
-                    onClick={(event) => openUpcomingActions(event, item)}
-                    sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
-                  >
-                    <MoreVertIcon fontSize="small" />
-                  </IconButton>
-                ) : (
-                  <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
-                )}
-              </TableCell>
+              <TableCell>{upcomingDateChip(item.scheduled_date)}</TableCell>
+              <TableCell align="right">{rowMenu(item)}</TableCell>
             </ContextTableRow>
           ))}
         </TableBody>
       </Table>
     </TableContainer>
+    )}
     <Menu
       anchorEl={upcomingActionAnchor}
       open={Boolean(upcomingActionAnchor && upcomingActionItem)}
@@ -4043,7 +4267,8 @@ const Inspections = () => {
       </MenuItem>
     </Menu>
     </>
-  )
+    )
+  }
 
   const renderClosedRows = () => (
     <>
@@ -4846,64 +5071,246 @@ const Inspections = () => {
         </Tabs>
 
         {tab === 0 && (
-          <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 2fr) minmax(0, 1.2fr) 170px 180px' }, gap: 2, alignItems: 'center', mb: 3 }}>
-              <SearchableSelect<number>
-                label="Facility"
-                value={facilityId}
-                onChange={(nextFacilityId) => {
-                  setFacilityId(nextFacilityId)
-                  setCreateTechnicianId('')
-                  setSelectedInstantEquipmentIds([])
-                  setSelectedEquipmentIds([])
-                  setScheduleAssetSearch('')
-                  setDebouncedScheduleAssetSearch('')
-                }}
-                loading={facilitiesQ.isLoading}
-                options={(facilitiesQ.data || []).map(facility => ({
-                  value: facility.id,
-                  label: facility.name,
-                  secondary: `#${facility.id} · ${facility.tier_name || 'No tier'} · ${facility.inventory_count} asset(s)`,
-                  keywords: `${facility.id} ${facility.tier_name || ''}`,
-                }))}
-                placeholder="Search facility name, tier, or ID"
-                noOptionsText="No matching facilities available"
-              />
-              <SearchableSelect<number>
-                label="Technician"
-                value={createTechnicianValue}
-                allowClear={false}
-                onChange={value => setCreateTechnicianId(value ? Number(value) : '')}
-                options={createTechnicians.map((user: UserData) => ({
-                  value: user.id,
-                  label: user.id === currentUser?.id ? `${user.full_name || user.username} (you)` : (user.full_name || user.username),
-                  secondary: user.role ? user.role.replace(/_/g, ' ') : undefined,
-                  keywords: `${user.username || ''} ${user.email || ''} ${user.role || ''}`,
-                }))}
-                placeholder="Search technician"
-                noOptionsText="No matching technicians"
-              />
-              <TextField select label="Frequency" value={frequency} onChange={e => setFrequency(e.target.value as InspectionFrequency)}>
-                <MenuItem value="quarterly">Quarterly</MenuItem>
-                <MenuItem value="semi_annual">Semi-Annual</MenuItem>
-                <MenuItem value="annual">Annual</MenuItem>
-              </TextField>
-              <TextField label="Schedule Date" type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-              <Box sx={{ gridColumn: '1 / -1', display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <Button startIcon={<EventAvailableIcon />} variant="outlined" onClick={scheduleSelected} disabled={!canAddInspections || !facilityId || !selectedEquipmentIds.length || scheduleMut.isPending} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
-                Schedule Selected
-              </Button>
-              <Button startIcon={<AutoFixHighIcon />} variant="contained" disabled={!canAddInspections || generateMut.isPending} onClick={() => {
-                if (!canAddInspections) return toast.error('You do not have permission to auto-generate inspections')
-                generateMut.mutate({ facility_id: facilityId ? Number(facilityId) : undefined, days_ahead: 90 })
-              }} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
-                Auto Generate
-              </Button>
+          <Box sx={{ p: { xs: 2, md: 3 }, minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography component="h2" sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: 20 }}>Upcoming inspections</Typography>
+                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13.5 }}>
+                  {dateFrom || dateTo
+                    ? `Scheduled${dateFrom ? ` from ${formatDate(dateFrom)}` : ''}${dateTo ? ` through ${formatDate(dateTo)}` : ''} (the dates above).`
+                    : upcomingRange === 'all'
+                      ? 'Every upcoming inspection, including any whose date has passed.'
+                      : `Due from ${formatDate(upcomingWindow.date_from)} to ${formatDate(upcomingWindow.date_to)}.`}
+                </Typography>
+              </Box>
+              {canAddInspections && (
+                <Button startIcon={<AddIcon />} variant="contained" onClick={() => setScheduleDrawerOpen(true)} sx={{ minHeight: 44, borderRadius: '14px', fontWeight: 900, textTransform: 'none', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  Schedule inspections
+                </Button>
+              )}
+            </Box>
+
+            <Card component="section" aria-label="Find upcoming inspections" sx={{ p: { xs: 1.5, md: 2 }, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none', overflow: 'visible' }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 170px) minmax(0, 1fr)', lg: '180px minmax(0, 1fr) 190px' }, gap: 1.5, alignItems: 'center' }}>
+                <SearchFieldSelect
+                  value={upcomingSearchField}
+                  options={INSPECTION_SEARCH_FIELDS}
+                  onChange={setUpcomingSearchField}
+                  ariaLabel="Upcoming inspection search field"
+                />
+                <DebouncedSearchField
+                  key={`upcoming-${activitySearch}-${searchResetSeed}`}
+                  defaultValue={activitySearch}
+                  onDebouncedChange={setDebouncedUpcomingSearch}
+                  label="Search upcoming inspections"
+                  placeholder={upcomingSearchField === 'all'
+                    ? 'Try a facility, asset, serial, or "brookvale annual"'
+                    : `Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === upcomingSearchField)?.label.toLowerCase() || 'inspections'}...`}
+                  fullWidth
+                />
+                <TextField
+                  select
+                  label="Due within"
+                  value={upcomingRange}
+                  onChange={e => setUpcomingRange(e.target.value as UpcomingDateRange)}
+                  disabled={Boolean(dateFrom || dateTo)}
+                  helperText={dateFrom || dateTo ? 'Using the dates above' : undefined}
+                  sx={{ gridColumn: { sm: '1 / -1', lg: 'auto' } }}
+                >
+                  {UPCOMING_DATE_RANGES.map(option => (
+                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(0, 1fr)', xl: 'auto minmax(0, 1fr) minmax(0, 1fr) auto' }, gap: 1.5, alignItems: 'center', mt: 1.5 }}>
+                <Box role="group" aria-label="Frequency" sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center', gridColumn: { md: '1 / -1', xl: 'auto' } }}>
+                  <Typography component="span" sx={{ fontSize: 12, fontWeight: 900, color: '#6B7280', mr: 0.5 }}>Frequency</Typography>
+                  {UPCOMING_FREQUENCIES.map(option => {
+                    const selected = upcomingFrequency === option.value
+                    return (
+                      <Chip
+                        key={option.value || 'all'}
+                        label={option.label}
+                        clickable
+                        aria-pressed={selected}
+                        onClick={() => setUpcomingFrequency(option.value)}
+                        sx={{
+                          fontWeight: 800, borderRadius: '10px', height: 32,
+                          bgcolor: selected ? '#7C3AED' : '#F4F1FF',
+                          color: selected ? '#fff' : '#5B21B6',
+                          '&:hover': { bgcolor: selected ? '#6D28D9' : '#EDE9FE' },
+                        }}
+                      />
+                    )
+                  })}
+                </Box>
+                {/* Remounted on Clear filters: the picker keeps typed text when its value is cleared from outside. */}
+                <SearchableSelect<number>
+                  key={`upcoming-facility-${searchResetSeed}`}
+                  label="Facility"
+                  value={upcomingFacilityFilter}
+                  onChange={value => setUpcomingFacilityFilter(value ? Number(value) : '')}
+                  loading={facilitiesQ.isLoading}
+                  options={(facilitiesQ.data || []).map(facility => ({
+                    value: facility.id,
+                    label: facility.name,
+                    secondary: `#${facility.id} · ${facility.tier_name || 'No tier'}`,
+                    keywords: `${facility.id} ${facility.tier_name || ''}`,
+                  }))}
+                  placeholder="All facilities"
+                  noOptionsText="No matching facilities"
+                />
+                <SearchableSelect<number>
+                  key={`upcoming-technician-${searchResetSeed}`}
+                  label="Technician"
+                  value={upcomingTechnicianFilter}
+                  onChange={value => setUpcomingTechnicianFilter(value ? Number(value) : '')}
+                  options={inspectionUsers.map((user: UserData) => ({
+                    value: user.id,
+                    label: user.id === currentUser?.id ? `${user.full_name || user.username} (you)` : (user.full_name || user.username),
+                    secondary: user.role ? user.role.replace(/_/g, ' ') : undefined,
+                    keywords: `${user.username || ''} ${user.email || ''} ${user.role || ''}`,
+                  }))}
+                  placeholder="All technicians"
+                  noOptionsText="No matching technicians"
+                />
+                <Button
+                  startIcon={<FilterAltOffOutlinedIcon />}
+                  onClick={clearUpcomingFilters}
+                  disabled={!upcomingFiltersActive}
+                  sx={{ fontWeight: 900, textTransform: 'none', borderRadius: '12px', minHeight: 40, justifySelf: { xs: 'start', xl: 'end' }, whiteSpace: 'nowrap' }}
+                >
+                  Clear filters
+                </Button>
+              </Box>
+            </Card>
+
+            <Card sx={{ borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none', overflow: 'hidden', minWidth: 0 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', px: { xs: 1.5, md: 2 }, pt: 1.5, pb: 1.25, borderBottom: '1px solid #EEF0F6' }}>
+                <Box role="tablist" aria-label="Upcoming lists" sx={{ display: 'inline-flex', p: 0.5, gap: 0.5, bgcolor: '#F4F4F8', borderRadius: '12px', maxWidth: '100%', flexWrap: 'wrap' }}>
+                  {([
+                    ['batches', 'Work orders', upcomingBatchTotal, upcomingBatchesQ.isLoading],
+                    ['individual', 'Individual inspections', upcomingIndividualTotal, upcomingQ.isLoading],
+                  ] as const).map(([value, label, count, loading]) => {
+                    const selected = activeUpcomingView === value
+                    return (
+                      <Button
+                        key={value}
+                        role="tab"
+                        aria-selected={selected}
+                        onClick={() => setUpcomingView(value)}
+                        sx={{
+                          textTransform: 'none', fontWeight: 900, borderRadius: '9px', px: 1.5, minHeight: 36,
+                          color: selected ? '#1E1B4B' : '#667085', bgcolor: selected ? '#fff' : 'transparent',
+                          boxShadow: selected ? '0 1px 3px rgba(16,24,40,0.12)' : 'none',
+                          '&:hover': { bgcolor: selected ? '#fff' : '#ECECF3' },
+                        }}
+                      >
+                        {label}
+                        <Box component="span" sx={{ ml: 1, px: 0.9, py: 0.1, borderRadius: '8px', fontSize: 12, bgcolor: selected ? '#EDE9FE' : '#E4E4EC', color: selected ? '#5B21B6' : '#475467' }}>
+                          {loading ? '…' : count}
+                        </Box>
+                      </Button>
+                    )
+                  })}
+                </Box>
+                <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700, ml: { md: 'auto' }, minWidth: 0 }}>
+                  {activeUpcomingView === 'batches'
+                    ? 'A work order holds the assets scheduled together.'
+                    : 'Single-asset inspections, such as auto-generated ones.'}
+                </Typography>
+              </Box>
+              {activeUpcomingView === 'batches' ? (
+                <>
+                  {renderUpcomingBatchRows()}
+                  {upcomingBatchTotal > 0 && renderPagination(upcomingBatchTotal, upcomingBatchPage, setUpcomingBatchPage)}
+                </>
+              ) : (
+                <>
+                  {renderUpcomingRows()}
+                  {upcomingIndividualTotal > 0 && renderPagination(upcomingIndividualTotal, upcomingPage, setUpcomingPage)}
+                </>
+              )}
+            </Card>
+        <Drawer
+          anchor="right"
+          open={scheduleDrawerOpen}
+          onClose={() => setScheduleDrawerOpen(false)}
+          // On phones the app's bottom bar sits above every panel: keep the footer clear of it.
+          PaperProps={{ sx: { width: { xs: '100%', sm: 'min(760px, 92vw)' }, display: 'flex', flexDirection: 'column', overflowX: 'hidden', pb: { xs: 'calc(64px + env(safe-area-inset-bottom))', sm: 0 } } }}
+          ModalProps={{ keepMounted: false }}
+        >
+          <Box component="header" sx={{ px: { xs: 2, sm: 3 }, py: 2, borderBottom: '1px solid #EEF0F6', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Avatar sx={{ bgcolor: '#EFE7FF', color: '#7C3AED', borderRadius: '12px', width: 40, height: 40 }}><EventAvailableIcon /></Avatar>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography component="h2" id="schedule-inspections-title" sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: 18 }}>Schedule inspections</Typography>
+              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>Pick a facility and its assets. They are scheduled together as one work order.</Typography>
+            </Box>
+            <IconButton aria-label="Close" onClick={() => setScheduleDrawerOpen(false)}><CloseIcon /></IconButton>
+          </Box>
+          <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', px: { xs: 2, sm: 3 }, py: 2.5, display: 'grid', gap: 2.5, alignContent: 'start' }}>
+            <Box component="section" aria-label="Facility and technician" sx={{ display: 'grid', gap: 1.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 900, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>1 · Facility and technician</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 1.4fr) minmax(0, 1fr)' }, gap: 1.5 }}>
+                <SearchableSelect<number>
+                  label="Facility"
+                  value={facilityId}
+                  onChange={(nextFacilityId) => {
+                    setFacilityId(nextFacilityId)
+                    setCreateTechnicianId('')
+                    setSelectedInstantEquipmentIds([])
+                    setSelectedEquipmentIds([])
+                    setScheduleAssetSearch('')
+                    setDebouncedScheduleAssetSearch('')
+                  }}
+                  loading={facilitiesQ.isLoading}
+                  options={(facilitiesQ.data || []).map(facility => ({
+                    value: facility.id,
+                    label: facility.name,
+                    secondary: `#${facility.id} · ${facility.tier_name || 'No tier'} · ${facility.inventory_count} asset(s)`,
+                    keywords: `${facility.id} ${facility.tier_name || ''}`,
+                  }))}
+                  placeholder="Search facility name, tier, or ID"
+                  noOptionsText="No matching facilities available"
+                />
+                <SearchableSelect<number>
+                  label="Technician"
+                  value={createTechnicianValue}
+                  allowClear={false}
+                  onChange={value => setCreateTechnicianId(value ? Number(value) : '')}
+                  options={createTechnicians.map((user: UserData) => ({
+                    value: user.id,
+                    label: user.id === currentUser?.id ? `${user.full_name || user.username} (you)` : (user.full_name || user.username),
+                    secondary: user.role ? user.role.replace(/_/g, ' ') : undefined,
+                    keywords: `${user.username || ''} ${user.email || ''} ${user.role || ''}`,
+                  }))}
+                  placeholder="Search technician"
+                  noOptionsText="No matching technicians"
+                />
               </Box>
             </Box>
+            <Box component="section" aria-label="Frequency and date" sx={{ display: 'grid', gap: 1.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 900, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>2 · Frequency and date</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                {/* Instant is not a schedule: scheduling sends Annual for it, so that is what shows. */}
+                <TextField select label="Frequency" value={frequency === 'instant' ? 'annual' : frequency} onChange={e => setFrequency(e.target.value as InspectionFrequency)}>
+                  <MenuItem value="quarterly">Quarterly</MenuItem>
+                  <MenuItem value="semi_annual">Semi-Annual</MenuItem>
+                  <MenuItem value="annual">Annual</MenuItem>
+                </TextField>
+                <TextField label="Schedule Date" type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+              </Box>
+            </Box>
+            <Box component="section" aria-label="Assets" sx={{ display: 'grid', gap: 1.5, minWidth: 0 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 900, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>3 · Assets</Typography>
+              {!facilityId && (
+                <Typography sx={{ color: '#6B7280', fontWeight: 700, p: 2, borderRadius: '14px', bgcolor: '#F9FAFB', border: '1px dashed #E4E7EC' }}>
+                  Choose a facility to list its assets.
+                </Typography>
+              )}
             {facilityId && (
-              <Box sx={{ mb: 3 }}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '190px minmax(0, 1fr)' }, gap: 1.5, mb: 1.5 }}>
+              <Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '170px minmax(0, 1fr)' }, gap: 1.5, mb: 1.5 }}>
                   <SearchFieldSelect
                     value={scheduleAssetSearchField}
                     options={INSPECTION_ASSET_SEARCH_FIELDS}
@@ -4932,16 +5339,16 @@ const Inspections = () => {
                     {allScheduleEquipmentSelected ? 'Clear Selection' : 'Select All Assets'}
                   </Button>
                 </Box>
-                <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '18px' }}>
-                  <Table size="small" stickyHeader>
+                <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '18px', overflowX: 'hidden' }}>
+                  <Table size="small" stickyHeader sx={{ width: '100%', tableLayout: 'fixed' }} aria-label="Assets to schedule">
                     <TableHead>
                       <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                        <TableCell padding="checkbox" />
-                        <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
+                        <TableCell padding="checkbox" sx={{ width: 52 }} />
+                        <TableCell sx={{ fontWeight: 900, width: { xs: '32%', sm: '20%' } }}>Asset Tag</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
-                        <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
-                        <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
-                        <TableCell sx={{ fontWeight: 900 }}>Serial #</TableCell>
+                        <TableCell sx={{ fontWeight: 900, width: '18%', display: { xs: 'none', sm: 'table-cell' } }}>Modality</TableCell>
+                        <TableCell sx={{ fontWeight: 900, width: { xs: '26%', sm: '14%' } }}>Criticality</TableCell>
+                        <TableCell sx={{ fontWeight: 900, width: '18%', display: { xs: 'none', sm: 'table-cell' } }}>Serial #</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -4957,12 +5364,12 @@ const Inspections = () => {
                           onClick={() => toggleEquipment(item.id)}
                           sx={{ cursor: 'pointer' }}
                         >
-                          <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} /></TableCell>
-                          <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
+                          <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} inputProps={{ 'aria-label': `Select ${item.asset_tag}` }} /></TableCell>
+                          <TableCell><ClippedTooltipText value={item.asset_tag} monospace color="#7161D8" fontWeight={900} /></TableCell>
                           <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
-                          <TableCell>{item.modality_name || '-'}</TableCell>
-                          <TableCell>{item.criticality}</TableCell>
-                          <TableCell><ClippedTooltipText value={item.serial_number} /></TableCell>
+                          <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><ClippedTooltipText value={item.modality_name || '-'} /></TableCell>
+                          <TableCell><ClippedTooltipText value={item.criticality || '-'} /></TableCell>
+                          <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><ClippedTooltipText value={item.serial_number} /></TableCell>
                         </ContextTableRow>
                       ))}
                     </TableBody>
@@ -4970,51 +5377,25 @@ const Inspections = () => {
                 </TableContainer>
               </Box>
             )}
-            <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) 220px' }, gap: 2, alignItems: 'center' }}>
-                <SearchFieldSelect
-                  value={upcomingSearchField}
-                  options={INSPECTION_SEARCH_FIELDS}
-                  onChange={setUpcomingSearchField}
-                  ariaLabel="Upcoming inspection search field"
-                />
-                <DebouncedSearchField
-                  key={`upcoming-${activitySearch}-${searchResetSeed}`}
-                  defaultValue={activitySearch}
-                  onDebouncedChange={setDebouncedUpcomingSearch}
-                  label="Search upcoming inspections"
-                  placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === upcomingSearchField)?.label.toLowerCase() || 'inspections'}...`}
-                  fullWidth
-                />
-                <TextField
-                  select
-                  label="Due within"
-                  value={upcomingRange}
-                  onChange={e => setUpcomingRange(e.target.value as UpcomingDateRange)}
-                  disabled={Boolean(dateFrom || dateTo)}
-                >
-                  {UPCOMING_DATE_RANGES.map(option => (
-                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-                  ))}
-                </TextField>
-              </Box>
-              <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, mt: 1 }}>
-                {dateFrom || dateTo
-                  ? `Showing inspections${dateFrom ? ` from ${formatDate(dateFrom)}` : ''}${dateTo ? ` through ${formatDate(dateTo)}` : ''}. Clear the module dates to use Due within.`
-                  : `Showing inspections scheduled from ${formatDate(upcomingWindow.date_from)} to ${formatDate(upcomingWindow.date_to)}.`}
-              </Typography>
-            </Card>
-            {renderUpcomingBatchRows()}
-            {renderPagination(upcomingBatchesQ.data?.total || 0, upcomingBatchPage, setUpcomingBatchPage)}
-            {(upcomingQ.data?.total || 0) > 0 && (
-              <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
-                <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
-                  Individual Inspections
-                </Typography>
-                {renderUpcomingRows()}
-                {renderPagination(upcomingQ.data?.total || 0, upcomingPage, setUpcomingPage)}
-              </Box>
-            )}
+            </Box>
+          </Box>
+          <Box component="footer" sx={{ px: { xs: 2, sm: 3 }, py: 1.75, borderTop: '1px solid #EEF0F6', display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', bgcolor: '#FCFCFD' }}>
+            <Tooltip title={facilityId ? 'Creates upcoming inspections for this facility\'s assets that are due in the next 90 days.' : 'Creates upcoming inspections for assets due in the next 90 days, at every facility.'}>
+              <span>
+                <Button startIcon={<AutoFixHighIcon />} variant="outlined" disabled={!canAddInspections || generateMut.isPending} onClick={() => {
+                  if (!canAddInspections) return toast.error('You do not have permission to auto-generate inspections')
+                  generateMut.mutate({ facility_id: facilityId ? Number(facilityId) : undefined, days_ahead: 90 })
+                }} sx={{ minHeight: 44, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
+                  Auto Generate{facilityId ? '' : ' (all facilities)'}
+                </Button>
+              </span>
+            </Tooltip>
+            <Box sx={{ flex: 1 }} />
+            <Button startIcon={<EventAvailableIcon />} variant="contained" onClick={scheduleSelected} disabled={!canAddInspections || !facilityId || !selectedEquipmentIds.length || scheduleMut.isPending} sx={{ minHeight: 44, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
+              {scheduleMut.isPending ? 'Scheduling...' : `Schedule ${selectedEquipmentIds.length || ''} selected`.replace('  ', ' ')}
+            </Button>
+          </Box>
+        </Drawer>
           </Box>
         )}
 

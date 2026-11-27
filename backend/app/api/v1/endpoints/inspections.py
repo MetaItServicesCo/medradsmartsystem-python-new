@@ -21,7 +21,7 @@ from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, Invoi
 from app.models.modality import Modality
 from app.models.tier import Tier
 from app.models.user import User, UserRole
-from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
+from app.utils.inspection_schedule import canonical_inspection_frequency, inspection_frequency_from_schedule, next_inspection_date
 from app.utils.modality_forms import form_for_new_asset, require_type
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
@@ -312,6 +312,41 @@ def _equipment_name(equipment: Optional[Equipment]) -> str:
         return "Equipment"
     bits = [equipment.asset_tag, equipment.make, equipment.model]
     return " ".join(str(bit) for bit in bits if bit) or f"Equipment #{equipment.id}"
+
+
+def _frequency_is(column: Any, canonical: str):
+    """An exact frequency match on a stored value, whatever its case or separators.
+
+    A blank frequency reads as annual, as the inspection lists display it.
+    """
+    normalized = func.replace(func.replace(func.lower(func.trim(column)), "-", "_"), " ", "_")
+    if canonical == "annual":
+        return or_(column.is_(None), func.trim(column) == "", normalized == canonical)
+    return normalized == canonical
+
+
+def _frequency_filter(column: Any, value: Optional[str]):
+    """The list filter for a chosen frequency: its stored value, or the raw value when it names none."""
+    canonical = canonical_inspection_frequency(value)
+    if canonical:
+        return _frequency_is(column, canonical)
+    raw = (value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return func.replace(func.replace(func.lower(func.trim(column)), "-", "_"), " ", "_") == raw
+
+
+def _search_condition(search_term: str, predicates_for_term):
+    """Every word must match somewhere, or the whole phrase must.
+
+    One word behaves as before. Several words ("brookvale annual") narrow the
+    list: each one has to match a field, so the facility and the frequency can
+    be named together. The whole phrase also counts on its own, so a phrase
+    such as "semi annual" still matches a semi-annual inspection.
+    """
+    words = search_term.split()[:6]
+    phrase = or_(*predicates_for_term(search_term))
+    if len(words) < 2:
+        return phrase
+    return or_(phrase, and_(*(or_(*predicates_for_term(word)) for word in words)))
 
 
 def _frequency_days(frequency: str) -> int:
@@ -1969,6 +2004,8 @@ def list_inspections(
     unbatched_only: bool = Query(False),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    frequency: Optional[str] = Query(None),
+    inspector_id: Optional[int] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
@@ -1994,6 +2031,10 @@ def list_inspections(
         query = query.filter(Inspection.facility_id == facility_id)
     if unbatched_only:
         query = query.filter(Inspection.batch_id.is_(None))
+    if isinstance(frequency, str) and frequency.strip():
+        query = query.filter(_frequency_filter(Inspection.inspection_frequency, frequency))
+    if isinstance(inspector_id, int) and inspector_id:
+        query = query.filter(Inspection.inspector_id == inspector_id)
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=400, detail="From date cannot be later than To date")
     inspection_date_column = Inspection.scheduled_date
@@ -2006,8 +2047,10 @@ def list_inspections(
     if date_to:
         query = query.filter(inspection_date_column <= datetime.combine(date_to, time.max))
     search_term = normalize_list_search(search)
-    if search_term:
+
+    def inspection_predicates(search_term: str) -> list:
         normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        canonical_frequency = canonical_inspection_frequency(search_term)
         tier_match = (
             db.query(Tier.id)
             .filter(
@@ -2026,7 +2069,12 @@ def list_inspections(
         )
         search_by_field = {
             "inspection_number": [contains_ci(Inspection.inspection_number, search_term)],
-            "frequency": [contains_ci(Inspection.inspection_frequency, normalized_value)],
+            # A frequency name matches that frequency exactly ("annual" is not "semi_annual").
+            "frequency": [
+                _frequency_is(Inspection.inspection_frequency, canonical_frequency)
+                if canonical_frequency
+                else contains_ci(Inspection.inspection_frequency, normalized_value)
+            ],
             "requirement": [contains_ci(Inspection.compliance_requirement, search_term)],
             "criticality": [contains_ci(Inspection.criticality, search_term)],
             "status": [
@@ -2065,6 +2113,9 @@ def list_inspections(
                     inspection_date_column < searched_date[1],
                 )
             )
+        return predicates_for_field(search_field, search_by_field)
+
+    if search_term:
         query = (
             query
             .outerjoin(Facility, Inspection.facility_id == Facility.id)
@@ -2072,7 +2123,7 @@ def list_inspections(
             .outerjoin(InventoryPart, Inspection.inventory_part_id == InventoryPart.id)
             .outerjoin(InspectionBatch, Inspection.batch_id == InspectionBatch.id)
             .outerjoin(User, Inspection.inspector_id == User.id)
-            .filter(or_(*predicates_for_field(search_field, search_by_field)))
+            .filter(_search_condition(search_term, inspection_predicates))
         )
     if assigned_only(current_user, "inspections"):
         query = query.filter(Inspection.inspector_id == current_user.id)
@@ -2115,6 +2166,8 @@ def list_inspection_batches(
     facility_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    frequency: Optional[str] = Query(None),
+    inspector_id: Optional[int] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
@@ -2135,9 +2188,41 @@ def list_inspection_batches(
     if facility_id:
         require_facility_access(db, current_user, facility_id)
         query = query.filter(InspectionBatch.facility_id == facility_id)
+    if isinstance(frequency, str) and frequency.strip():
+        query = query.filter(_frequency_filter(InspectionBatch.inspection_frequency, frequency))
+    if isinstance(inspector_id, int) and inspector_id:
+        query = query.filter(InspectionBatch.inspector_id == inspector_id)
     search_term = normalize_list_search(search)
-    if search_term:
+
+    def batch_predicates(search_term: str) -> list:
         normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        canonical_frequency = canonical_inspection_frequency(search_term)
+
+        def child_match(*conditions):
+            # A batch matches when one of its inspections (or that inspection's asset) does.
+            return (
+                db.query(Inspection.id)
+                .outerjoin(Equipment, Inspection.equipment_id == Equipment.id)
+                .outerjoin(InventoryPart, Inspection.inventory_part_id == InventoryPart.id)
+                .filter(Inspection.batch_id == InspectionBatch.id, or_(*conditions))
+                .exists()
+            )
+
+        tier_child_match = (
+            db.query(Inspection.id)
+            .outerjoin(Equipment, Inspection.equipment_id == Equipment.id)
+            .outerjoin(InventoryPart, Inspection.inventory_part_id == InventoryPart.id)
+            .join(Tier, or_(Tier.id == Equipment.tier_id, Tier.id == InventoryPart.tier_id))
+            .filter(Inspection.batch_id == InspectionBatch.id, contains_ci(Tier.name, search_term))
+            .exists()
+        )
+        modality_child_match = (
+            db.query(Inspection.id)
+            .join(Equipment, Inspection.equipment_id == Equipment.id)
+            .join(Modality, Modality.id == Equipment.modality_id)
+            .filter(Inspection.batch_id == InspectionBatch.id, contains_ci(Modality.name, search_term))
+            .exists()
+        )
         asset_match = (
             db.query(Inspection.id)
             .outerjoin(Equipment, Inspection.equipment_id == Equipment.id)
@@ -2164,7 +2249,12 @@ def list_inspection_batches(
             "batch": [contains_ci(InspectionBatch.batch_number, search_term)],
             "facility": [contains_ci(Facility.name, search_term)],
             "technician": [contains_ci(User.full_name, search_term)],
-            "frequency": [contains_ci(InspectionBatch.inspection_frequency, normalized_value)],
+            # A frequency name matches that frequency exactly ("annual" is not "semi_annual").
+            "frequency": [
+                _frequency_is(InspectionBatch.inspection_frequency, canonical_frequency)
+                if canonical_frequency
+                else contains_ci(InspectionBatch.inspection_frequency, normalized_value)
+            ],
             "status": [value_contains_ci(InspectionBatch.status, normalized_value)],
             "date": [
                 value_contains_ci(InspectionBatch.scheduled_date, search_term),
@@ -2172,12 +2262,22 @@ def list_inspection_batches(
                 value_contains_ci(InspectionBatch.completed_at, search_term),
             ],
             "asset": [asset_match],
+            # The fields the search menu offers that live on a batch's inspections and assets:
+            # each one searches only itself instead of falling back to every field.
+            "serial": [child_match(contains_ci(Equipment.serial_number, search_term), contains_ci(InventoryPart.serial_number, search_term))],
+            "criticality": [child_match(contains_ci(Inspection.criticality, search_term))],
+            "requirement": [child_match(contains_ci(Inspection.compliance_requirement, search_term))],
+            "tier": [tier_child_match],
+            "modality": [modality_child_match],
         }
+        return predicates_for_field(search_field, search_by_field)
+
+    if search_term:
         query = (
             query
             .outerjoin(Facility, InspectionBatch.facility_id == Facility.id)
             .outerjoin(User, InspectionBatch.inspector_id == User.id)
-            .filter(or_(*predicates_for_field(search_field, search_by_field)))
+            .filter(_search_condition(search_term, batch_predicates))
         )
     batch_date_column = InspectionBatch.scheduled_date
     if status_filter == InspectionStatus.IN_PROGRESS:
