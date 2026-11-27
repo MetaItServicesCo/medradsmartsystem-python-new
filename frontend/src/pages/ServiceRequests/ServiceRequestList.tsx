@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
+import { rememberServiceRequestList } from './listReturn'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Box, Card, Typography, Button, Table, TableBody, TableCell,
@@ -179,7 +180,18 @@ const ServiceRequestList = () => {
   const invalidDateRange = Boolean(queryDateFrom && queryDateTo && queryDateFrom > queryDateTo)
 
   const [searchInput, setSearchInput] = useState(querySearch)
-  const [page, setPage] = useState(1)
+  // The page lives in the address with the filters (?page=78), so leaving for a
+  // request's details and coming back - by its Back button or the browser's -
+  // returns to the same page. Changing a filter or the search starts at page 1.
+  const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1)
+  const setPage = (nextPage: number) => {
+    const next = new URLSearchParams(searchParams)
+    if (nextPage > 1) next.set('page', String(nextPage))
+    else next.delete('page')
+    setSearchParams(next, { replace: true })
+  }
+  const location = useLocation()
+  useEffect(() => { rememberServiceRequestList(location.search) }, [location.search])
   const [limit] = useState(10)
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ServiceRequest | null>(null)
@@ -197,8 +209,8 @@ const ServiceRequestList = () => {
         const next = new URLSearchParams(searchParams)
         if (trimmed) next.set('search', trimmed)
         else next.delete('search')
+        next.delete('page')
         setSearchParams(next, { replace: true })
-        setPage(1)
       }
     }, 400)
     return () => clearTimeout(handler)
@@ -240,6 +252,13 @@ const ServiceRequestList = () => {
   const items = data?.items ?? []
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / limit)
+  // A page that no longer exists (the last request on it was deleted, or an
+  // old link) shows the last page there is.
+  useEffect(() => {
+    if (isFetching || !data) return
+    const lastPage = Math.max(1, totalPages)
+    if (page > lastPage) setPage(lastPage)
+  }, [isFetching, data, totalPages, page])
 
   const statsValues: Record<string, number> = {
     total: data?.stats?.total ?? total,
@@ -263,8 +282,8 @@ const ServiceRequestList = () => {
     if (e.target.value) next.set(key, e.target.value)
     else next.delete(key)
     if (key === 'status') next.delete('status_group')
+    next.delete('page')
     setSearchParams(next, { replace: true })
-    setPage(1)
   }
 
   const handleCardClick = (cardKey: string) => {
@@ -274,20 +293,20 @@ const ServiceRequestList = () => {
     else if (cardKey === 'in_progress') next.set('status_group', 'active')
     else if (cardKey === 'completed') next.set('status_group', 'completed')
     else next.delete('status_group')
+    next.delete('page')
     setSearchParams(next, { replace: true })
-    setPage(1)
   }
 
   const clearFilters = () => {
     setSearchInput('')
     setSearchParams(new URLSearchParams(), { replace: true })
-    setPage(1)
   }
 
   const handleClearSearch = () => {
     setSearchInput('')
     const next = new URLSearchParams(searchParams)
     next.delete('search')
+    next.delete('page')
     setSearchParams(next, { replace: true })
   }
 
@@ -295,8 +314,8 @@ const ServiceRequestList = () => {
     const next = new URLSearchParams(searchParams)
     if (value === 'all') next.delete('search_field')
     else next.set('search_field', value)
+    next.delete('page')
     setSearchParams(next, { replace: true })
-    setPage(1)
   }
 
   const handleActionsOpen = (e: React.MouseEvent<HTMLElement>, sr: ServiceRequest) => {

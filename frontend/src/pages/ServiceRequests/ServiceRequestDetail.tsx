@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { serviceRequestListPath } from './listReturn'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Autocomplete,
@@ -936,7 +937,7 @@ const ServiceRequestDetail = () => {
         </Typography>
         <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 1.5 }}>
           {!notFound && <Button variant="contained" onClick={() => refetch()}>Retry</Button>}
-          <Button onClick={() => navigate('/service-requests')}>Back to List</Button>
+          <Button onClick={() => navigate(serviceRequestListPath())}>Back to List</Button>
         </Box>
       </Box>
     )
@@ -946,7 +947,7 @@ const ServiceRequestDetail = () => {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <Typography variant="h6">Service request not found</Typography>
-        <Button onClick={() => navigate('/service-requests')} sx={{ mt: 2 }}>
+        <Button onClick={() => navigate(serviceRequestListPath())} sx={{ mt: 2 }}>
           Back to List
         </Button>
       </Box>
@@ -1114,7 +1115,7 @@ const ServiceRequestDetail = () => {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 2 }}>
         <Button
           startIcon={<ArrowBackIcon />}
-          onClick={() => navigate('/service-requests')}
+          onClick={() => navigate(serviceRequestListPath())}
           sx={{
             color: '#7C3AED', fontWeight: 600,
             '&:hover': { backgroundColor: '#F5F3FF' },
