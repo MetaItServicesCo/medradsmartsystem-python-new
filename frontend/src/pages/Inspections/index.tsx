@@ -41,6 +41,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
+import { keyframes } from '@emotion/react'
 import { CanvasFormBuilder, FullWidthCanvasViewer, type CanvasFormSchema, type CanvasFormValues } from './CanvasFormBuilder'
 import { canvasPassFail, isFailText } from '@/utils/canvasPassFail'
 import { canvasValuesFromGrid, gridHasContent, gridToCanvas } from '@/utils/gridToCanvas'
@@ -776,6 +777,18 @@ const getUpcomingDateWindow = (range: UpcomingDateRange): { date_from?: string; 
   }
 }
 
+// A tab's content rises in once when the tab opens (8px, 320ms); still under reduced motion.
+const inspectionTabIn = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+`
+const tabPanelSx = {
+  p: { xs: 2, md: 3 },
+  minWidth: 0,
+  animation: `${inspectionTabIn} 320ms cubic-bezier(0.22, 1, 0.36, 1) backwards`,
+  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+}
+
 const escapeHtml = (value: unknown) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -1298,8 +1311,10 @@ const Inspections = () => {
   const [upcomingFacilityFilter, setUpcomingFacilityFilter] = useState<number | ''>('')
   const [upcomingTechnicianFilter, setUpcomingTechnicianFilter] = useState<number | ''>('')
   const [upcomingView, setUpcomingView] = useState<'batches' | 'individual' | null>(null)
+  const [inProgressView, setInProgressView] = useState<'batches' | 'individual' | null>(null)
+  const [completedView, setCompletedView] = useState<'batches' | 'individual' | null>(null)
   const [scheduleDrawerOpen, setScheduleDrawerOpen] = useState(false)
-  const upcomingCompact = useMediaQuery('(max-width:899.95px)')
+  const listCompact = useMediaQuery('(max-width:899.95px)')
   const [upcomingPage, setUpcomingPage] = useState(0)
   const [upcomingBatchPage, setUpcomingBatchPage] = useState(0)
   const [inProgressBatchPage, setInProgressBatchPage] = useState(0)
@@ -3666,6 +3681,71 @@ const Inspections = () => {
     printInspectionReport(asset)
   }
 
+  // The sections of the module. On narrow screens they wrap into a grid
+  // instead of scrolling sideways; arrow keys, Home and End move between them.
+  const INSPECTION_TABS: { value: number; label: string; icon: JSX.Element }[] = [
+    { value: 0, label: 'Upcoming', icon: <EventAvailableIcon fontSize="small" /> },
+    { value: 1, label: 'Instant Inspection', icon: <BoltIcon fontSize="small" /> },
+    { value: 2, label: 'In Progress', icon: <BuildIcon fontSize="small" /> },
+    { value: 3, label: 'Completed', icon: <CheckCircleIcon fontSize="small" /> },
+    { value: 5, label: 'Closed', icon: <CancelIcon fontSize="small" /> },
+    { value: 4, label: 'Inspection Forms', icon: <AssignmentTurnedInIcon fontSize="small" /> },
+  ]
+  const onInspectionTabKey = (event: React.KeyboardEvent, index: number) => {
+    const count = INSPECTION_TABS.length
+    const step: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }
+    let next = -1
+    if (event.key in step) next = (index + step[event.key] + count) % count
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = count - 1
+    if (next < 0) return
+    event.preventDefault()
+    const target = INSPECTION_TABS[next]
+    selectTab(target.value)
+    document.getElementById(`inspection-tab-${target.value}`)?.focus()
+  }
+  const renderTabBar = () => (
+    <Box
+      role="tablist"
+      aria-label="Inspection sections"
+      sx={{
+        display: { xs: 'grid', md: 'flex' },
+        gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(3, minmax(0, 1fr))' },
+        flexWrap: 'wrap', gap: 0.75, px: { xs: 1.25, md: 2 }, py: 1.25, borderBottom: '1px solid #EEF0F6',
+      }}
+    >
+      {INSPECTION_TABS.map((item, index) => {
+        const selected = tab === item.value
+        return (
+          <Button
+            key={item.value}
+            id={`inspection-tab-${item.value}`}
+            role="tab"
+            aria-selected={selected}
+            aria-controls="inspection-tabpanel"
+            tabIndex={selected ? 0 : -1}
+            onClick={() => selectTab(item.value)}
+            onKeyDown={event => onInspectionTabKey(event, index)}
+            startIcon={item.icon}
+            sx={{
+              justifyContent: { xs: 'flex-start', md: 'center' }, minWidth: 0, minHeight: 44, px: 1.5,
+              borderRadius: '12px', textTransform: 'none', fontWeight: 800, fontSize: 14,
+              color: selected ? '#5B21B6' : '#475467',
+              bgcolor: selected ? '#F1ECFF' : 'transparent',
+              boxShadow: selected ? 'inset 0 0 0 1px #DDD6FE' : 'none',
+              transition: 'background-color 180ms cubic-bezier(0.4, 0, 0.2, 1), color 180ms cubic-bezier(0.4, 0, 0.2, 1)',
+              '&:hover': { bgcolor: selected ? '#EDE7FF' : '#F6F5FA' },
+              '&:focus-visible': { outline: '3px solid #C4B5FD', outlineOffset: 1 },
+              '& .MuiButton-startIcon': { mr: 0.75, color: selected ? '#7C3AED' : '#8B95A7' },
+            }}
+          >
+            <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</Box>
+          </Button>
+        )
+      })}
+    </Box>
+  )
+
   const renderKpi = (label: string, value: number, icon: JSX.Element, color: string, targetTab: number) => (
     <Card
       key={label}
@@ -3718,28 +3798,63 @@ const Inspections = () => {
     />
   )
 
-  const renderInspectionRows = (items: Inspection[], loading: boolean, mode: 'progress' | 'completed') => (
-    <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
-        <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Asset</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Tier</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Result</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Date</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {loading ? Array.from({ length: 4 }).map((_, i) => (
-            <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
-          )) : items.length === 0 ? (
-            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspections found.</TableCell></TableRow>
-          ) : items.map(item => {
-            const resultStyle = statusChip(item.result)
-            return (
+  const renderInspectionRows = (items: Inspection[], loading: boolean, mode: 'progress' | 'completed') => {
+    const resultChip = (item: Inspection) => {
+      const resultStyle = statusChip(item.result)
+      return <Chip size="small" label={item.result} sx={{ bgcolor: resultStyle.bg, color: resultStyle.color, fontWeight: 900, maxWidth: '100%' }} />
+    }
+    const action = (item: Inspection) => mode === 'progress' && canEditInspections ? (
+      <Button size="small" startIcon={<AssignmentTurnedInIcon />} variant="contained" onClick={() => setReportInspection(item)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap' }}>
+        Fill Report
+      </Button>
+    ) : mode === 'progress' ? (
+      <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
+    ) : (
+      <Button size="small" startIcon={<AssessmentIcon />} variant="outlined" onClick={() => setViewReport(item)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap' }}>
+        Report
+      </Button>
+    )
+    const when = (item: Inspection) => mode === 'progress' ? item.started_at : item.completed_at
+    if (loading) return listLoading
+    if (!items.length) return renderListEmpty('No inspections found.')
+    if (listCompact) {
+      return (
+        <Box component="ul" aria-label={mode === 'progress' ? 'Individual inspections in progress' : 'Completed individual inspections'} sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
+          {items.map(item => renderRecordCard(
+            `inspection-${item.id}`,
+            item.inspection_number,
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+              <ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(item, mode)} />
+              {resultChip(item)}
+            </Box>,
+            [
+              <ClippedTooltipText key="asset" value={item.asset_name || item.equipment_name || '-'} fontWeight={800} onClick={() => openInspectionRecord(item, mode)} />,
+              <ClippedTooltipText key="facility" value={item.facility_name || '-'} variant="caption" color="#475467" fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} />,
+              <Typography key="when" sx={{ fontSize: 13, color: '#475467', fontWeight: 700 }}>
+                {mode === 'progress' ? 'Started' : 'Completed'} {formatDate(when(item))}{item.tier_name ? ` · ${item.tier_name}` : ''}
+              </Typography>,
+            ],
+            action(item),
+          ))}
+        </Box>
+      )
+    }
+    return (
+      <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
+        <Table stickyHeader sx={listTableSx} aria-label={mode === 'progress' ? 'Individual inspections in progress' : 'Completed individual inspections'}>
+          <TableHead>
+            <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+              <TableCell sx={{ ...listHeadCell, width: 128 }}>Inspection #</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '20%' }}>Facility</TableCell>
+              <TableCell sx={listHeadCell}>Asset</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '14%', ...hideBelow('xl') }}>Tier</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '11%' }}>Result</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '12%' }}>{mode === 'progress' ? 'Started' : 'Completed'}</TableCell>
+              <TableCell align="right" sx={{ ...listHeadCell, width: 136 }}>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {items.map(item => (
               <ContextTableRow
                 key={item.id}
                 recordKey={`inspection-${item.id}`}
@@ -3747,128 +3862,188 @@ const Inspections = () => {
                 hover
               >
                 <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(item, mode)} /></TableCell>
-              <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
-              <TableCell>
-                <ClippedTooltipText value={item.asset_name || item.equipment_name || '-'} fontWeight={800} onClick={() => openInspectionRecord(item, mode)} />
-                <ClippedTooltipText value={item.serial_number || item.part_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={() => openInspectionRecord(item, mode)} />
-              </TableCell>
-                <TableCell>{item.tier_name || '-'}</TableCell>
-                <TableCell><Chip size="small" label={item.result} sx={{ bgcolor: resultStyle.bg, color: resultStyle.color, fontWeight: 900 }} /></TableCell>
-                <TableCell>{formatDate(mode === 'progress' ? item.started_at : item.completed_at)}</TableCell>
-                <TableCell align="right">
-                  {mode === 'progress' && canEditInspections ? (
-                    <Button startIcon={<AssignmentTurnedInIcon />} variant="contained" onClick={() => setReportInspection(item)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                      Fill Report
-                    </Button>
-                  ) : mode === 'progress' ? (
-                    <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
-                  ) : (
-                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                      <Button size="small" startIcon={<AssessmentIcon />} variant="outlined" onClick={() => setViewReport(item)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                        Report
-                      </Button>
-                    </Box>
-                  )}
+                <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
+                <TableCell>
+                  <ClippedTooltipText value={item.asset_name || item.equipment_name || '-'} fontWeight={800} onClick={() => openInspectionRecord(item, mode)} />
+                  <ClippedTooltipText value={item.serial_number || item.part_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={() => openInspectionRecord(item, mode)} />
                 </TableCell>
+                <TableCell sx={hideBelow('xl')}><ClippedTooltipText value={item.tier_name || '-'} /></TableCell>
+                <TableCell sx={{ overflow: 'hidden' }}>{resultChip(item)}</TableCell>
+                <TableCell>{listDate(when(item))}</TableCell>
+                <TableCell align="right">{action(item)}</TableCell>
               </ContextTableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  )
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    )
+  }
 
-  const renderBatchRows = (items: InspectionBatch[], loading: boolean, mode: 'progress' | 'completed' = 'progress') => (
-    <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
-        <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Assets</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Progress</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>{mode === 'completed' ? 'Completed' : 'Started'}</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {loading ? Array.from({ length: 4 }).map((_, i) => (
-            <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
-          )) : items.length === 0 ? (
-            <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No {mode === 'completed' ? 'completed' : 'in progress'} inspection batches.</TableCell></TableRow>
-          ) : items.map(batch => {
-            const done = batch.completed_count || 0
+  const renderBatchRows = (items: InspectionBatch[], loading: boolean, mode: 'progress' | 'completed' = 'progress') => {
+    const printAll = async (batch: InspectionBatch) => {
+      try {
+        const detail = await fetchInspectionBatch(batch.id)
+        printBatchReport(detail)
+      } catch { toast.error('Could not load batch') }
+    }
+    const progress = (batch: InspectionBatch) => {
+      const done = batch.completed_count || 0
+      const total = batch.asset_count || 0
+      const pct = total ? Math.round((done / total) * 100) : 0
+      return (
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#344054', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {done} completed of {total}
+          </Typography>
+          <Box aria-hidden="true" sx={{ mt: 0.5, height: 6, borderRadius: '999px', bgcolor: mode === 'completed' ? '#ECFDF5' : '#EEF2FF', overflow: 'hidden' }}>
+            <Box sx={{ height: '100%', width: `${pct}%`, borderRadius: '999px', bgcolor: mode === 'completed' ? '#10B981' : '#6366F1' }} />
+          </Box>
+        </Box>
+      )
+    }
+    const extraActions = (batch: InspectionBatch) => (
+      <>
+        {mode === 'completed' && (
+          <Tooltip title="Print All Reports">
+            <IconButton size="small" aria-label={`Print all reports for ${batch.batch_number}`} onClick={() => printAll(batch)} sx={{ bgcolor: '#EEF2FF', color: '#4F46E5', '&:hover': { bgcolor: '#E0E7FF' } }}>
+              <PrintOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+        {mode === 'progress' && canDeleteInspections && (
+          <Tooltip title="Delete batch">
+            <IconButton size="small" aria-label={`Delete ${batch.batch_number}`} onClick={() => setDeleteBatchTarget(batch)} sx={{ bgcolor: '#FEF2F2', color: '#DC2626', '&:hover': { bgcolor: '#FEE2E2' } }}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+      </>
+    )
+    const when = (batch: InspectionBatch) => mode === 'completed' ? batch.completed_at : (batch.started_at || batch.scheduled_date)
+    const listName = mode === 'completed' ? 'Completed work orders' : 'Work orders in progress'
+    if (loading) return listLoading
+    if (!items.length) return renderListEmpty(`No ${mode === 'completed' ? 'completed' : 'in progress'} work orders.`)
+    if (listCompact) {
+      return (
+        <Box component="ul" aria-label={listName} sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
+          {items.map(batch => {
             const total = batch.asset_count || 0
-            return (
-              <ContextTableRow
-                key={batch.id}
-                recordKey={`inspection-batch-${batch.id}`}
-                recordLabel={batch.batch_number}
-                hover
-              >
-                <TableCell><ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} /></TableCell>
-                <TableCell><ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} /></TableCell>
-                <TableCell>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{total} asset{total === 1 ? '' : 's'}</Typography>
-                  <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{batch.inspection_frequency || 'instant'} inspection batch</Typography>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    size="small"
-                    label={`${done} completed of ${total}`}
-                    sx={{ bgcolor: '#EEF2FF', color: '#4F46E5', fontWeight: 900 }}
-                  />
-                </TableCell>
-                <TableCell>{formatDate(mode === 'completed' ? batch.completed_at : (batch.started_at || batch.scheduled_date))}</TableCell>
-                <TableCell align="right">
-                  <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center' }}>
-                    {mode === 'completed' && (
-                      <>
-                        <Tooltip title="Print All Reports">
-                          <IconButton
-                            size="small"
-                            onClick={async () => {
-                              try {
-                                const detail = await fetchInspectionBatch(batch.id)
-                                printBatchReport(detail)
-                              } catch { toast.error('Could not load batch') }
-                            }}
-                            sx={{ bgcolor: '#EEF2FF', color: '#4F46E5', '&:hover': { bgcolor: '#E0E7FF' } }}
-                          >
-                            <AssessmentIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </>
-                    )}
-                    {mode === 'progress' && canDeleteInspections && (
-                      <Tooltip title="Delete batch">
-                        <IconButton
-                          size="small"
-                          aria-label={`Delete ${batch.batch_number}`}
-                          onClick={() => setDeleteBatchTarget(batch)}
-                          sx={{ bgcolor: '#FEF2F2', color: '#DC2626', '&:hover': { bgcolor: '#FEE2E2' } }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                    <Button
-                      startIcon={<AssessmentIcon />}
-                      variant="contained"
-                      onClick={() => setSelectedBatchId(batch.id)}
-                      sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
-                    >
-                      {mode === 'completed' ? 'View' : 'View Batch'}
-                    </Button>
-                  </Box>
-                </TableCell>
-              </ContextTableRow>
+            return renderRecordCard(
+              `inspection-batch-${batch.id}`,
+              batch.batch_number,
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+                <ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} />
+                {frequencyChip(batch.inspection_frequency || 'instant')}
+              </Box>,
+              [
+                <ClippedTooltipText key="facility" value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} />,
+                <Typography key="when" sx={{ fontSize: 13, color: '#475467', fontWeight: 700 }}>
+                  {mode === 'completed' ? 'Completed' : 'Started'} {formatDate(when(batch))} · {total} asset{total === 1 ? '' : 's'}
+                </Typography>,
+                <Box key="progress" sx={{ mt: 0.5 }}>{progress(batch)}</Box>,
+              ],
+              <>
+                {extraActions(batch)}
+                <Button size="small" variant="contained" aria-label={`View batch ${batch.batch_number}`} onClick={() => setSelectedBatchId(batch.id)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>View</Button>
+              </>,
             )
           })}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  )
+        </Box>
+      )
+    }
+    return (
+      <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
+        <Table stickyHeader sx={listTableSx} aria-label={listName}>
+          <TableHead>
+            <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+              <TableCell sx={{ ...listHeadCell, width: 136 }}>Work order</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '24%' }}>Facility</TableCell>
+              <TableCell sx={{ ...listHeadCell, ...hideBelow('lg') }}>Assets</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '17%' }}>Progress</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '13%' }}>{mode === 'completed' ? 'Completed' : 'Started'}</TableCell>
+              <TableCell align="right" sx={{ ...listHeadCell, width: { xs: 112, lg: 156 } }}>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {items.map(batch => {
+              const total = batch.asset_count || 0
+              return (
+                <ContextTableRow
+                  key={batch.id}
+                  recordKey={`inspection-batch-${batch.id}`}
+                  recordLabel={batch.batch_number}
+                  hover
+                >
+                  <TableCell><ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} /></TableCell>
+                  <TableCell>
+                    <ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} />
+                    <Typography sx={{ display: { xs: 'block', lg: 'none' }, color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>{total} asset{total === 1 ? '' : 's'}</Typography>
+                  </TableCell>
+                  <TableCell sx={{ ...hideBelow('lg'), overflow: 'hidden' }}>
+                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{total} asset{total === 1 ? '' : 's'}</Typography>
+                    <Typography sx={{ color: '#8B95A7', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{frequencyLabel(batch.inspection_frequency || 'instant')} inspection batch</Typography>
+                  </TableCell>
+                  <TableCell>{progress(batch)}</TableCell>
+                  <TableCell>{listDate(when(batch))}</TableCell>
+                  <TableCell align="right">
+                    <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center' }}>
+                      {extraActions(batch)}
+                      {viewBatchButton(batch)}
+                    </Box>
+                  </TableCell>
+                </ContextTableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    )
+  }
+
+  // In Progress and Completed: work orders, and the older single-asset
+  // inspections (from before work orders) as a second counted list when any exist.
+  const renderWorkList = (mode: 'progress' | 'completed') => {
+    const batchesQ = mode === 'progress' ? inProgressBatchesQ : completedBatchesQ
+    const legacyQ = mode === 'progress' ? inProgressQ : completedQ
+    const legacy = mode === 'progress' ? legacyInProgress : legacyCompleted
+    const batchPage = mode === 'progress' ? inProgressBatchPage : completedBatchPage
+    const setBatchPage = mode === 'progress' ? setInProgressBatchPage : setCompletedBatchPage
+    const legacyPage = mode === 'progress' ? legacyInProgressPage : legacyCompletedPage
+    const setLegacyPage = mode === 'progress' ? setLegacyInProgressPage : setLegacyCompletedPage
+    const chosen = mode === 'progress' ? inProgressView : completedView
+    const setView = mode === 'progress' ? setInProgressView : setCompletedView
+    const batchTotal = batchesQ.data?.total || 0
+    const legacyTotal = legacyQ.data?.total || 0
+    const active: 'batches' | 'individual' = legacyTotal === 0
+      ? 'batches'
+      : (chosen ?? (batchTotal === 0 ? 'individual' : 'batches'))
+    return (
+      <Card component="section" aria-label={mode === 'progress' ? 'In progress list' : 'Completed list'} sx={listCardSx}>
+        {renderListToolbar(
+          legacyTotal > 0
+            ? renderListSwitch(mode === 'progress' ? 'In progress lists' : 'Completed lists', [
+              ['batches', 'Work orders', batchTotal, batchesQ.isLoading],
+              ['individual', 'Individual inspections', legacyTotal, legacyQ.isLoading],
+            ] as const, active, setView)
+            : renderListTitle('Work orders', batchTotal, batchesQ.isLoading),
+          active === 'batches'
+            ? 'A work order holds the assets inspected together.'
+            : 'Single-asset inspections from before work orders.',
+        )}
+        {active === 'batches' ? (
+          <>
+            {renderBatchRows(batchesQ.data?.items || [], batchesQ.isLoading, mode)}
+            {batchTotal > 0 && renderPagination(batchTotal, batchPage, setBatchPage)}
+          </>
+        ) : (
+          <>
+            {renderInspectionRows(legacy, legacyQ.isLoading, mode)}
+            {legacyTotal > 0 && renderPagination(legacyTotal, legacyPage, setLegacyPage)}
+          </>
+        )}
+      </Card>
+    )
+  }
 
   const openUpcomingBatchActions = (event: MouseEvent<HTMLElement>, batch: InspectionBatch) => {
     setUpcomingBatchAnchor(event.currentTarget)
@@ -3893,14 +4068,94 @@ const Inspections = () => {
     rescheduleBatchMut.mutate({ id: rescheduleBatch.id, scheduledDate: parsed.toISOString() })
   }
 
-  // A scheduled inspection is one batch, listed as one row: its assets are
-  // started, rescheduled and closed together, as they are in In Progress.
-  // The lists fit their panel at every width (fixed layout, secondary columns
-  // drop away, long text ends in an ellipsis with a tooltip) and turn into
-  // cards on narrow screens, so they never scroll sideways.
-  const upcomingHeadCell = { fontWeight: 900, color: '#475467', fontSize: 12.5, letterSpacing: '0.02em', py: 1.25 }
-  const upcomingTableSx = { width: '100%', tableLayout: 'fixed' as const, '& .MuiTableCell-root': { px: 1.5 } }
-  const hideBelow = (breakpoint: 'lg' | 'xl') => ({ display: { xs: 'none', [breakpoint]: 'table-cell' } })
+  // ─── One look for every tab ────────────────────────────────────────────────
+  // Every tab is a title row, a card to find things and a card holding the
+  // list. The lists fit their panel at every width (fixed layout, secondary
+  // columns drop away, long text ends in an ellipsis with a tooltip) and turn
+  // into cards on narrow screens, so nothing scrolls sideways.
+  const listHeadCell = { fontWeight: 900, color: '#475467', fontSize: 12.5, letterSpacing: '0.02em', py: 1.25 }
+  const listTableSx = { width: '100%', tableLayout: 'fixed' as const, '& .MuiTableCell-root': { px: 1.5 } }
+  const hideBelow = (breakpoint: 'sm' | 'md' | 'lg' | 'xl') => ({ display: { xs: 'none', [breakpoint]: 'table-cell' } })
+  const finderCardSx = { p: { xs: 1.5, md: 2 }, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none', overflow: 'visible' }
+  const listCardSx = { borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none', overflow: 'hidden', minWidth: 0 }
+  const tabActionSx = { minHeight: 44, borderRadius: '14px', fontWeight: 900, textTransform: 'none', whiteSpace: 'nowrap', flexShrink: 0 } as const
+  const rowIconSx = { bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }
+  const listLoading = (
+    <Box sx={{ p: 2 }}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={44} />)}</Box>
+  )
+  const renderListEmpty = (title: string, detail?: ReactNode) => (
+    <Box role="status" sx={{ py: 6, px: 2, textAlign: 'center' }}>
+      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: detail ? 0.5 : 0 }}>{title}</Typography>
+      {detail && <Typography component="div" sx={{ color: '#6B7280', fontWeight: 700 }}>{detail}</Typography>}
+    </Box>
+  )
+  const renderTabIntro = (title: string, subtitle: ReactNode, action?: ReactNode) => (
+    <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography component="h2" sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: 20 }}>{title}</Typography>
+        <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13.5 }}>{subtitle}</Typography>
+      </Box>
+      {action}
+    </Box>
+  )
+  const renderListToolbar = (left: ReactNode, note?: ReactNode) => (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', px: { xs: 1.5, md: 2 }, pt: 1.5, pb: 1.25, borderBottom: '1px solid #EEF0F6' }}>
+      {left}
+      {note && <Typography component="div" sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700, ml: { md: 'auto' }, minWidth: 0 }}>{note}</Typography>}
+    </Box>
+  )
+  const countBadge = (count: number, loading = false, selected = true) => (
+    <Box component="span" sx={{ ml: 1, px: 0.9, py: 0.1, borderRadius: '8px', fontSize: 12, fontWeight: 900, bgcolor: selected ? '#EDE9FE' : '#E4E4EC', color: selected ? '#5B21B6' : '#475467' }}>
+      {loading ? '…' : count}
+    </Box>
+  )
+  const renderListTitle = (label: string, count: number, loading = false) => (
+    <Typography component="h3" sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: 14.5, display: 'flex', alignItems: 'center' }}>
+      {label}{countBadge(count, loading)}
+    </Typography>
+  )
+  const renderListSwitch = <T extends string,>(
+    ariaLabel: string,
+    options: readonly (readonly [T, string, number, boolean])[],
+    active: T,
+    onChange: (value: T) => void,
+  ) => (
+    <Box role="tablist" aria-label={ariaLabel} sx={{ display: 'inline-flex', p: 0.5, gap: 0.5, bgcolor: '#F4F4F8', borderRadius: '12px', maxWidth: '100%', flexWrap: 'wrap' }}>
+      {options.map(([value, label, count, loading]) => {
+        const selected = active === value
+        return (
+          <Button
+            key={value}
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange(value)}
+            sx={{
+              textTransform: 'none', fontWeight: 900, borderRadius: '9px', px: 1.5, minHeight: 36,
+              color: selected ? '#1E1B4B' : '#667085', bgcolor: selected ? '#fff' : 'transparent',
+              boxShadow: selected ? '0 1px 3px rgba(16,24,40,0.12)' : 'none',
+              '&:hover': { bgcolor: selected ? '#fff' : '#ECECF3' },
+            }}
+          >
+            {label}
+            {countBadge(count, loading, selected)}
+          </Button>
+        )
+      })}
+    </Box>
+  )
+  // The compact View button of a work order row: its words show where there is room.
+  const viewBatchButton = (batch: InspectionBatch) => (
+    <Button
+      startIcon={<AssessmentIcon />}
+      variant="contained"
+      size="small"
+      aria-label={`View batch ${batch.batch_number}`}
+      onClick={() => setSelectedBatchId(batch.id)}
+      sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap', minWidth: 0, '& .MuiButton-startIcon': { mr: { xs: 0, lg: 0.75 }, ml: { xs: 0, lg: -0.5 } } }}
+    >
+      <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}>View</Box>
+    </Button>
+  )
 
   const renderUpcomingEmpty = (kind: 'batches' | 'individual') => {
     const otherTotal = kind === 'batches' ? upcomingIndividualTotal : upcomingBatchTotal
@@ -3942,7 +4197,7 @@ const Inspections = () => {
     )
   }
 
-  const renderUpcomingCard = (
+  const renderRecordCard = (
     key: string,
     label: string,
     title: ReactNode,
@@ -3973,10 +4228,10 @@ const Inspections = () => {
     )
   }
 
-  const upcomingDateChip = (value?: string | null) => (
+  const listDate = (value?: string | null) => (
     <Typography component="span" sx={{ fontSize: 12.5, fontWeight: 800, color: '#344054', whiteSpace: 'nowrap' }}>{formatDate(value)}</Typography>
   )
-  const upcomingFrequencyChip = (value?: string | null) => (
+  const frequencyChip = (value?: string | null) => (
     <Chip size="small" label={frequencyLabel(value)} sx={{ fontWeight: 800, bgcolor: '#F4F1FF', color: '#5B21B6', maxWidth: '100%' }} />
   )
 
@@ -4001,17 +4256,17 @@ const Inspections = () => {
       <>
       {upcomingBatchesQ.isLoading ? (
         <Box sx={{ p: 2 }}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={44} />)}</Box>
-      ) : batches.length === 0 ? renderUpcomingEmpty('batches') : upcomingCompact ? (
+      ) : batches.length === 0 ? renderUpcomingEmpty('batches') : listCompact ? (
         <Box component="ul" aria-label="Upcoming work orders" sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
           {batches.map(batch => {
             const total = batch.asset_count || 0
             const { names, text } = assetSummary(batch)
-            return renderUpcomingCard(
+            return renderRecordCard(
               `inspection-batch-${batch.id}`,
               batch.batch_number,
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
                 <ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} />
-                {upcomingFrequencyChip(batch.inspection_frequency)}
+                {frequencyChip(batch.inspection_frequency)}
               </Box>,
               [
                 <ClippedTooltipText key="facility" value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} />,
@@ -4033,16 +4288,16 @@ const Inspections = () => {
         </Box>
       ) : (
       <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
-        <Table stickyHeader sx={upcomingTableSx} aria-label="Upcoming work orders">
+        <Table stickyHeader sx={listTableSx} aria-label="Upcoming work orders">
           <TableHead>
             <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-              <TableCell sx={{ ...upcomingHeadCell, width: 136 }}>Work order</TableCell>
-              <TableCell sx={{ ...upcomingHeadCell, width: '24%' }}>Facility</TableCell>
-              <TableCell sx={{ ...upcomingHeadCell, ...hideBelow('lg') }}>Assets</TableCell>
-              <TableCell sx={{ ...upcomingHeadCell, width: '12%' }}>Frequency</TableCell>
-              <TableCell sx={{ ...upcomingHeadCell, width: '15%', ...hideBelow('xl') }}>Technician</TableCell>
-              <TableCell sx={{ ...upcomingHeadCell, width: '12%' }}>Scheduled</TableCell>
-              <TableCell align="right" sx={{ ...upcomingHeadCell, width: { xs: 112, lg: 150 } }}>Actions</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: 136 }}>Work order</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '24%' }}>Facility</TableCell>
+              <TableCell sx={{ ...listHeadCell, ...hideBelow('lg') }}>Assets</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '12%' }}>Frequency</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '15%', ...hideBelow('xl') }}>Technician</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '12%' }}>Scheduled</TableCell>
+              <TableCell align="right" sx={{ ...listHeadCell, width: { xs: 112, lg: 150 } }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -4069,21 +4324,12 @@ const Inspections = () => {
                       </Tooltip>
                     )}
                   </TableCell>
-                  <TableCell sx={{ overflow: 'hidden' }}>{upcomingFrequencyChip(batch.inspection_frequency)}</TableCell>
+                  <TableCell sx={{ overflow: 'hidden' }}>{frequencyChip(batch.inspection_frequency)}</TableCell>
                   <TableCell sx={hideBelow('xl')}><ClippedTooltipText value={batch.inspector_name || 'Unassigned'} fontWeight={700} /></TableCell>
-                  <TableCell>{upcomingDateChip(batch.scheduled_date)}</TableCell>
+                  <TableCell>{listDate(batch.scheduled_date)}</TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center' }}>
-                      <Button
-                        startIcon={<AssessmentIcon />}
-                        variant="contained"
-                        size="small"
-                        aria-label={`View batch ${batch.batch_number}`}
-                        onClick={() => setSelectedBatchId(batch.id)}
-                        sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap', minWidth: 0, '& .MuiButton-startIcon': { mr: { xs: 0, lg: 0.75 }, ml: { xs: 0, lg: -0.5 } } }}
-                      >
-                        <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}>View</Box>
-                      </Button>
+                      {viewBatchButton(batch)}
                       {batchMenu(batch)}
                     </Box>
                   </TableCell>
@@ -4167,14 +4413,14 @@ const Inspections = () => {
     <>
     {upcomingQ.isLoading ? (
       <Box sx={{ p: 2 }}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={44} />)}</Box>
-    ) : items.length === 0 ? renderUpcomingEmpty('individual') : upcomingCompact ? (
+    ) : items.length === 0 ? renderUpcomingEmpty('individual') : listCompact ? (
       <Box component="ul" aria-label="Upcoming individual inspections" sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
-        {items.map(item => renderUpcomingCard(
+        {items.map(item => renderRecordCard(
           `inspection-${item.id}`,
           item.inspection_number,
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
             <ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} />
-            {upcomingFrequencyChip(item.inspection_frequency)}
+            {frequencyChip(item.inspection_frequency)}
           </Box>,
           [
             <ClippedTooltipText key="asset" value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />,
@@ -4188,17 +4434,17 @@ const Inspections = () => {
       </Box>
     ) : (
     <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
-      <Table stickyHeader sx={upcomingTableSx} aria-label="Upcoming individual inspections">
+      <Table stickyHeader sx={listTableSx} aria-label="Upcoming individual inspections">
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ ...upcomingHeadCell, width: 128 }}>Inspection #</TableCell>
-            <TableCell sx={{ ...upcomingHeadCell, width: '18%' }}>Facility</TableCell>
-            <TableCell sx={{ ...upcomingHeadCell, width: '22%' }}>Equipment</TableCell>
-            <TableCell sx={{ ...upcomingHeadCell, width: '11%' }}>Frequency</TableCell>
-            <TableCell sx={{ ...upcomingHeadCell, width: '9%', ...hideBelow('lg') }}>Criticality</TableCell>
-            <TableCell sx={{ ...upcomingHeadCell, ...hideBelow('xl') }}>Requirement</TableCell>
-            <TableCell sx={{ ...upcomingHeadCell, width: '11%' }}>Scheduled</TableCell>
-            <TableCell align="right" sx={{ ...upcomingHeadCell, width: 72 }}>Actions</TableCell>
+            <TableCell sx={{ ...listHeadCell, width: 128 }}>Inspection #</TableCell>
+            <TableCell sx={{ ...listHeadCell, width: '18%' }}>Facility</TableCell>
+            <TableCell sx={{ ...listHeadCell, width: '22%' }}>Equipment</TableCell>
+            <TableCell sx={{ ...listHeadCell, width: '11%' }}>Frequency</TableCell>
+            <TableCell sx={{ ...listHeadCell, width: '9%', ...hideBelow('lg') }}>Criticality</TableCell>
+            <TableCell sx={{ ...listHeadCell, ...hideBelow('xl') }}>Requirement</TableCell>
+            <TableCell sx={{ ...listHeadCell, width: '11%' }}>Scheduled</TableCell>
+            <TableCell align="right" sx={{ ...listHeadCell, width: 72 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -4215,12 +4461,12 @@ const Inspections = () => {
                 <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />
                 <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={() => openInspectionInfo(item)} />
               </TableCell>
-              <TableCell sx={{ overflow: 'hidden' }}>{upcomingFrequencyChip(item.inspection_frequency)}</TableCell>
+              <TableCell sx={{ overflow: 'hidden' }}>{frequencyChip(item.inspection_frequency)}</TableCell>
               <TableCell sx={{ ...hideBelow('lg'), overflow: 'hidden' }}><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900, maxWidth: '100%' }} /></TableCell>
               <TableCell sx={{ ...hideBelow('xl'), overflow: 'hidden' }}>
                 <ClippedTooltipText value={item.compliance_requirement || '-'} field maxWidth="100%" />
               </TableCell>
-              <TableCell>{upcomingDateChip(item.scheduled_date)}</TableCell>
+              <TableCell>{listDate(item.scheduled_date)}</TableCell>
               <TableCell align="right">{rowMenu(item)}</TableCell>
             </ContextTableRow>
           ))}
@@ -4270,36 +4516,53 @@ const Inspections = () => {
     )
   }
 
-  const renderClosedRows = () => (
+  const renderClosedRows = () => {
+    const items = closedQ.data?.items || []
+    const action = (item: Inspection) => canEditInspections ? (
+      <IconButton size="small" aria-label={`Actions for ${item.inspection_number}`} onClick={event => openClosedActions(event, item)} sx={rowIconSx}>
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+    ) : (
+      <Button size="small" onClick={() => openInspectionInfo(item)} sx={{ fontWeight: 900, textTransform: 'none' }}>View</Button>
+    )
+    const closedChip = <Chip size="small" label="Closed" sx={{ fontWeight: 900, bgcolor: statusChip('closed').bg, color: statusChip('closed').color }} />
+    return (
     <>
-      <TableContainer className="list-scroll-panel">
-        <Table stickyHeader sx={{ minWidth: 1180, tableLayout: 'fixed' }}>
-          <colgroup>
-            <col style={{ width: 155 }} />
-            <col style={{ width: 220 }} />
-            <col style={{ width: 280 }} />
-            <col style={{ width: 150 }} />
-            <col style={{ width: 170 }} />
-            <col style={{ width: 170 }} />
-            <col style={{ width: 120 }} />
-          </colgroup>
+      {closedQ.isLoading ? listLoading : items.length === 0 ? renderListEmpty('No closed inspections match these filters.') : listCompact ? (
+        <Box component="ul" aria-label="Closed inspections" sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
+          {items.map(item => renderRecordCard(
+            `inspection-${item.id}`,
+            item.inspection_number,
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+              <ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} />
+              {closedChip}
+            </Box>,
+            [
+              <ClippedTooltipText key="asset" value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />,
+              <ClippedTooltipText key="facility" value={item.facility_name || '-'} variant="caption" color="#475467" fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} />,
+              <Typography key="when" sx={{ fontSize: 13, color: '#475467', fontWeight: 700 }}>
+                Scheduled {formatDate(item.scheduled_date)} · Closed {formatDate(item.updated_at)}
+              </Typography>,
+            ],
+            action(item),
+          ))}
+        </Box>
+      ) : (
+      <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
+        <Table stickyHeader sx={listTableSx} aria-label="Closed inspections">
           <TableHead>
             <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-              <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Scheduled</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Closed</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: 128 }}>Inspection #</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '20%' }}>Facility</TableCell>
+              <TableCell sx={listHeadCell}>Equipment</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '10%', ...hideBelow('lg') }}>Status</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '13%' }}>Scheduled</TableCell>
+              <TableCell sx={{ ...listHeadCell, width: '13%' }}>Closed</TableCell>
+              <TableCell align="right" sx={{ ...listHeadCell, width: 80 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {closedQ.isLoading ? Array.from({ length: 4 }).map((_, index) => (
-              <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
-            )) : (closedQ.data?.items || []).length === 0 ? (
-              <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No closed inspections match these filters.</TableCell></TableRow>
-            ) : closedQ.data!.items.map(item => (
+            {items.map(item => (
               <ContextTableRow
                 key={item.id}
                 recordKey={`inspection-${item.id}`}
@@ -4312,27 +4575,16 @@ const Inspections = () => {
                   <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />
                   <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={() => openInspectionInfo(item)} />
                 </TableCell>
-                <TableCell><Chip size="small" label="Closed" sx={{ fontWeight: 900, bgcolor: statusChip('closed').bg, color: statusChip('closed').color }} /></TableCell>
-                <TableCell>{formatDate(item.scheduled_date)}</TableCell>
-                <TableCell>{formatDate(item.updated_at)}</TableCell>
-                <TableCell align="right">
-                  {canEditInspections ? (
-                    <IconButton
-                      size="small"
-                      onClick={event => openClosedActions(event, item)}
-                      sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
-                    >
-                      <MoreVertIcon fontSize="small" />
-                    </IconButton>
-                  ) : (
-                    <Button size="small" onClick={() => openInspectionInfo(item)} sx={{ fontWeight: 900, textTransform: 'none' }}>View</Button>
-                  )}
-                </TableCell>
+                <TableCell sx={{ ...hideBelow('lg'), overflow: 'hidden' }}>{closedChip}</TableCell>
+                <TableCell>{listDate(item.scheduled_date)}</TableCell>
+                <TableCell>{listDate(item.updated_at)}</TableCell>
+                <TableCell align="right">{action(item)}</TableCell>
               </ContextTableRow>
             ))}
           </TableBody>
         </Table>
       </TableContainer>
+      )}
       <Menu
         anchorEl={closedActionAnchor}
         open={Boolean(closedActionAnchor && closedActionItem)}
@@ -4374,7 +4626,8 @@ const Inspections = () => {
         </MenuItem>
       </Menu>
     </>
-  )
+    )
+  }
 
   // The middle custom section's pass/fail answers. A choice field offering
   // "Fail" counts - on the canvas, inside a canvas table, or in a grid - and
@@ -5061,17 +5314,10 @@ const Inspections = () => {
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        <Tabs value={tab} onChange={(_, v) => selectTab(v)} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
-          <Tab value={0} icon={<EventAvailableIcon />} iconPosition="start" label="Upcoming" />
-          <Tab value={1} icon={<BoltIcon />} iconPosition="start" label="Instant Inspection" />
-          <Tab value={2} icon={<BuildIcon />} iconPosition="start" label="In Progress" />
-          <Tab value={3} icon={<CheckCircleIcon />} iconPosition="start" label="Completed" />
-          <Tab value={5} icon={<CancelIcon />} iconPosition="start" label="Closed" />
-          <Tab value={4} icon={<AssignmentTurnedInIcon />} iconPosition="start" label="Inspection Forms" />
-        </Tabs>
+        {renderTabBar()}
 
         {tab === 0 && (
-          <Box sx={{ p: { xs: 2, md: 3 }, minWidth: 0 }}>
+          <Box data-inspection-tab="upcoming" role="tabpanel" id="inspection-tabpanel" aria-labelledby="inspection-tab-0" sx={tabPanelSx}>
             <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
               <Box sx={{ minWidth: 0 }}>
                 <Typography component="h2" sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: 20 }}>Upcoming inspections</Typography>
@@ -5400,137 +5646,141 @@ const Inspections = () => {
         )}
 
         {tab === 1 && (
-          <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px auto auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
-              <SearchableSelect<number>
-                label="Facility"
-                value={facilityId}
-                onChange={(nextFacilityId) => {
-                  setFacilityId(nextFacilityId)
-                  setCreateTechnicianId('')
-                  setSelectedInstantEquipmentIds([])
-                  setSelectedEquipmentIds([])
-                  setInstantAssetSearch('')
-                  setDebouncedInstantAssetSearch('')
-                }}
-                loading={facilitiesQ.isLoading}
-                options={(facilitiesQ.data || []).map(facility => ({
-                  value: facility.id,
-                  label: facility.name,
-                  secondary: `#${facility.id} · ${facility.tier_name || 'No tier'} · ${facility.inventory_count} asset(s)`,
-                  keywords: `${facility.id} ${facility.tier_name || ''}`,
-                }))}
-                placeholder="Search facility name, tier, or ID"
-                noOptionsText="No matching facilities available"
-              />
-              <SearchableSelect<number>
-                label="Technician"
-                value={createTechnicianValue}
-                allowClear={false}
-                onChange={value => setCreateTechnicianId(value ? Number(value) : '')}
-                options={createTechnicians.map((user: UserData) => ({
-                  value: user.id,
-                  label: user.id === currentUser?.id ? `${user.full_name || user.username} (you)` : (user.full_name || user.username),
-                  secondary: user.role ? user.role.replace(/_/g, ' ') : undefined,
-                  keywords: `${user.username || ''} ${user.email || ''} ${user.role || ''}`,
-                }))}
-                placeholder="Search technician"
-                noOptionsText="No matching technicians"
-              />
-              <TextField select label="Frequency" value={frequency} onChange={e => setFrequency(e.target.value as InspectionFrequency)} sx={{ minWidth: 180 }}>
-                <MenuItem value="instant">Instant</MenuItem>
-                <MenuItem value="quarterly">Quarterly</MenuItem>
-                <MenuItem value="semi_annual">Semi-Annual</MenuItem>
-                <MenuItem value="annual">Annual</MenuItem>
-              </TextField>
-              <Button
-                startIcon={createMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <PlayArrowIcon />}
-                variant="contained"
-                onClick={startInspection}
-                disabled={!canInitiateInspections || !facilityId || !selectedInstantEquipmentIds.length || createMut.isPending}
-                sx={{ height: 54, borderRadius: '14px', px: 3, fontWeight: 900, textTransform: 'none', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
-              >
-                Start Selected Inspection{selectedInstantEquipmentIds.length === 1 ? '' : 's'}
-              </Button>
-            </Box>
-            {selectedFacility && (
-              <Box sx={{ mb: 2 }}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '190px minmax(0, 1fr)' }, gap: 1.5, mb: 1.5 }}>
-                  <SearchFieldSelect
-                    value={instantAssetSearchField}
-                    options={INSPECTION_ASSET_SEARCH_FIELDS}
-                    onChange={setInstantAssetSearchField}
-                    ariaLabel="Instant inspection asset search field"
-                  />
-                  <TextField
-                    label="Search facility assets"
-                    placeholder={`Search ${INSPECTION_ASSET_SEARCH_FIELDS.find((field) => field.value === instantAssetSearchField)?.label.toLowerCase() || 'assets'}...`}
-                    value={instantAssetSearch}
-                    onChange={event => setInstantAssetSearch(event.target.value)}
-                    fullWidth
-                  />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
-                    {selectedFacility.name}: {selectedInstantEquipmentIds.length} selected; {equipment.length} matching asset{equipment.length === 1 ? '' : 's'} shown.
-                  </Typography>
-                  <Button
-                    size="small"
-                    variant={allInstantEquipmentSelected ? 'outlined' : 'contained'}
-                    onClick={toggleAllInstantEquipment}
-                    disabled={equipmentQ.isLoading || equipment.length === 0}
-                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
-                  >
-                    {allInstantEquipmentSelected ? 'Clear Shown Selection' : 'Select All Shown Assets'}
-                  </Button>
-                </Box>
+          <Box data-inspection-tab="instant" role="tabpanel" id="inspection-tabpanel" aria-labelledby="inspection-tab-1" sx={tabPanelSx}>
+            {renderTabIntro('Instant inspection', "Start an inspection now for one facility's assets. It opens in In Progress.")}
+            <Card component="section" aria-label="Facility, technician and frequency" sx={finderCardSx}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.4fr) minmax(0, 1fr) 200px' }, gap: 1.5, alignItems: 'center' }}>
+                <SearchableSelect<number>
+                  label="Facility"
+                  value={facilityId}
+                  onChange={(nextFacilityId) => {
+                    setFacilityId(nextFacilityId)
+                    setCreateTechnicianId('')
+                    setSelectedInstantEquipmentIds([])
+                    setSelectedEquipmentIds([])
+                    setInstantAssetSearch('')
+                    setDebouncedInstantAssetSearch('')
+                  }}
+                  loading={facilitiesQ.isLoading}
+                  options={(facilitiesQ.data || []).map(facility => ({
+                    value: facility.id,
+                    label: facility.name,
+                    secondary: `#${facility.id} · ${facility.tier_name || 'No tier'} · ${facility.inventory_count} asset(s)`,
+                    keywords: `${facility.id} ${facility.tier_name || ''}`,
+                  }))}
+                  placeholder="Search facility name, tier, or ID"
+                  noOptionsText="No matching facilities available"
+                />
+                <SearchableSelect<number>
+                  label="Technician"
+                  value={createTechnicianValue}
+                  allowClear={false}
+                  onChange={value => setCreateTechnicianId(value ? Number(value) : '')}
+                  options={createTechnicians.map((user: UserData) => ({
+                    value: user.id,
+                    label: user.id === currentUser?.id ? `${user.full_name || user.username} (you)` : (user.full_name || user.username),
+                    secondary: user.role ? user.role.replace(/_/g, ' ') : undefined,
+                    keywords: `${user.username || ''} ${user.email || ''} ${user.role || ''}`,
+                  }))}
+                  placeholder="Search technician"
+                  noOptionsText="No matching technicians"
+                />
+                <TextField select label="Frequency" value={frequency} onChange={e => setFrequency(e.target.value as InspectionFrequency)} sx={{ minWidth: 180 }}>
+                  <MenuItem value="instant">Instant</MenuItem>
+                  <MenuItem value="quarterly">Quarterly</MenuItem>
+                  <MenuItem value="semi_annual">Semi-Annual</MenuItem>
+                  <MenuItem value="annual">Annual</MenuItem>
+                </TextField>
               </Box>
-            )}
-            <TableContainer className="list-scroll-panel">
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                    <TableCell padding="checkbox" />
-                    <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Serial #</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Tier</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {equipmentQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
-                  )) : equipment.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>Select a facility with assets.</TableCell></TableRow>
-                  ) : equipment.map((item: InspectionEquipmentItem) => (
-                    <ContextTableRow
-                      key={item.id}
-                      recordKey={`inspection-asset-${item.id}`}
-                      recordLabel={item.asset_tag}
-                      contextSelected={selectedInstantEquipmentIds.includes(item.id)}
-                      hover
-                      onClick={() => toggleInstantEquipment(item.id)}
-                      sx={{ cursor: 'pointer' }}
+            </Card>
+            <Card component="section" aria-label="Assets to inspect" sx={listCardSx}>
+              {selectedFacility && (
+                <Box sx={{ px: { xs: 1.5, md: 2 }, py: 1.5, borderBottom: '1px solid #EEF0F6', display: 'grid', gap: 1.5 }}>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px minmax(0, 1fr)' }, gap: 1.5 }}>
+                    <SearchFieldSelect
+                      value={instantAssetSearchField}
+                      options={INSPECTION_ASSET_SEARCH_FIELDS}
+                      onChange={setInstantAssetSearchField}
+                      ariaLabel="Instant inspection asset search field"
+                    />
+                    <TextField
+                      label="Search facility assets"
+                      placeholder={`Search ${INSPECTION_ASSET_SEARCH_FIELDS.find((field) => field.value === instantAssetSearchField)?.label.toLowerCase() || 'assets'}...`}
+                      value={instantAssetSearch}
+                      onChange={event => setInstantAssetSearch(event.target.value)}
+                      fullWidth
+                    />
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                    <Typography sx={{ color: '#475467', fontWeight: 800, fontSize: 13.5, minWidth: 0, flex: '1 1 220px' }}>
+                      {selectedFacility.name}: {selectedInstantEquipmentIds.length} selected; {equipment.length} matching asset{equipment.length === 1 ? '' : 's'} shown.
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={toggleAllInstantEquipment}
+                      disabled={equipmentQ.isLoading || equipment.length === 0}
+                      sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
                     >
-                      <TableCell padding="checkbox"><Checkbox checked={selectedInstantEquipmentIds.includes(item.id)} /></TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
-                      <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
-                      <TableCell>{item.modality_name || '-'}</TableCell>
-                      <TableCell><ClippedTooltipText value={item.serial_number || '-'} /></TableCell>
-                      <TableCell>{item.tier_name || '-'}</TableCell>
-                    </ContextTableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                      {allInstantEquipmentSelected ? 'Clear Shown Selection' : 'Select All Shown Assets'}
+                    </Button>
+                    <Button
+                      startIcon={createMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <PlayArrowIcon />}
+                      variant="contained"
+                      onClick={startInspection}
+                      disabled={!canInitiateInspections || !facilityId || !selectedInstantEquipmentIds.length || createMut.isPending}
+                      sx={{ ...tabActionSx, px: 2.5, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+                    >
+                      Start Selected Inspection{selectedInstantEquipmentIds.length === 1 ? '' : 's'}
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+              {!facilityId ? renderListEmpty('Choose a facility to list its assets.') : equipmentQ.isLoading ? listLoading : equipment.length === 0 ? renderListEmpty('Select a facility with assets.', 'No assets match at this facility.') : (
+                <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
+                  <Table stickyHeader sx={listTableSx} aria-label="Assets to inspect">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                        <TableCell padding="checkbox" sx={{ width: 52 }} />
+                        <TableCell sx={{ ...listHeadCell, width: { xs: '34%', md: '18%' } }}>Asset Tag</TableCell>
+                        <TableCell sx={listHeadCell}>Equipment</TableCell>
+                        <TableCell sx={{ ...listHeadCell, width: '18%', ...hideBelow('md') }}>Modality</TableCell>
+                        <TableCell sx={{ ...listHeadCell, width: '16%', ...hideBelow('lg') }}>Serial #</TableCell>
+                        <TableCell sx={{ ...listHeadCell, width: '14%', ...hideBelow('xl') }}>Tier</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {equipment.map((item: InspectionEquipmentItem) => (
+                        <ContextTableRow
+                          key={item.id}
+                          recordKey={`inspection-asset-${item.id}`}
+                          recordLabel={item.asset_tag}
+                          contextSelected={selectedInstantEquipmentIds.includes(item.id)}
+                          hover
+                          onClick={() => toggleInstantEquipment(item.id)}
+                          sx={{ cursor: 'pointer' }}
+                        >
+                          <TableCell padding="checkbox"><Checkbox checked={selectedInstantEquipmentIds.includes(item.id)} inputProps={{ 'aria-label': `Select ${item.asset_tag}` }} /></TableCell>
+                          <TableCell><ClippedTooltipText value={item.asset_tag} monospace color="#7161D8" fontWeight={900} /></TableCell>
+                          <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
+                          <TableCell sx={hideBelow('md')}><ClippedTooltipText value={item.modality_name || '-'} /></TableCell>
+                          <TableCell sx={hideBelow('lg')}><ClippedTooltipText value={item.serial_number || '-'} /></TableCell>
+                          <TableCell sx={hideBelow('xl')}><ClippedTooltipText value={item.tier_name || '-'} /></TableCell>
+                        </ContextTableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Card>
           </Box>
         )}
 
         {tab === 2 && (
-          <Box>
-            <Box sx={{ p: 3, pb: 0 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '190px minmax(0, 1fr)' }, gap: 1.5 }}>
+          <Box data-inspection-tab="progress" role="tabpanel" id="inspection-tabpanel" aria-labelledby="inspection-tab-2" sx={tabPanelSx}>
+            {renderTabIntro('In progress', 'Work orders being inspected now. Open one to fill in its reports.')}
+            <Card component="section" aria-label="Find in-progress inspections" sx={finderCardSx}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px minmax(0, 1fr)' }, gap: 1.5 }}>
                 <SearchFieldSelect
                   value={inProgressSearchField}
                   options={INSPECTION_SEARCH_FIELDS}
@@ -5546,24 +5796,16 @@ const Inspections = () => {
                   fullWidth
                 />
               </Box>
-            </Box>
-            {renderBatchRows(inProgressBatchesQ.data?.items || [], inProgressBatchesQ.isLoading)}
-            {renderPagination(inProgressBatchesQ.data?.total || 0, inProgressBatchPage, setInProgressBatchPage)}
-            {(inProgressQ.data?.total || 0) > 0 && (
-              <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
-                <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
-                  Legacy Individual Inspections
-                </Typography>
-                {renderInspectionRows(legacyInProgress, inProgressQ.isLoading, 'progress')}
-                {renderPagination(inProgressQ.data?.total || 0, legacyInProgressPage, setLegacyInProgressPage)}
-              </Box>
-            )}
+            </Card>
+            {renderWorkList('progress')}
           </Box>
         )}
+
         {tab === 3 && (
-          <Box>
-            <Box sx={{ p: 3, pb: 0 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '190px minmax(0, 1fr)' }, gap: 1.5 }}>
+          <Box data-inspection-tab="completed" role="tabpanel" id="inspection-tabpanel" aria-labelledby="inspection-tab-3" sx={tabPanelSx}>
+            {renderTabIntro('Completed', 'Finished work orders and their reports, ready to view or print.')}
+            <Card component="section" aria-label="Find completed inspections" sx={finderCardSx}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px minmax(0, 1fr)' }, gap: 1.5 }}>
                 <SearchFieldSelect
                   value={completedSearchField}
                   options={INSPECTION_SEARCH_FIELDS}
@@ -5579,25 +5821,16 @@ const Inspections = () => {
                   fullWidth
                 />
               </Box>
-            </Box>
-            {renderBatchRows(completedBatchesQ.data?.items || [], completedBatchesQ.isLoading, 'completed')}
-            {renderPagination(completedBatchesQ.data?.total || 0, completedBatchPage, setCompletedBatchPage)}
-            {(completedQ.data?.total || 0) > 0 && (
-              <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
-                <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
-                  Legacy Individual Inspections
-                </Typography>
-                {renderInspectionRows(legacyCompleted, completedQ.isLoading, 'completed')}
-                {renderPagination(completedQ.data?.total || 0, legacyCompletedPage, setLegacyCompletedPage)}
-              </Box>
-            )}
+            </Card>
+            {renderWorkList('completed')}
           </Box>
         )}
 
         {tab === 5 && (
-          <Box sx={{ p: 3 }}>
-            <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) 320px' }, gap: 2 }}>
+          <Box data-inspection-tab="closed" role="tabpanel" id="inspection-tabpanel" aria-labelledby="inspection-tab-5" sx={tabPanelSx}>
+            {renderTabIntro('Closed', 'Inspections taken off the schedule. Reopen one to put it back.')}
+            <Card component="section" aria-label="Find closed inspections" sx={finderCardSx}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px minmax(0, 1fr)', lg: '180px minmax(0, 1fr) 300px' }, gap: 1.5, alignItems: 'start' }}>
                 <SearchFieldSelect
                   value={closedSearchField}
                   options={INSPECTION_SEARCH_FIELDS}
@@ -5613,6 +5846,7 @@ const Inspections = () => {
                   fullWidth
                 />
                 <SearchableSelect<number>
+                  sx={{ gridColumn: { md: '1 / -1', lg: 'auto' } }}
                   label="Facility"
                   value={closedFacilityId}
                   onChange={setClosedFacilityId}
@@ -5632,15 +5866,23 @@ const Inspections = () => {
                 Module From/To dates also filter this list by its scheduled date. Reopening preserves the existing schedule; rescheduling assigns a new date and reopens it.
               </Typography>
             </Card>
-            {renderClosedRows()}
-            {renderPagination(closedQ.data?.total || 0, closedPage, setClosedPage)}
+            <Card component="section" aria-label="Closed inspections" sx={listCardSx}>
+              {renderListToolbar(renderListTitle('Closed inspections', closedQ.data?.total || 0, closedQ.isLoading))}
+              {renderClosedRows()}
+              {(closedQ.data?.total || 0) > 0 && renderPagination(closedQ.data?.total || 0, closedPage, setClosedPage)}
+            </Card>
           </Box>
         )}
 
         {tab === 4 && (
-          <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
-              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+          <Box data-inspection-tab="forms" role="tabpanel" id="inspection-tabpanel" aria-labelledby="inspection-tab-4" sx={tabPanelSx}>
+            {renderTabIntro('Inspection forms', 'The forms technicians fill in during an inspection.', (
+              <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateFormBuilder} disabled={!canAddInspections} sx={tabActionSx}>
+                New Form
+              </Button>
+            ))}
+            <Card component="section" aria-label="Find inspection forms" sx={finderCardSx}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px minmax(0, 1fr)', lg: '180px minmax(0, 1fr) auto' }, gap: 1.5, alignItems: 'center' }}>
                 <SearchFieldSelect
                   value={formSearchField}
                   options={INSPECTION_FORM_SEARCH_FIELDS}
@@ -5652,9 +5894,9 @@ const Inspections = () => {
                   placeholder={`Search ${INSPECTION_FORM_SEARCH_FIELDS.find((field) => field.value === formSearchField)?.label.toLowerCase() || 'forms'}...`}
                   value={formSearch}
                   onChange={event => setFormSearch(event.target.value)}
-                  sx={{ minWidth: { xs: '100%', sm: 360 }, flex: 1 }}
+                  fullWidth
                 />
-                <Box sx={{ display: 'flex', borderRadius: '12px', border: '1px solid #DDD6FE', overflow: 'hidden' }} role="group" aria-label="Which forms to list">
+                <Box sx={{ display: 'flex', borderRadius: '12px', border: '1px solid #DDD6FE', overflow: 'hidden', justifySelf: 'start', maxWidth: '100%', gridColumn: { sm: '1 / -1', lg: 'auto' } }} role="group" aria-label="Which forms to list">
                   {([['active', 'Forms'], ['hidden', 'Hidden forms']] as const).map(([view, label]) => (
                     <Button
                       key={view}
@@ -5662,7 +5904,7 @@ const Inspections = () => {
                       aria-pressed={formListView === view}
                       startIcon={view === 'hidden' ? <VisibilityOffOutlinedIcon fontSize="small" /> : undefined}
                       sx={{
-                        borderRadius: 0, px: 2, textTransform: 'none', fontWeight: 900,
+                        borderRadius: 0, px: 2, minHeight: 44, textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap',
                         bgcolor: formListView === view ? '#7C3AED' : 'transparent',
                         color: formListView === view ? '#fff' : '#5B21B6',
                         '&:hover': { bgcolor: formListView === view ? '#6D28D9' : '#F5F3FF' },
@@ -5673,73 +5915,87 @@ const Inspections = () => {
                   ))}
                 </Box>
               </Box>
-              <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateFormBuilder} disabled={!canAddInspections} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                New Form
-              </Button>
-            </Box>
-            <TableContainer className="list-scroll-panel">
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                    {/* Form and Description share the width; Fields and Actions
-                        take only what they need. */}
-                    <TableCell sx={{ fontWeight: 900, width: '40%' }}>Form</TableCell>
-                    <TableCell sx={{ fontWeight: 900, width: '45%' }}>Description</TableCell>
-                    <TableCell sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}>Fields</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {formListQ.isLoading ? Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={4}><Skeleton /></TableCell></TableRow>
-                  )) : (formListQ.data?.items || []).length === 0 ? (
-                    <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>
-                      {formListView === 'hidden' ? 'No hidden forms.' : 'No inspection forms found.'}
-                    </TableCell></TableRow>
-                  ) : formListQ.data!.items.map((form: InspectionFormOption) => {
-                    const schema = schemaForForm(form)
-                    const grid = schema.custom_grid
-                    const formioForm = schema.formio_form
-                    const cellCount = grid ? grid.rows * grid.columns : 0
-                    const fieldCount = formioForm?.components?.length || cellCount
-                    return (
-                      <ContextTableRow
-                        key={form.id}
-                        recordKey={`inspection-form-${form.id}`}
-                        recordLabel={form.name}
-                        hover
-                      >
-                        <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-                          <ClippedTooltipText value={form.name} fontWeight={900} onClick={() => setViewForm(form)} />
-                          {form.archived_at && (
-                            <Chip size="small" icon={<VisibilityOffOutlinedIcon />} label="Hidden" sx={{ my: 0.5, fontWeight: 800, bgcolor: '#F1F5F9', color: '#475569' }} />
-                          )}
-                          <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>
-                            Fixed checklist + {formioForm ? 'temporary external form' : grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom form'} + Biomed Notes
-                          </Typography>
-                        </TableCell>
-                        {/* Clipped to its column (maxWidth 0 stops a long one widening it);
-                            the whole description shows on hover. */}
-                        <TableCell sx={{ maxWidth: 0 }}><ClippedTooltipText value={form.description || '-'} field /></TableCell>
-                        <TableCell sx={{ whiteSpace: 'nowrap' }}><Chip size="small" label={`${fieldCount} custom field${fieldCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            size="small"
-                            onClick={(event) => {
-                              setFormActionAnchor(event.currentTarget)
-                              setFormActionItem(form)
-                            }}
-                            sx={{ bgcolor: '#F4F1FF', color: '#7C3AED' }}
+            </Card>
+            <Card component="section" aria-label="Inspection forms" sx={listCardSx}>
+              {renderListToolbar(renderListTitle(formListView === 'hidden' ? 'Hidden forms' : 'Forms', (formListQ.data?.items || []).length, formListQ.isLoading))}
+              {formListQ.isLoading ? listLoading : (formListQ.data?.items || []).length === 0 ? renderListEmpty(formListView === 'hidden' ? 'No hidden forms.' : 'No inspection forms found.') : (() => {
+                const formRows = formListQ.data!.items.map((form: InspectionFormOption) => {
+                  const schema = schemaForForm(form)
+                  const grid = schema.custom_grid
+                  const formioForm = schema.formio_form
+                  const cellCount = grid ? grid.rows * grid.columns : 0
+                  const fieldCount = formioForm?.components?.length || cellCount
+                  const kind = `Fixed checklist + ${formioForm ? 'temporary external form' : grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom form'} + Biomed Notes`
+                  const hiddenChip = form.archived_at ? (
+                    <Chip size="small" icon={<VisibilityOffOutlinedIcon />} label="Hidden" sx={{ my: 0.5, fontWeight: 800, bgcolor: '#F1F5F9', color: '#475569' }} />
+                  ) : null
+                  const fieldsChip = <Chip size="small" label={`${fieldCount} custom field${fieldCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900, maxWidth: '100%' }} />
+                  const menuButton = (
+                    <IconButton
+                      size="small"
+                      aria-label={`Actions for ${form.name}`}
+                      onClick={(event) => {
+                        setFormActionAnchor(event.currentTarget)
+                        setFormActionItem(form)
+                      }}
+                      sx={rowIconSx}
+                    >
+                      <MoreVertIcon fontSize="small" />
+                    </IconButton>
+                  )
+                  return { form, kind, hiddenChip, fieldsChip, menuButton }
+                })
+                return listCompact ? (
+                  <Box component="ul" aria-label="Inspection forms" sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
+                    {formRows.map(({ form, kind, hiddenChip, fieldsChip, menuButton }) => renderRecordCard(
+                      `inspection-form-${form.id}`,
+                      form.name,
+                      <ClippedTooltipText value={form.name} fontWeight={900} onClick={() => setViewForm(form)} />,
+                      [
+                        hiddenChip ? <Box key="hidden">{hiddenChip}</Box> : null,
+                        <Typography key="kind" sx={{ color: '#8B95A7', fontSize: 12 }}>{kind}</Typography>,
+                        <ClippedTooltipText key="description" value={form.description || '-'} variant="caption" color="#475467" fontWeight={600} />,
+                        <Box key="fields" sx={{ mt: 0.5 }}>{fieldsChip}</Box>,
+                      ],
+                      menuButton,
+                    ))}
+                  </Box>
+                ) : (
+                  <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
+                    <Table stickyHeader sx={listTableSx} aria-label="Inspection forms">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                          <TableCell sx={listHeadCell}>Form</TableCell>
+                          <TableCell sx={{ ...listHeadCell, width: '38%', ...hideBelow('lg') }}>Description</TableCell>
+                          <TableCell sx={{ ...listHeadCell, width: 156 }}>Fields</TableCell>
+                          <TableCell align="right" sx={{ ...listHeadCell, width: 80 }}>Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {formRows.map(({ form, kind, hiddenChip, fieldsChip, menuButton }) => (
+                          <ContextTableRow
+                            key={form.id}
+                            recordKey={`inspection-form-${form.id}`}
+                            recordLabel={form.name}
+                            hover
                           >
-                            <MoreVertIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </ContextTableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                            <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                              <ClippedTooltipText value={form.name} fontWeight={900} onClick={() => setViewForm(form)} />
+                              {hiddenChip}
+                              <Typography sx={{ color: '#8B95A7', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kind}</Typography>
+                            </TableCell>
+                            {/* The whole description shows on hover. */}
+                            <TableCell sx={{ ...hideBelow('lg'), maxWidth: 0 }}><ClippedTooltipText value={form.description || '-'} field /></TableCell>
+                            <TableCell sx={{ overflow: 'hidden' }}>{fieldsChip}</TableCell>
+                            <TableCell align="right">{menuButton}</TableCell>
+                          </ContextTableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )
+              })()}
+            </Card>
           </Box>
         )}
       </Card>
