@@ -4,7 +4,9 @@
   copy anchored low, chrome and frosted buttons, a stat strip) and its technique library: a
   pinned cinematic product stage, sticky stacking cards, liquid glass and film grain. The
   taste-skill moments stay: letters-assemble (#flow) and liquid-type (#phone).
-  Hero film: "Circuit Glow" from motionsites.ai/backgrounds, served from /landing-kit/media.
+  Hero film: "Circuit Glow" from motionsites.ai/backgrounds, served from /landing-kit/media and
+  tinted in MedRad's brand. Colours follow the app and the login page: violet #7161D8, pink
+  #F05D92, the violet M with its pink dot, on a deep indigo ground from the app's #1E1B4B.
 */
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -98,7 +100,7 @@ export default function Landing() {
   useLandingHead({
     title: 'MedRad: service software for biomedical teams',
     description: 'MedRad runs a biomedical service business in one place: service requests, inspections, inventory, rentals, invoices and payments, with a view for every role.',
-    themeColor: '#050506',
+    themeColor: '#0b0a1f',
   })
   const [menuOpen, setMenuOpen] = useState(false)
   const [roleIndex, setRoleIndex] = useState(0)
@@ -217,6 +219,8 @@ export default function Landing() {
               preload="auto"
               tabIndex={-1}
             />
+            <div className="lp-hero__tint" />
+            <div className="lp-hero__glow" />
             <div className="lp-hero__scrim" />
             <div className="lp-grain" />
           </div>
