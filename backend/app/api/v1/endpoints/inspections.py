@@ -1,3 +1,4 @@
+import unicodedata
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -440,6 +441,63 @@ def _is_default_form(db: Session, form: InspectionForm) -> bool:
     """The built-in report form, which is recreated on demand and so
     cannot meaningfully be removed or hidden."""
     return form.name == ADVANCED_REPORT_SCHEMA["title"]
+
+
+# The parts of a form's schema a person reads: titles, labels, options, hints.
+# Keys, types, ids and layout settings ("radio", "left", "custom_grid", 1080)
+# are left out, so a search for "label" or "grid" does not match every form.
+_FORM_TEXT_KEYS = {
+    "title", "label", "placeholder", "description", "tooltip", "text", "legend",
+    "content", "options", "values", "prefix", "suffix",
+}
+
+
+def _fold_search_text(value: Any) -> str:
+    """Lower-case, accents removed, spaces collapsed: "Sécurité  Électrique" -> "securite electrique"."""
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return " ".join(text.casefold().split())
+
+
+def _form_visible_text(schema: Any) -> str:
+    found: list[str] = []
+
+    def walk(node: Any, visible: bool) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, key in _FORM_TEXT_KEYS)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, visible)
+        elif visible and isinstance(node, str):
+            found.append(node)
+
+    walk(schema, False)
+    return _fold_search_text(" ".join(found))
+
+
+def _form_matches_search(form: InspectionForm, search_term: str, search_field: Optional[str]) -> bool:
+    """Whether a form matches the forms screen's search.
+
+    One field, or all of them when the field is "all" or unknown. The whole
+    phrase may match, or every word somewhere ("defibrillator checklist"
+    finds "Defibrillator PM Checklist"). Case and accents are ignored.
+    """
+    texts = {
+        "name": lambda: _fold_search_text(form.name),
+        "description": lambda: _fold_search_text(form.description),
+        "modality": lambda: _fold_search_text(form.modality.name if form.modality else ""),
+        "content": lambda: _form_visible_text(form.schema),
+    }
+    field = search_field.strip().lower() if isinstance(search_field, str) else "all"
+    haystacks = [texts[field]()] if field in texts else [read() for read in texts.values()]
+    phrase = _fold_search_text(search_term)
+    if not phrase:
+        return True
+    if any(phrase in text for text in haystacks):
+        return True
+    words = phrase.split()[:8]
+    return len(words) > 1 and all(any(word in text for text in haystacks) for word in words)
 
 
 def _form_response(form: InspectionForm) -> dict[str, Any]:
@@ -1445,18 +1503,12 @@ def list_inspection_forms(
         )
 
     search_term = normalize_list_search(search)
-    if search_term:
-        search_by_field = {
-            "name": [contains_ci(InspectionForm.name, search_term)],
-            "description": [contains_ci(InspectionForm.description, search_term)],
-            "modality": [contains_ci(Modality.name, search_term)],
-            "content": [value_contains_ci(InspectionForm.schema, search_term)],
-        }
-        query = query.outerjoin(Modality, InspectionForm.modality_id == Modality.id).filter(
-            or_(*predicates_for_field(search_field, search_by_field))
-        )
-
     forms = query.order_by(InspectionForm.name.asc()).all()
+    if search_term:
+        # Matched in Python: forms are few, every one is returned with its
+        # schema anyway, and only here can the search read a form's labels
+        # rather than its stored JSON (see _form_matches_search).
+        forms = [item for item in forms if _form_matches_search(item, search_term, search_field)]
     if form not in forms and not search_term:
         forms.append(form)
     usage = _form_usage(db, [item.id for item in forms if item.id])

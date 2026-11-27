@@ -5894,6 +5894,16 @@ const Inspections = () => {
                   placeholder={`Search ${INSPECTION_FORM_SEARCH_FIELDS.find((field) => field.value === formSearchField)?.label.toLowerCase() || 'forms'}...`}
                   value={formSearch}
                   onChange={event => setFormSearch(event.target.value)}
+                  onKeyDown={event => { if (event.key === 'Escape' && formSearch) { event.preventDefault(); setFormSearch('') } }}
+                  InputProps={{
+                    endAdornment: formSearch ? (
+                      <InputAdornment position="end">
+                        <IconButton size="small" aria-label="Clear the form search" onClick={() => setFormSearch('')} edge="end">
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : undefined,
+                  }}
                   fullWidth
                 />
                 <Box sx={{ display: 'flex', borderRadius: '12px', border: '1px solid #DDD6FE', overflow: 'hidden', justifySelf: 'start', maxWidth: '100%', gridColumn: { sm: '1 / -1', lg: 'auto' } }} role="group" aria-label="Which forms to list">
@@ -5918,7 +5928,12 @@ const Inspections = () => {
             </Card>
             <Card component="section" aria-label="Inspection forms" sx={listCardSx}>
               {renderListToolbar(renderListTitle(formListView === 'hidden' ? 'Hidden forms' : 'Forms', (formListQ.data?.items || []).length, formListQ.isLoading))}
-              {formListQ.isLoading ? listLoading : (formListQ.data?.items || []).length === 0 ? renderListEmpty(formListView === 'hidden' ? 'No hidden forms.' : 'No inspection forms found.') : (() => {
+              {formListQ.isLoading ? listLoading : (formListQ.data?.items || []).length === 0 ? (debouncedFormSearch
+                ? renderListEmpty(
+                  `No ${formListView === 'hidden' ? 'hidden forms' : 'forms'} match "${debouncedFormSearch}"${formSearchField === 'all' ? '' : ` in ${(INSPECTION_FORM_SEARCH_FIELDS.find(field => field.value === formSearchField)?.label || '').toLowerCase()}`}.`,
+                  <Button size="small" startIcon={<CloseIcon />} onClick={() => setFormSearch('')} sx={{ fontWeight: 900, textTransform: 'none' }}>Clear search</Button>,
+                )
+                : renderListEmpty(formListView === 'hidden' ? 'No hidden forms.' : 'No inspection forms found.')) : (() => {
                 const formRows = formListQ.data!.items.map((form: InspectionFormOption) => {
                   const schema = schemaForForm(form)
                   const grid = schema.custom_grid
