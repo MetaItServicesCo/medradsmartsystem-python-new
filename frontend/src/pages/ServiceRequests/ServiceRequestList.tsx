@@ -3,12 +3,11 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { rememberServiceRequestList } from './listReturn'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Box, Card, Typography, Button, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, IconButton, Chip, Avatar,
-  InputBase, Tooltip, Dialog, DialogTitle, DialogContent,
-  DialogContentText, DialogActions, Skeleton, Menu, MenuItem,
-  ListItemIcon, ListItemText, Pagination, Select, FormControl,
-  InputLabel, SelectChangeEvent, TextField, CircularProgress,
+  Box, Typography, Button, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, IconButton,
+  Dialog, DialogTitle, DialogContent,
+  DialogContentText, DialogActions, Menu, MenuItem,
+  ListItemIcon, ListItemText, SelectChangeEvent, TextField, InputAdornment, useMediaQuery,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -20,7 +19,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import FilterListIcon from '@mui/icons-material/FilterList'
+import FilterAltOffOutlinedIcon from '@mui/icons-material/FilterAltOffOutlined'
 import { toast } from 'react-toastify'
 
 import {
@@ -36,24 +35,29 @@ import ContextTableRow from '@/components/ContextTableRow'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
+import {
+  COMPACT_LIST_QUERY, EmptyState, EmptyStateButton, FilterCard, ListCard, ListPagination, ListSkeleton, PageHeader,
+  RecordCard, RecordCardList, StatTiles, StatusChip, hideBelow, listHeadCellSx, listTableSx, primaryActionSx, rowIconButtonSx,
+} from '@/components/ui'
 
-const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
-  low:      { bg: '#E0F2FE', color: '#0369A1' },
-  medium:   { bg: '#FEF3C7', color: '#B45309' },
-  high:     { bg: '#FFE4E6', color: '#BE123C' },
-  critical: { bg: '#FEE2E2', color: '#DC2626' },
+// A status or priority as a chip: a dot and a label, never colour alone.
+const PRIORITY_STYLE: Record<string, { label: string; dot: string; bg: string; ink: string }> = {
+  low:      { label: 'Low', dot: '#0EA5E9', bg: '#E0F2FE', ink: '#0369A1' },
+  medium:   { label: 'Medium', dot: '#F59E0B', bg: '#FEF3C7', ink: '#B45309' },
+  high:     { label: 'High', dot: '#F43F5E', bg: '#FFE4E6', ink: '#BE123C' },
+  critical: { label: 'Critical', dot: '#DC2626', bg: '#FEE2E2', ink: '#B91C1C' },
 }
 
-const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  new:         { bg: '#E0E7FF', color: '#4338CA' },
-  assigned:    { bg: '#DBEAFE', color: '#1D4ED8' },
-  in_progress: { bg: '#FEF3C7', color: '#B45309' },
-  waiting_on_parts: { bg: '#FFE4E6', color: '#BE123C' },
-  waiting_for_approval: { bg: '#E0F2FE', color: '#0369A1' },
-  waiting_for_depot_repair: { bg: '#F3E8FF', color: '#7E22CE' },
-  waiting_for_vendor_repair: { bg: '#FFEDD5', color: '#C2410C' },
-  completed:   { bg: '#D1FAE5', color: '#047857' },
-  cancelled:   { bg: '#F3F4F6', color: '#6B7280' },
+const STATUS_STYLE: Record<string, { dot: string; bg: string; ink: string }> = {
+  new:         { dot: '#6366F1', bg: '#E0E7FF', ink: '#4338CA' },
+  assigned:    { dot: '#3B82F6', bg: '#DBEAFE', ink: '#1D4ED8' },
+  in_progress: { dot: '#F59E0B', bg: '#FEF3C7', ink: '#B45309' },
+  waiting_on_parts: { dot: '#F43F5E', bg: '#FFE4E6', ink: '#BE123C' },
+  waiting_for_approval: { dot: '#0EA5E9', bg: '#E0F2FE', ink: '#0369A1' },
+  waiting_for_depot_repair: { dot: '#A855F7', bg: '#F3E8FF', ink: '#7E22CE' },
+  waiting_for_vendor_repair: { dot: '#F97316', bg: '#FFEDD5', ink: '#C2410C' },
+  completed:   { dot: '#10B981', bg: '#D1FAE5', ink: '#047857' },
+  cancelled:   { dot: '#9CA3AF', bg: '#F3F4F6', ink: '#4B5563' },
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -66,6 +70,16 @@ const STATUS_LABELS: Record<string, string> = {
   waiting_for_vendor_repair: 'Waiting for Vendor Repair',
   completed: 'Completed',
   cancelled: 'Cancelled',
+}
+
+const PriorityChip = ({ priority }: { priority: string }) => {
+  const style = PRIORITY_STYLE[priority] || { ...PRIORITY_STYLE.low, label: priority }
+  return <StatusChip label={style.label} dot={style.dot} bg={style.bg} ink={style.ink} />
+}
+
+const RequestStatusChip = ({ status }: { status: string }) => {
+  const style = STATUS_STYLE[status] || STATUS_STYLE.new
+  return <StatusChip label={STATUS_LABELS[status] || status} dot={style.dot} bg={style.bg} ink={style.ink} />
 }
 
 const WORKFLOW_OPEN_STATUSES = [
@@ -88,78 +102,13 @@ const SERVICE_SEARCH_FIELDS = [
   { value: 'created', label: 'Created' },
 ]
 
-const STAT_CARDS = [
-  {
-    label: 'Total Requests',
-    key: 'total',
-    icon: <BuildIcon />,
-    color: '#6757D8',
-    soft: '#F0EDFF',
-  },
-  {
-    label: 'New / Open',
-    key: 'new',
-    icon: <AssignmentIcon />,
-    color: '#3B82F6',
-    soft: '#EFF6FF',
-  },
-  {
-    label: 'Active Workflow',
-    key: 'in_progress',
-    icon: <PendingActionsIcon />,
-    color: '#E39B23',
-    soft: '#FFF6E7',
-  },
-  {
-    label: 'Completed',
-    key: 'completed',
-    icon: <CheckCircleOutlineIcon />,
-    color: '#13A77B',
-    soft: '#EAFBF5',
-  },
+// The four counts at the top; each filters the list by its group.
+const STAT_TILES = [
+  { value: 'total', label: 'Total requests', icon: <BuildIcon />, color: '#6757D8' },
+  { value: 'new', label: 'New / open', icon: <AssignmentIcon />, color: '#3B82F6' },
+  { value: 'in_progress', label: 'Active workflow', icon: <PendingActionsIcon />, color: '#E39B23' },
+  { value: 'completed', label: 'Completed', icon: <CheckCircleOutlineIcon />, color: '#13A77B' },
 ]
-
-// Request, Facility, Equipment, Asset, Serial, Description, Priority, Status, Technician, Created By,
-// Created, Actions. The shares leave room for the fixed Actions column, so the table fits its
-// width from tablets up; anything longer is clipped, with the whole of it on hover.
-const COLUMN_WIDTHS = ['9.5%', '10%', '8.5%', '7%', '7%', '7.5%', '7.5%', '9%', '10%', '9%', '7%', '52px']
-const COLUMN_TITLES = ['Request #', 'Facility', 'Equipment', 'Asset #', 'Serial #', 'Description', 'Priority', 'Status', 'Technician', 'Created By', 'Created', 'Actions']
-
-// A value in a capsule, as Billing shows its numbers and customers.
-const CAPSULE_SX = { height: 34, px: 0.85, borderRadius: '10px', '& .MuiTypography-root': { fontSize: '0.8rem' } }
-const capsuleSx = (bgcolor: string, borderColor: string) => ({ ...CAPSULE_SX, bgcolor, borderColor })
-
-// A person in a capsule: their initial and name, clipped, with the whole name on hover.
-const PersonCapsule = ({ name, emptyLabel, gradient }: { name?: string | null; emptyLabel: string; gradient: string }) => {
-  const assigned = Boolean(name && name.trim())
-  return (
-    <Box
-      title={assigned ? name! : emptyLabel}
-      data-person-capsule={assigned ? 'assigned' : 'empty'}
-      sx={{
-        display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, maxWidth: '100%',
-        height: 34, pl: assigned ? 0.5 : 1, pr: 1, borderRadius: '999px', boxSizing: 'border-box',
-        border: `1px solid ${assigned ? '#E4E7EC' : '#E5E7EB'}`, bgcolor: assigned ? '#F8FAFC' : '#F3F4F6',
-      }}
-    >
-      {assigned && (
-        <Avatar sx={{ width: 24, height: 24, fontSize: '0.7rem', fontWeight: 700, flexShrink: 0, background: gradient }}>
-          {name!.trim()[0].toUpperCase()}
-        </Avatar>
-      )}
-      <Typography
-        variant="body2"
-        noWrap
-        sx={{
-          minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          fontWeight: assigned ? 600 : 700, color: assigned ? '#1E1B4B' : '#9CA3AF', fontSize: '0.8rem',
-        }}
-      >
-        {assigned ? name : emptyLabel}
-      </Typography>
-    </Box>
-  )
-}
 
 const ServiceRequestList = () => {
   const queryClient = useQueryClient()
@@ -168,6 +117,7 @@ const ServiceRequestList = () => {
   const user = useAuthStore(state => state.user)
   const canCreateServiceRequests = hasPermission(user, 'service-requests', 'add')
   const canDeleteServiceRequests = isInternalServiceAdmin(user)
+  const compact = useMediaQuery(COMPACT_LIST_QUERY)
     && hasPermission(user, 'service-requests', 'delete')
 
   const querySearch = searchParams.get('search') || ''
@@ -336,126 +286,191 @@ const ServiceRequestList = () => {
     })
   }
 
-  return (
-    <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
-      {/* Stat Cards */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2.5, mb: 3 }}>
-        {STAT_CARDS.map((card) => (
-          <Card
-            key={card.key}
-            data-no-reveal="true"
-            role="button"
-            tabIndex={0}
-            aria-pressed={activeCardKey === card.key}
-            onClick={() => handleCardClick(card.key)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                handleCardClick(card.key)
-              }
-            }}
-            sx={{
-              p: 2.3,
-              minHeight: 150,
-              borderRadius: '22px',
-              border: activeCardKey === card.key ? `2px solid ${card.color}` : '1px solid #EEF0F6',
-              boxShadow: activeCardKey === card.key ? `0 18px 42px ${card.color}24` : '0 18px 40px rgba(49,46,129,0.08)',
-              cursor: 'pointer',
-              transform: activeCardKey === card.key ? 'translateY(-2px)' : 'none',
-              transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
-              '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 20px 44px ${card.color}20` },
-              '&:focus-visible': { outline: `3px solid ${card.color}35`, outlineOffset: 2 },
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Avatar sx={{ width: 46, height: 46, bgcolor: card.soft, color: card.color, borderRadius: '16px' }}>
-                {card.icon}
-              </Avatar>
-              <Typography sx={{ color: card.color, fontSize: 12, fontWeight: 900 }}>Live</Typography>
-            </Box>
-            <Typography
-              sx={{
-                fontSize: '0.78rem', fontWeight: 900, color: '#6B7280',
-                textTransform: 'uppercase', mb: 1,
-              }}
-            >
-              {card.label}
-            </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-              {isLoading ? '—' : statsValues[card.key]}
-            </Typography>
-          </Card>
-        ))}
-      </Box>
+  const filtersActive = Boolean(querySearch || querySearchField !== 'all' || queryStatus || queryStatusGroup || queryPriority || queryDateFrom || queryDateTo)
+  const listTitle = queryStatus
+    ? (STATUS_LABELS[queryStatus] || queryStatus)
+    : (STAT_TILES.find(tile => tile.value === activeCardKey && tile.value !== 'total')?.label || 'All requests')
+  const openRequest = (sr: ServiceRequest) => navigate(`/service-requests/${sr.id}`)
+  const actionsButton = (sr: ServiceRequest) => (
+    <IconButton
+      size="small"
+      aria-label={`Actions for ${sr.request_number}`}
+      onClick={(event) => { event.stopPropagation(); handleActionsOpen(event, sr) }}
+      sx={rowIconButtonSx}
+    >
+      <MoreVertIcon fontSize="small" />
+    </IconButton>
+  )
+  const assetLine = (sr: ServiceRequest) => [sr.equipment_asset_tag, sr.equipment_serial_number].filter(Boolean).join(' · ') || '—'
+  const headCell = listHeadCellSx
 
-      {/* Main Card */}
-      <Card sx={{ overflow: 'hidden', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        {/* Toolbar */}
-        <Box
-          sx={{
-            display: 'flex', alignItems: 'center', gap: 2, p: 2.5,
-            borderBottom: '1px solid #E8ECF4', flexWrap: 'wrap',
-            backgroundColor: '#fff',
-          }}
-        >
+  const renderList = () => {
+    if (isLoading) return <ListSkeleton />
+    if (!items.length) {
+      return (
+        <EmptyState
+          title={filtersActive ? 'No requests match.' : 'No service requests yet.'}
+          detail={filtersActive ? 'Try other words, or clear the filters.' : 'Create the first request to start the list.'}
+          action={filtersActive
+            ? <EmptyStateButton icon={<FilterAltOffOutlinedIcon />} onClick={clearFilters}>Clear filters</EmptyStateButton>
+            : canCreateServiceRequests ? <EmptyStateButton primary icon={<AddIcon />} onClick={() => setCreateOpen(true)}>New request</EmptyStateButton> : null}
+        />
+      )
+    }
+    if (compact) {
+      return (
+        <RecordCardList ariaLabel="Service requests">
+          {items.map(sr => (
+            <RecordCard
+              key={sr.id}
+              recordKey={`service-request-${sr.id}`}
+              label={sr.request_number}
+              onOpen={() => openRequest(sr)}
+              title={(
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+                  <ClippedTooltipText value={sr.request_number} monospace color="#5B21B6" fontWeight={900} />
+                  <RequestStatusChip status={sr.status} />
+                </Box>
+              )}
+              lines={[
+                <ClippedTooltipText key="equipment" value={sr.equipment_name} fallback="—" fontWeight={800} color="#1E1B4B" />,
+                <ClippedTooltipText key="asset" value={assetLine(sr)} variant="caption" color="#6B7280" fontWeight={600} monospace />,
+                <ClippedTooltipText key="facility" value={sr.facility_name} fallback="—" variant="caption" color="#475467" fontWeight={700} />,
+                <Box key="meta" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', mt: 0.25 }}>
+                  <PriorityChip priority={sr.priority} />
+                  <Typography component="span" sx={{ fontSize: 12.5, fontWeight: 700, color: sr.technician_name ? '#475467' : '#9CA3AF', minWidth: 0 }}>
+                    {sr.technician_name || 'Unassigned'}
+                  </Typography>
+                </Box>,
+                <Typography key="created" sx={{ fontSize: 12, fontWeight: 700, color: '#8B95A7' }}>Created {formatDate(sr.created_at)}</Typography>,
+              ]}
+              actions={actionsButton(sr)}
+            />
+          ))}
+        </RecordCardList>
+      )
+    }
+    return (
+      <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
+        <Table stickyHeader aria-label="Service requests" sx={listTableSx}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ ...headCell, width: 136 }}>Request #</TableCell>
+              <TableCell sx={{ ...headCell, width: '14%' }}>Facility</TableCell>
+              <TableCell sx={headCell}>Equipment</TableCell>
+              <TableCell sx={{ ...headCell, width: '13%', ...hideBelow('xl') }}>Description</TableCell>
+              <TableCell sx={{ ...headCell, width: 112 }}>Priority</TableCell>
+              <TableCell sx={{ ...headCell, width: '14%' }}>Status</TableCell>
+              <TableCell sx={{ ...headCell, width: '11%', ...hideBelow('lg') }}>Technician</TableCell>
+              <TableCell sx={{ ...headCell, width: '10%', ...hideBelow('lg') }}>Created</TableCell>
+              <TableCell align="right" sx={{ ...headCell, width: 72 }}>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {items.map(sr => (
+              <ContextTableRow
+                key={sr.id}
+                recordKey={`service-request-${sr.id}`}
+                recordLabel={sr.request_number}
+                hover
+                onClick={() => openRequest(sr)}
+                sx={{ cursor: 'pointer' }}
+              >
+                <TableCell><ClippedTooltipText value={sr.request_number} monospace color="#5B21B6" fontWeight={900} /></TableCell>
+                <TableCell><ClippedTooltipText value={sr.facility_name} fallback="—" fontWeight={700} /></TableCell>
+                <TableCell>
+                  <ClippedTooltipText value={sr.equipment_name} fallback="—" fontWeight={800} color="#1E1B4B" />
+                  <ClippedTooltipText value={assetLine(sr)} variant="caption" color="#6B7280" fontWeight={600} monospace />
+                </TableCell>
+                <TableCell sx={hideBelow('xl')}><ClippedTooltipText value={sr.equipment_description} fallback="—" fontWeight={500} color="#475569" /></TableCell>
+                <TableCell sx={{ overflow: 'hidden' }}><PriorityChip priority={sr.priority} /></TableCell>
+                <TableCell sx={{ overflow: 'hidden' }}><RequestStatusChip status={sr.status} /></TableCell>
+                <TableCell sx={hideBelow('lg')}>
+                  <ClippedTooltipText value={sr.technician_name || 'Unassigned'} fontWeight={700} color={sr.technician_name ? '#1E1B4B' : '#9CA3AF'} />
+                </TableCell>
+                <TableCell sx={hideBelow('lg')}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#344054', whiteSpace: 'nowrap' }}>{formatDate(sr.created_at)}</Typography>
+                  {sr.requester_name && <ClippedTooltipText value={`by ${sr.requester_name}`} variant="caption" color="#8B95A7" fontWeight={600} />}
+                </TableCell>
+                <TableCell align="right">{actionsButton(sr)}</TableCell>
+              </ContextTableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    )
+  }
+
+  return (
+    <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto', minWidth: 0 }}>
+      <PageHeader
+        title="Service requests"
+        subtitle="Requests for service on facility equipment, from new to completed."
+        icon={<BuildIcon />}
+        actions={canCreateServiceRequests
+          ? <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)} sx={primaryActionSx}>New request</Button>
+          : undefined}
+      />
+
+      <StatTiles
+        ariaLabel="Request status"
+        tiles={STAT_TILES.map(tile => ({ ...tile, count: statsValues[tile.value] ?? 0 }))}
+        selected={activeCardKey || ''}
+        onSelect={handleCardClick}
+        loading={isLoading}
+      />
+
+      <FilterCard ariaLabel="Find service requests">
+        <Box sx={{
+          display: 'grid', gap: 1.5, alignItems: 'start',
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: '170px minmax(0, 1fr)',
+            md: '170px minmax(0, 1fr) 200px 150px',
+            xl: '170px minmax(0, 1fr) 200px 140px auto',
+          },
+        }}>
           <SearchFieldSelect
             value={querySearchField}
             options={SERVICE_SEARCH_FIELDS}
             onChange={handleSearchFieldChange}
             ariaLabel="Service request search field"
+            sx={{ minWidth: 0 }}
           />
-
-          {/* Search */}
-          <Box
-            component="form"
-            onSubmit={(e: React.FormEvent) => e.preventDefault()}
-            sx={{
-              display: 'flex', alignItems: 'center', gap: 1,
-              backgroundColor: '#F8FAFC', borderRadius: '16px', px: 2, py: 1,
-              flex: 1, minWidth: 220, maxWidth: 340,
-              border: '1px solid #E8ECF4',
-              '&:focus-within': { border: '1px solid #7161D8', backgroundColor: '#fff', boxShadow: '0 10px 24px rgba(113,97,216,0.1)' },
-              transition: 'all 0.2s',
+          <TextField
+            label="Search service requests"
+            size="small"
+            fullWidth
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={`Search ${SERVICE_SEARCH_FIELDS.find((field) => field.value === querySearchField)?.label.toLowerCase() || 'service requests'}...`}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.15rem' }} /></InputAdornment>,
+              endAdornment: searchInput ? (
+                <InputAdornment position="end">
+                  <IconButton size="small" aria-label="Clear the search" onClick={handleClearSearch} edge="end"><ClearIcon fontSize="small" /></IconButton>
+                </InputAdornment>
+              ) : undefined,
             }}
-          >
-            <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
-            <InputBase
-              placeholder={`Search ${SERVICE_SEARCH_FIELDS.find((field) => field.value === querySearchField)?.label.toLowerCase() || 'service requests'}...`}
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}
-            />
-            {searchInput && (
-              <IconButton size="small" onClick={handleClearSearch} sx={{ p: '2px' }}>
-                <ClearIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
-              </IconButton>
-            )}
-          </Box>
-
-          {/* Status Filter */}
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel sx={{ fontSize: '0.85rem' }}>Status</InputLabel>
-            <Select
-              value={queryStatus}
-              label="Status"
-              onChange={handleFilterChange('status')}
-              sx={{ borderRadius: '16px', fontSize: '0.85rem', bgcolor: '#fff' }}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="new">New</MenuItem>
-              <MenuItem value="assigned">Assigned</MenuItem>
-              <MenuItem value="in_progress">Service In Progress</MenuItem>
-              <MenuItem value="waiting_on_parts">Waiting on Parts</MenuItem>
-              <MenuItem value="waiting_for_approval">Waiting for Approval</MenuItem>
-              <MenuItem value="waiting_for_depot_repair">Waiting for Depot Repair</MenuItem>
-              <MenuItem value="waiting_for_vendor_repair">Waiting for Vendor Repair</MenuItem>
-              <MenuItem value="completed">Completed</MenuItem>
-              <MenuItem value="cancelled">Cancelled</MenuItem>
-            </Select>
-          </FormControl>
-
+          />
+          <TextField select size="small" fullWidth label="Status" value={queryStatus} onChange={handleFilterChange('status') as any}
+            InputLabelProps={{ shrink: true }} SelectProps={{ displayEmpty: true }}>
+            <MenuItem value="">All statuses</MenuItem>
+            {Object.entries(STATUS_LABELS).map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}
+          </TextField>
+          <TextField select size="small" fullWidth label="Priority" value={queryPriority} onChange={handleFilterChange('priority') as any}
+            InputLabelProps={{ shrink: true }} SelectProps={{ displayEmpty: true }}>
+            <MenuItem value="">All priorities</MenuItem>
+            {Object.entries(PRIORITY_STYLE).map(([value, style]) => <MenuItem key={value} value={value}>{style.label}</MenuItem>)}
+          </TextField>
+          <Box sx={{
+            display: 'grid', gap: 1.5, alignItems: 'start',
+            gridColumn: { sm: '1 / -1', xl: 'auto' },
+            gridTemplateColumns: { xs: '1fr 1fr', sm: '170px 170px auto', xl: '160px 160px auto' },
+          }}>
           <TextField
             size="small"
+            fullWidth
             label="From"
             type="date"
             value={queryDateFrom}
@@ -463,10 +478,10 @@ const ServiceRequestList = () => {
             InputLabelProps={{ shrink: true }}
             inputProps={{ max: queryDateTo || undefined }}
             error={invalidDateRange}
-            sx={{ width: 155, '& .MuiOutlinedInput-root': { borderRadius: '16px' } }}
           />
           <TextField
             size="small"
+            fullWidth
             label="To"
             type="date"
             value={queryDateTo}
@@ -474,253 +489,26 @@ const ServiceRequestList = () => {
             InputLabelProps={{ shrink: true }}
             inputProps={{ min: queryDateFrom || undefined }}
             error={invalidDateRange}
-            helperText={invalidDateRange ? 'Invalid range' : undefined}
-            sx={{ width: 155, '& .MuiOutlinedInput-root': { borderRadius: '16px' } }}
+            helperText={invalidDateRange ? 'To must be on or after From' : undefined}
           />
-
-          {(querySearch || queryStatus || queryStatusGroup || queryPriority || queryDateFrom || queryDateTo) && (
-            <Button onClick={clearFilters} startIcon={<ClearIcon />} sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none' }}>
-              Clear Filters
-            </Button>
-          )}
-
-          {/* Priority Filter */}
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel sx={{ fontSize: '0.85rem' }}>Priority</InputLabel>
-            <Select
-              value={queryPriority}
-              label="Priority"
-              onChange={handleFilterChange('priority')}
-              sx={{ borderRadius: '16px', fontSize: '0.85rem', bgcolor: '#fff' }}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="low">Low</MenuItem>
-              <MenuItem value="medium">Medium</MenuItem>
-              <MenuItem value="high">High</MenuItem>
-              <MenuItem value="critical">Critical</MenuItem>
-            </Select>
-          </FormControl>
-
-          <Box sx={{ flex: 1 }} />
-          {isFetching && !isLoading && (
-            <CircularProgress size={18} thickness={5} sx={{ color: '#7161D8' }} />
-          )}
-
-          {canCreateServiceRequests && (
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateOpen(true)}
-              sx={{
-                background: 'linear-gradient(135deg, #7161D8 0%, #F05D92 100%)',
-                boxShadow: '0 12px 28px rgba(113,97,216,0.22)',
-                px: 3,
-                borderRadius: '16px',
-                fontWeight: 800,
-                textTransform: 'none',
-              }}
-            >
-              New Request
-            </Button>
-          )}
-        </Box>
-
-        {/* Table */}
-        <TableContainer className="list-scroll-panel">
-          <Table
-            stickyHeader
-            sx={{
-              // Fixed columns, so the table fits its width: long text is clipped,
-              // with the whole of it on hover, instead of pushing the table wider.
-              tableLayout: 'fixed',
-              width: '100%',
-              // From tablets up the columns share the width: no sideways scroll. A phone
-              // scrolls a little rather than squeezing every column unreadable.
-              minWidth: { xs: 1040, md: 0 },
-              '& .MuiTableCell-root': { px: 0.75, overflow: 'hidden' },
-              '& .MuiTableCell-root:first-of-type': { pl: 1.5 },
-              '& .MuiTableCell-root:last-of-type': { pr: 1.5 },
-              // One line per heading, a little smaller on narrower screens; the full heading on hover.
-              // (Doubled class: outranks the shared list style that lets columns 2-4 wrap.)
-              '& .MuiTableCell-head.MuiTableCell-root': {
-                whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                fontSize: { xs: '0.75rem', md: '0.68rem', xl: '0.75rem' }, letterSpacing: { md: '0.02em', xl: undefined },
-              },
-            }}
-          >
-            <colgroup>
-              {COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
-            </colgroup>
-            <TableHead>
-              <TableRow>
-                {COLUMN_TITLES.map((title, index) => (
-                  <TableCell key={title} title={title} align={index === COLUMN_TITLES.length - 1 ? 'right' : undefined}>{title}</TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {isLoading
-                ? Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}>
-                      {COLUMN_WIDTHS.map((_, j) => (
-                        <TableCell key={j}><Skeleton variant="text" /></TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                : items.length === 0
-                  ? (
-                    <TableRow>
-                      <TableCell colSpan={COLUMN_WIDTHS.length} align="center" sx={{ py: 6 }}>
-                        <Box sx={{ textAlign: 'center', opacity: 0.8 }}>
-                          <BuildIcon sx={{ fontSize: '3.5rem', color: '#DDD6FE', mb: 2 }} />
-                          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B', mb: 0.5 }}>
-                            {querySearch ? 'No matches found' : 'No service requests yet'}
-                          </Typography>
-                          <Typography variant="body2" sx={{ color: '#6B7280', mb: 3, maxWidth: 300, mx: 'auto' }}>
-                            {querySearch
-                              ? `No results for "${querySearch}". Try different keywords.`
-                              : 'Get started by creating your first service request.'}
-                          </Typography>
-                          {!querySearch && canCreateServiceRequests && (
-                            <Button
-                              variant="contained"
-                              onClick={() => setCreateOpen(true)}
-                              sx={{ px: 4, borderRadius: '14px', backgroundColor: '#7161D8' }}
-                            >
-                              Create First Request
-                            </Button>
-                          )}
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  )
-                  : items.map((sr) => {
-                      const pColor = PRIORITY_COLORS[sr.priority] || PRIORITY_COLORS.low
-                      const sColor = STATUS_COLORS[sr.status] || STATUS_COLORS.new
-                      return (
-                        <ContextTableRow
-                          key={sr.id}
-                          recordKey={`service-request-${sr.id}`}
-                          recordLabel={sr.request_number}
-                          sx={{
-                            '&:hover': { backgroundColor: '#F8FAFC' },
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => navigate(`/service-requests/${sr.id}`)}
-                        >
-                          <TableCell>
-                            <ClippedTooltipText value={sr.request_number} field monospace color="#5B21B6" fontWeight={800} sx={capsuleSx('#F7F0FF', '#E9D5FF')} />
-                          </TableCell>
-                          <TableCell>
-                            <ClippedTooltipText value={sr.facility_name} fallback="—" field fontWeight={600} sx={capsuleSx('#F8FAFC', '#E5E7EB')} />
-                          </TableCell>
-                          <TableCell>
-                            <ClippedTooltipText value={sr.equipment_name} fallback="—" field fontWeight={600} sx={capsuleSx('#F8FAFC', '#E5E7EB')} />
-                          </TableCell>
-                          <TableCell>
-                            <ClippedTooltipText value={sr.equipment_asset_tag} fallback="—" field monospace fontWeight={700} sx={capsuleSx('#F5F7FF', '#D8E1FF')} />
-                          </TableCell>
-                          <TableCell>
-                            <ClippedTooltipText value={sr.equipment_serial_number} fallback="—" field monospace fontWeight={700} sx={capsuleSx('#F5F7FF', '#D8E1FF')} />
-                          </TableCell>
-                          <TableCell>
-                            <ClippedTooltipText value={sr.equipment_description} fallback="—" fontWeight={500} color="#475569" />
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={sr.priority.charAt(0).toUpperCase() + sr.priority.slice(1)}
-                              size="small"
-                              title={sr.priority.charAt(0).toUpperCase() + sr.priority.slice(1)}
-                              sx={{
-                                maxWidth: '100%',
-                                backgroundColor: pColor.bg,
-                                color: pColor.color,
-                                fontWeight: 700,
-                                fontSize: '0.7rem',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.03em',
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={STATUS_LABELS[sr.status] || sr.status}
-                              size="small"
-                              title={STATUS_LABELS[sr.status] || sr.status}
-                              sx={{
-                                maxWidth: '100%',
-                                backgroundColor: sColor.bg,
-                                color: sColor.color,
-                                fontWeight: 700,
-                                fontSize: '0.7rem',
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <PersonCapsule name={sr.technician_name} emptyLabel="Unassigned" gradient="linear-gradient(135deg, #0EA5E9, #6366F1)" />
-                          </TableCell>
-                          <TableCell>
-                            <PersonCapsule name={sr.requester_name} emptyLabel="—" gradient="linear-gradient(135deg, #7161D8, #F05D92)" />
-                          </TableCell>
-                          <TableCell>
-                            <ClippedTooltipText value={formatDate(sr.created_at)} fontWeight={400} color="#6B7280" textSx={{ fontSize: '0.78rem' }} />
-                          </TableCell>
-                          <TableCell align="right">
-                            <Tooltip title="Actions">
-                              <IconButton
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleActionsOpen(e, sr)
-                                }}
-                                sx={{
-                                  color: '#7161D8',
-                                  backgroundColor: '#F0EDFF',
-                                  borderRadius: '12px',
-                                  width: 32, height: 32,
-                                  transition: 'all 0.2s ease',
-                                  '&:hover': {
-                                    backgroundColor: '#E8E2FF',
-                                    transform: 'scale(1.05)',
-                                  },
-                                }}
-                              >
-                                <MoreVertIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </ContextTableRow>
-                      )
-                    })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <Box
-            sx={{
-              display: 'flex', justifyContent: 'center', p: 2.5,
-              borderTop: '1px solid rgba(124,58,237,0.08)',
-            }}
-          >
-            <Pagination
-              count={totalPages}
-              page={page}
-              onChange={(_, p) => setPage(p)}
-              color="primary"
-              shape="rounded"
-              sx={{
-                '& .MuiPaginationItem-root': { borderRadius: '8px', fontWeight: 600 },
-                '& .Mui-selected': {
-                  background: 'linear-gradient(135deg, #7C3AED, #EC4899) !important',
-                  color: '#fff',
-                },
-              }}
-            />
+          <Button startIcon={<FilterAltOffOutlinedIcon />} onClick={clearFilters} disabled={!filtersActive}
+            sx={{ fontWeight: 900, textTransform: 'none', borderRadius: '12px', minHeight: 40, justifySelf: { xs: 'start', sm: 'end' }, whiteSpace: 'nowrap', gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
+            Clear filters
+          </Button>
           </Box>
-        )}
-      </Card>
+        </Box>
+      </FilterCard>
+
+      <ListCard
+        ariaLabel="Service request list"
+        title={listTitle}
+        count={total}
+        loading={isLoading}
+        busy={isFetching}
+        footer={<ListPagination page={page} pageSize={limit} total={total} onChange={setPage} />}
+      >
+        {renderList()}
+      </ListCard>
 
       {/* Actions Menu */}
       <Menu
@@ -792,20 +580,18 @@ const ServiceRequestList = () => {
       <Dialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '20px' } }}
       >
-        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>Delete Service Request?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Delete this service request?</DialogTitle>
         <DialogContent>
           <DialogContentText>
             Are you sure you want to delete <strong>{deleteTarget?.request_number}</strong>? This action cannot be undone.
           </DialogContentText>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-          <Button
-            onClick={() => setDeleteTarget(null)}
-            variant="outlined"
-            sx={{ borderColor: '#E5E7EB', color: '#6B7280' }}
-          >
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteTarget(null)} disabled={deleteMutation.isPending} sx={{ fontWeight: 800, textTransform: 'none' }}>
             Cancel
           </Button>
           <Button
@@ -813,9 +599,9 @@ const ServiceRequestList = () => {
             variant="contained"
             color="error"
             disabled={deleteMutation.isPending}
-            sx={{ boxShadow: '0 4px 12px rgba(239,68,68,0.25)' }}
+            sx={{ fontWeight: 900, textTransform: 'none', borderRadius: '12px' }}
           >
-            Delete
+            {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

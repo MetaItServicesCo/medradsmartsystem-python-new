@@ -13,9 +13,9 @@ import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'r
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
-  Divider, IconButton, ListItemIcon, Menu, MenuItem, Skeleton, Table, TableBody, TableCell, TableContainer,
-  TableHead, TablePagination, TableRow, TextField, Typography, useMediaQuery,
+  Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
+  Divider, IconButton, ListItemIcon, Menu, MenuItem, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, TextField, Typography, useMediaQuery,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
@@ -25,7 +25,6 @@ import FilterAltOffOutlinedIcon from '@mui/icons-material/FilterAltOffOutlined'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
-import { keyframes } from '@emotion/react'
 import { toast } from 'react-toastify'
 
 import { createLead, deleteLead, fetchLeads, updateLead, type Lead, type LeadPayload, type LeadSource, type LeadStatus } from '@/api/leads'
@@ -34,26 +33,19 @@ import ContextTableRow from '@/components/ContextTableRow'
 import DebouncedSearchField from '@/components/DebouncedSearchField'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import { hasPermission } from '@/config/permissions'
-import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
+import {
+  COMPACT_LIST_QUERY, EmptyState, EmptyStateButton, FilterCard, ListCard, ListPagination, ListSkeleton, PageHeader,
+  RecordCard, RecordCardList, StatTiles, StatusChip as BaseStatusChip, hideBelow, listHeadCellSx, listTableSx,
+  primaryActionSx, rowIconButtonSx,
+} from '@/components/ui'
 import {
   LEAD_SEARCH_FIELDS, LEAD_SORTS, LEAD_SOURCES, LEAD_STATUSES, displayLeadUrl, formatLeadDate, isLeadSource, isLeadStatus,
   normalizeLeadUrl, safeLeadHref, sourceLabel, statusOption,
 } from './leadOptions'
 
 const PAGE_SIZE = 25
-
-const riseIn = keyframes`
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: none; }
-`
-const enterSx = {
-  animation: `${riseIn} 320ms cubic-bezier(0.22, 1, 0.36, 1) backwards`,
-  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
-}
-const cardSx = { borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }
-const headCell = { fontWeight: 900, color: '#475467', fontSize: 12.5, letterSpacing: '0.02em', py: 1.25 }
-const hideBelow = (breakpoint: 'md' | 'lg' | 'xl') => ({ display: { xs: 'none', [breakpoint]: 'table-cell' } })
+const headCell = listHeadCellSx
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 /** The server's answer as one readable sentence (a rejected field comes back as a list). */
@@ -69,14 +61,7 @@ const errorText = (error: any, fallback: string): string => {
 
 const StatusChip = ({ status }: { status: string }) => {
   const option = statusOption(status)
-  return (
-    <Chip
-      size="small"
-      label={option.label}
-      icon={<Box component="span" aria-hidden="true" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: option.dot, ml: '8px !important' }} />}
-      sx={{ bgcolor: option.bg, color: option.ink, fontWeight: 800, maxWidth: '100%' }}
-    />
-  )
+  return <BaseStatusChip label={option.label} dot={option.dot} bg={option.bg} ink={option.ink} />
 }
 
 /** The source, and for a website lead the website it came from, as a link that opens in a new tab. */
@@ -310,8 +295,7 @@ const Leads = () => {
   const canAdd = hasPermission(user, 'leads', 'add')
   const canEdit = hasPermission(user, 'leads', 'edit')
   const canDelete = hasPermission(user, 'leads', 'delete')
-  const compact = useMediaQuery('(max-width:899.95px)')
-  const { isFocused } = useListContext()
+  const compact = useMediaQuery(COMPACT_LIST_QUERY)
 
   // The list as the address says it is.
   const [params, setParams] = useSearchParams()
@@ -394,7 +378,7 @@ const Leads = () => {
       size="small"
       aria-label={`Actions for ${lead.name}`}
       onClick={(event: MouseEvent<HTMLElement>) => { event.stopPropagation(); setMenu({ anchor: event.currentTarget, lead }) }}
-      sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+      sx={rowIconButtonSx}
     >
       <MoreVertIcon fontSize="small" />
     </IconButton>
@@ -404,66 +388,55 @@ const Leads = () => {
 
   const contactLine = (lead: Lead) => [lead.email, lead.phone].filter(Boolean).join(' · ') || '—'
 
-  const statusPills = useMemo(() => ([
-    { value: '' as const, label: 'All', dot: '#7C3AED', count: allCount },
-    ...LEAD_STATUSES.map(option => ({ value: option.value, label: option.label, dot: option.dot, count: counts?.[option.value] ?? 0 })),
+  const statusTiles = useMemo(() => ([
+    { value: '', label: 'All', color: '#7C3AED', count: allCount },
+    ...LEAD_STATUSES.map(option => ({ value: option.value, label: option.label, color: option.dot, count: counts?.[option.value] ?? 0 })),
   ]), [counts, allCount])
+  const addLead = () => setDialog({ open: true, lead: null, readOnly: false })
 
   const renderList = (): ReactNode => {
-    if (leadsQ.isLoading) return <Box sx={{ p: 2 }}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={48} />)}</Box>
+    if (leadsQ.isLoading) return <ListSkeleton />
     if (leadsQ.isError) {
-      return (
-        <Box role="alert" sx={{ py: 6, px: 2, textAlign: 'center' }}>
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>The leads could not be loaded.</Typography>
-          <Button onClick={() => leadsQ.refetch()} sx={{ fontWeight: 900, textTransform: 'none' }}>Try again</Button>
-        </Box>
-      )
+      return <EmptyState failed title="The leads could not be loaded." action={<EmptyStateButton onClick={() => leadsQ.refetch()}>Try again</EmptyStateButton>} />
     }
     if (!items.length) {
       return (
-        <Box role="status" sx={{ py: 7, px: 2, textAlign: 'center' }}>
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.5 }}>{filtersActive ? 'No leads match.' : 'No leads yet.'}</Typography>
-          <Typography sx={{ color: '#6B7280', fontWeight: 700, mb: 1.5 }}>
-            {filtersActive ? 'Try other words, or clear the filters.' : 'Add the first lead to start the list.'}
-          </Typography>
-          {filtersActive ? (
-            <Button startIcon={<FilterAltOffOutlinedIcon />} onClick={clearFilters} sx={{ fontWeight: 900, textTransform: 'none' }}>Clear filters</Button>
-          ) : canAdd ? (
-            <Button startIcon={<AddIcon />} variant="contained" onClick={() => setDialog({ open: true, lead: null, readOnly: false })} sx={{ fontWeight: 900, textTransform: 'none', borderRadius: '12px' }}>Add lead</Button>
-          ) : null}
-        </Box>
+        <EmptyState
+          title={filtersActive ? 'No leads match.' : 'No leads yet.'}
+          detail={filtersActive ? 'Try other words, or clear the filters.' : 'Add the first lead to start the list.'}
+          action={filtersActive
+            ? <EmptyStateButton icon={<FilterAltOffOutlinedIcon />} onClick={clearFilters}>Clear filters</EmptyStateButton>
+            : canAdd ? <EmptyStateButton primary icon={<AddIcon />} onClick={addLead}>Add lead</EmptyStateButton> : null}
+        />
       )
     }
     if (compact) {
       return (
-        <Box component="ul" aria-label="Leads" sx={{ m: 0, p: 1.5, display: 'grid', gap: 1.25 }}>
-          {items.map(lead => {
-            const key = `lead-${lead.id}`
-            const focused = isFocused(key)
-            return (
-              <Box component="li" key={lead.id} data-list-row-key={key} aria-label={lead.name}
-                sx={{ listStyle: 'none', p: 1.75, borderRadius: '16px', border: '1px solid', borderColor: focused ? '#A78BFA' : '#EEF0F6',
-                  bgcolor: focused ? '#F7F4FF' : '#fff', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 1, alignItems: 'start', minWidth: 0 }}>
-                <Box sx={{ minWidth: 0, display: 'grid', gap: 0.4 }}>
-                  <ClippedTooltipText value={lead.name} fontWeight={900} color="#1E1B4B" onClick={() => openLead(lead)} />
-                  {lead.company && <ClippedTooltipText value={lead.company} variant="caption" color="#475467" fontWeight={700} />}
-                  <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <StatusChip status={lead.status} />
-                    <Box sx={{ minWidth: 0, flex: '1 1 120px' }}><SourceCell lead={lead} /></Box>
-                  </Box>
-                  <ClippedTooltipText value={contactLine(lead)} variant="caption" color="#6B7280" fontWeight={600} />
-                  <Typography sx={{ fontSize: 12, color: '#8B95A7', fontWeight: 700 }}>Added {formatLeadDate(lead.created_at)}</Typography>
-                </Box>
-                {rowMenuButton(lead)}
-              </Box>
-            )
-          })}
-        </Box>
+        <RecordCardList ariaLabel="Leads">
+          {items.map(lead => (
+            <RecordCard
+              key={lead.id}
+              recordKey={`lead-${lead.id}`}
+              label={lead.name}
+              title={<ClippedTooltipText value={lead.name} fontWeight={900} color="#1E1B4B" onClick={() => openLead(lead)} />}
+              lines={[
+                lead.company ? <ClippedTooltipText key="company" value={lead.company} variant="caption" color="#475467" fontWeight={700} /> : null,
+                <Box key="status" sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <StatusChip status={lead.status} />
+                  <Box sx={{ minWidth: 0, flex: '1 1 120px' }}><SourceCell lead={lead} /></Box>
+                </Box>,
+                <ClippedTooltipText key="contact" value={contactLine(lead)} variant="caption" color="#6B7280" fontWeight={600} />,
+                <Typography key="added" sx={{ fontSize: 12, color: '#8B95A7', fontWeight: 700 }}>Added {formatLeadDate(lead.created_at)}</Typography>,
+              ]}
+              actions={rowMenuButton(lead)}
+            />
+          ))}
+        </RecordCardList>
       )
     }
     return (
       <TableContainer className="list-scroll-panel" sx={{ overflowX: 'hidden' }}>
-        <Table stickyHeader aria-label="Leads" sx={{ width: '100%', tableLayout: 'fixed', '& .MuiTableCell-root': { px: 1.5 } }}>
+        <Table stickyHeader aria-label="Leads" sx={listTableSx}>
           <TableHead>
             <TableRow>
               <TableCell sx={headCell}>Lead</TableCell>
@@ -502,56 +475,23 @@ const Leads = () => {
 
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto', minWidth: 0 }}>
-      {/* Title */}
-      <Card sx={{ ...cardSx, p: { xs: 2, md: 3 }, mb: 2, background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', ...enterSx }}>
-        <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', minWidth: 0 }}>
-            <Box aria-hidden="true" sx={{ width: 48, height: 48, borderRadius: '14px', bgcolor: '#EFE7FF', color: '#7C3AED', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-              <TrendingUpIcon />
-            </Box>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography component="h1" sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: { xs: 22, md: 26 } }}>Leads</Typography>
-              <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 14 }}>Who may become a customer, where they came from, and where they stand.</Typography>
-            </Box>
-          </Box>
-          {canAdd && (
-            <Button startIcon={<AddIcon />} variant="contained" onClick={() => setDialog({ open: true, lead: null, readOnly: false })}
-              sx={{ minHeight: 44, borderRadius: '14px', fontWeight: 900, textTransform: 'none', whiteSpace: 'nowrap', px: 2.5 }}>
-              Add lead
-            </Button>
-          )}
-        </Box>
-      </Card>
+      <PageHeader
+        title="Leads"
+        subtitle="Who may become a customer, where they came from, and where they stand."
+        icon={<TrendingUpIcon />}
+        actions={canAdd ? <Button startIcon={<AddIcon />} variant="contained" onClick={addLead} sx={primaryActionSx}>Add lead</Button> : undefined}
+      />
 
-      {/* The pipeline: counted status pills that filter the list */}
-      <Box role="tablist" aria-label="Lead status"
-        sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(4, minmax(0, 1fr))', lg: 'repeat(7, minmax(0, 1fr))' }, gap: 1, mb: 2, ...enterSx }}>
-        {statusPills.map(pill => {
-          const selected = status === pill.value
-          return (
-            <Button key={pill.value || 'all'} role="tab" aria-selected={selected} onClick={() => change({ status: pill.value || null })}
-              sx={{
-                justifyContent: 'space-between', gap: 1, minHeight: 52, px: 1.75, borderRadius: '14px', textTransform: 'none',
-                border: '1px solid', borderColor: selected ? pill.dot : '#EEF0F6', bgcolor: selected ? '#FBFAFF' : '#fff',
-                boxShadow: selected ? `inset 0 0 0 1px ${pill.dot}` : 'none', color: '#1E1B4B', minWidth: 0,
-                transition: 'border-color 180ms cubic-bezier(0.4, 0, 0.2, 1), background-color 180ms cubic-bezier(0.4, 0, 0.2, 1)',
-                '&:hover': { bgcolor: '#F8F7FD', borderColor: pill.dot },
-                '&:focus-visible': { outline: '3px solid #C4B5FD', outlineOffset: 1 },
-              }}>
-              <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                <Box component="span" aria-hidden="true" sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: pill.dot, flexShrink: 0 }} />
-                <Box component="span" sx={{ fontWeight: 800, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pill.label}</Box>
-              </Box>
-              <Box component="span" sx={{ fontWeight: 900, fontSize: 16, color: selected ? '#5B21B6' : '#344054' }}>
-                {leadsQ.isLoading ? '…' : pill.count.toLocaleString()}
-              </Box>
-            </Button>
-          )
-        })}
-      </Box>
+      {/* The pipeline: counted status tiles that filter the list */}
+      <StatTiles
+        ariaLabel="Lead status"
+        tiles={statusTiles}
+        selected={status}
+        onSelect={value => change({ status: value || null })}
+        loading={leadsQ.isLoading}
+      />
 
-      {/* Find */}
-      <Card component="section" aria-label="Find leads" sx={{ ...cardSx, p: { xs: 1.5, md: 2 }, mb: 2, overflow: 'visible', ...enterSx }}>
+      <FilterCard ariaLabel="Find leads">
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px minmax(0, 1fr)', lg: '160px minmax(0, 1fr) 190px 180px auto' }, gap: 1.5, alignItems: 'center' }}>
           <SearchFieldSelect value={field} options={LEAD_SEARCH_FIELDS} onChange={value => change({ field: value })} ariaLabel="Lead search field" sx={{ minWidth: 0 }} />
           <DebouncedSearchField
@@ -561,6 +501,7 @@ const Leads = () => {
             label="Search leads"
             placeholder={field === 'all' ? 'Name, company, email, phone or notes' : `Search ${LEAD_SEARCH_FIELDS.find(item => item.value === field)?.label.toLowerCase()}`}
             fullWidth
+            size="small"
           />
           <TextField select label="Source" value={source} onChange={event => change({ source: event.target.value || null })} fullWidth size="small"
             InputLabelProps={{ shrink: true }} SelectProps={{ displayEmpty: true }}>
@@ -575,32 +516,18 @@ const Leads = () => {
             Clear filters
           </Button>
         </Box>
-      </Card>
+      </FilterCard>
 
-      {/* The list */}
-      <Card component="section" aria-label="Lead list" sx={{ ...cardSx, overflow: 'hidden', minWidth: 0, ...enterSx }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: { xs: 1.5, md: 2 }, pt: 1.5, pb: 1.25, borderBottom: '1px solid #EEF0F6' }}>
-          <Typography component="h2" sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: 14.5, display: 'flex', alignItems: 'center' }}>
-            {status ? statusOption(status).label : 'All leads'}
-            <Box component="span" sx={{ ml: 1, px: 0.9, py: 0.1, borderRadius: '8px', fontSize: 12, fontWeight: 900, bgcolor: '#EDE9FE', color: '#5B21B6' }}>
-              {leadsQ.isLoading ? '…' : total.toLocaleString()}
-            </Box>
-          </Typography>
-          {leadsQ.isFetching && !leadsQ.isLoading && <CircularProgress size={14} aria-label="Updating" sx={{ ml: 1 }} />}
-        </Box>
+      <ListCard
+        ariaLabel="Lead list"
+        title={status ? statusOption(status).label : 'All leads'}
+        count={total}
+        loading={leadsQ.isLoading}
+        busy={leadsQ.isFetching}
+        footer={<ListPagination page={page + 1} pageSize={PAGE_SIZE} total={total} onChange={next => setPage(next - 1)} />}
+      >
         {renderList()}
-        {total > 0 && (
-          <TablePagination
-            component="div"
-            count={total}
-            page={Math.min(page, Math.max(0, Math.ceil(total / PAGE_SIZE) - 1))}
-            onPageChange={(_, next) => setPage(next)}
-            rowsPerPage={PAGE_SIZE}
-            rowsPerPageOptions={[PAGE_SIZE]}
-            labelDisplayedRows={({ from, to, count }) => `${from}–${to} of ${count}`}
-          />
-        )}
-      </Card>
+      </ListCard>
 
       {/* Row actions: edit, move along the pipeline, delete */}
       <Menu anchorEl={menu?.anchor} open={Boolean(menu)} onClose={() => setMenu(null)}
