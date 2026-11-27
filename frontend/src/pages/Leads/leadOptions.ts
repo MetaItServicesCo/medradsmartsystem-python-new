@@ -31,6 +31,7 @@ export const LEAD_SEARCH_FIELDS = [
   { value: 'email', label: 'Email' },
   { value: 'phone', label: 'Phone' },
   { value: 'notes', label: 'Notes' },
+  { value: 'source_url', label: 'Website URL' },
 ]
 
 export const LEAD_SORTS = [
@@ -44,6 +45,32 @@ export const sourceLabel = (value?: string | null) => LEAD_SOURCES.find(item => 
 export const statusOption = (value?: string | null) => LEAD_STATUSES.find(item => item.value === value) || LEAD_STATUSES[0]
 export const isLeadStatus = (value: string | null): value is LeadStatus => LEAD_STATUSES.some(item => item.value === value)
 export const isLeadSource = (value: string | null): value is LeadSource => LEAD_SOURCES.some(item => item.value === value)
+
+/**
+ * A web address as the server keeps it ("acme.com/contact" becomes
+ * "https://acme.com/contact"), or null when it is not one. Only http and https
+ * pass, the same rule as backend/app/schemas/lead.py, so a link never runs a script.
+ */
+export const normalizeLeadUrl = (value: string): string | null => {
+  const raw = value.trim()
+  if (!raw) return null
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw) ? raw : `https://${raw}`
+  if (/\s/.test(withScheme) || withScheme.length > 500) return null
+  try {
+    const url = new URL(withScheme)
+    const host = url.hostname.replace(/^\.+|\.+$/g, '')
+    if (!['http:', 'https:'].includes(url.protocol.toLowerCase()) || !host.includes('.')) return null
+    return withScheme
+  } catch {
+    return null
+  }
+}
+
+/** A stored address safe to open: http or https only. */
+export const safeLeadHref = (value?: string | null) => (value && /^https?:\/\//i.test(value) ? value : null)
+
+/** The address without its scheme or trailing slash, for reading. */
+export const displayLeadUrl = (value: string) => value.replace(/^https?:\/\//i, '').replace(/\/$/, '')
 
 /** The server keeps times in UTC without a zone mark; read them as UTC, show them local. */
 export const formatLeadDate = (value?: string | null) => {

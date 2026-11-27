@@ -28,6 +28,8 @@ class Lead(Base):
     email = Column(String(320), nullable=True)
     phone = Column(String(40), nullable=True)
     source = Column(String(40), nullable=False, index=True)
+    # The website a lead came from; kept only while the source is "website".
+    source_url = Column(String(500), nullable=True)
     status = Column(String(24), nullable=False, default="new", server_default="new", index=True)
     notes = Column(Text, nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)

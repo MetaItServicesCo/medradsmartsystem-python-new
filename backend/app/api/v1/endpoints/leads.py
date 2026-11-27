@@ -14,7 +14,7 @@ from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.lead import LEAD_SOURCES, LEAD_STATUSES, Lead
 from app.models.user import User
-from app.schemas.lead import LeadCreate, LeadListResponse, LeadResponse, LeadUpdate
+from app.schemas.lead import URL_REQUIRED, LeadCreate, LeadListResponse, LeadResponse, LeadUpdate
 from app.utils.list_search import contains_ci, normalize_list_search
 from app.utils.logging import log_activity
 from app.utils.permission_deps import require_module_access
@@ -22,7 +22,7 @@ from app.utils.permission_deps import require_module_access
 router = APIRouter(dependencies=[Depends(require_module_access("leads"))])
 
 # The fields a search can be limited to; "all" (or anything else) searches every one.
-SEARCH_FIELDS = ("name", "company", "email", "phone", "notes")
+SEARCH_FIELDS = ("name", "company", "email", "phone", "notes", "source_url")
 SORTS = {
     "newest": (Lead.created_at.desc(), Lead.id.desc()),
     "oldest": (Lead.created_at.asc(), Lead.id.asc()),
@@ -39,6 +39,7 @@ def _response(lead: Lead) -> dict[str, Any]:
         "email": lead.email,
         "phone": lead.phone,
         "source": lead.source,
+        "source_url": lead.source_url,
         "status": lead.status,
         "notes": lead.notes,
         "created_by_id": lead.created_by_id,
@@ -149,6 +150,16 @@ def update_lead(
 ) -> Any:
     lead = _get_lead(db, lead_id)
     changes = lead_in.model_dump(exclude_unset=True)
+    # The website URL follows the source: kept only for a website lead, and
+    # asked for when a lead becomes one (or its URL is cleared). A website
+    # lead saved before URLs were kept can still change its status or notes.
+    final_source = changes.get("source", lead.source)
+    if final_source != "website":
+        if lead.source_url is not None or "source_url" in changes:
+            changes["source_url"] = None
+    elif ("source" in changes and lead.source != "website") or "source_url" in changes:
+        if not changes.get("source_url", lead.source_url):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=URL_REQUIRED)
     before: dict[str, Any] = {}
     after: dict[str, Any] = {}
     for field, value in changes.items():

@@ -12,6 +12,8 @@ export interface Lead {
   email: string | null
   phone: string | null
   source: LeadSource
+  /** The website a lead came from: set only while the source is "website". */
+  source_url: string | null
   status: LeadStatus
   notes: string | null
   created_by_id: number | null
@@ -43,6 +45,7 @@ export interface LeadPayload {
   email: string | null
   phone: string | null
   source: LeadSource
+  source_url: string | null
   status: LeadStatus
   notes: string | null
 }

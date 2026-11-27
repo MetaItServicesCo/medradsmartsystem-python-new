@@ -23,6 +23,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import FilterAltOffOutlinedIcon from '@mui/icons-material/FilterAltOffOutlined'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import { keyframes } from '@emotion/react'
 import { toast } from 'react-toastify'
@@ -36,8 +37,8 @@ import { hasPermission } from '@/config/permissions'
 import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
 import {
-  LEAD_SEARCH_FIELDS, LEAD_SORTS, LEAD_SOURCES, LEAD_STATUSES, formatLeadDate, isLeadSource, isLeadStatus,
-  sourceLabel, statusOption,
+  LEAD_SEARCH_FIELDS, LEAD_SORTS, LEAD_SOURCES, LEAD_STATUSES, displayLeadUrl, formatLeadDate, isLeadSource, isLeadStatus,
+  normalizeLeadUrl, safeLeadHref, sourceLabel, statusOption,
 } from './leadOptions'
 
 const PAGE_SIZE = 25
@@ -78,13 +79,41 @@ const StatusChip = ({ status }: { status: string }) => {
   )
 }
 
+/** The source, and for a website lead the website it came from, as a link that opens in a new tab. */
+const SourceCell = ({ lead }: { lead: Lead }) => {
+  const href = lead.source === 'website' ? safeLeadHref(lead.source_url) : null
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <ClippedTooltipText value={sourceLabel(lead.source)} fontWeight={700} />
+      {href && (
+        <Box
+          component="a"
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={href}
+          aria-label={`Open ${displayLeadUrl(href)} in a new tab`}
+          onClick={(event: MouseEvent) => event.stopPropagation()}
+          sx={{
+            display: 'flex', alignItems: 'center', gap: 0.4, maxWidth: '100%', fontSize: 12, fontWeight: 700, color: '#6D28D9',
+            textDecoration: 'none', '&:hover': { textDecoration: 'underline' }, '&:focus-visible': { outline: '2px solid #C4B5FD', outlineOffset: 2, borderRadius: '4px' },
+          }}
+        >
+          <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{displayLeadUrl(href)}</Box>
+          <OpenInNewIcon aria-hidden="true" sx={{ fontSize: 13, flexShrink: 0 }} />
+        </Box>
+      )}
+    </Box>
+  )
+}
+
 // ─── The add / edit form ─────────────────────────────────────────────────────
 
-type FormState = { name: string; company: string; email: string; phone: string; source: LeadSource | ''; status: LeadStatus; notes: string }
-const emptyForm = (): FormState => ({ name: '', company: '', email: '', phone: '', source: '', status: 'new', notes: '' })
+type FormState = { name: string; company: string; email: string; phone: string; source: LeadSource | ''; source_url: string; status: LeadStatus; notes: string }
+const emptyForm = (): FormState => ({ name: '', company: '', email: '', phone: '', source: '', source_url: '', status: 'new', notes: '' })
 const formFromLead = (lead: Lead): FormState => ({
   name: lead.name, company: lead.company || '', email: lead.email || '', phone: lead.phone || '',
-  source: lead.source, status: lead.status, notes: lead.notes || '',
+  source: lead.source, source_url: lead.source_url || '', status: lead.status, notes: lead.notes || '',
 })
 
 /** A one-line field as the server keeps it: spaces collapsed, blank as empty. */
@@ -95,6 +124,10 @@ const fieldErrors = (form: FormState): Partial<Record<keyof FormState, string>> 
   if (!oneLine(form.name)) errors.name = 'Lead name is required'
   else if (oneLine(form.name).length > 200) errors.name = 'Lead name must be 200 characters or fewer'
   if (!form.source) errors.source = 'Choose where the lead came from'
+  if (form.source === 'website') {
+    if (!form.source_url.trim()) errors.source_url = 'Enter the website the lead came from'
+    else if (!normalizeLeadUrl(form.source_url)) errors.source_url = 'Enter a valid website address, such as https://example.com'
+  }
   if (form.email.trim() && !EMAIL_SHAPE.test(form.email.trim())) errors.email = 'Enter a valid email address'
   if (form.company.trim().length > 200) errors.company = 'Company must be 200 characters or fewer'
   if (form.phone.trim().length > 40) errors.phone = 'Phone must be 40 characters or fewer'
@@ -108,6 +141,8 @@ const payloadFrom = (form: FormState): LeadPayload => ({
   email: form.email.trim() || null,
   phone: oneLine(form.phone) || null,
   source: form.source as LeadSource,
+  // Kept only for a website lead; any other source keeps no URL.
+  source_url: form.source === 'website' ? normalizeLeadUrl(form.source_url) : null,
   status: form.status,
   notes: form.notes.trim() || null,
 })
@@ -167,7 +202,7 @@ const LeadDialog = ({ open, lead, readOnly, onClose, onSaved }: LeadDialogProps)
     setSubmitted(true)
     setServerError('')
     if (Object.keys(errors).length) {
-      const first = (['name', 'source', 'email', 'company', 'phone', 'notes'] as const).find(key => errors[key])
+      const first = (['name', 'source', 'source_url', 'email', 'company', 'phone', 'notes'] as const).find(key => errors[key])
       if (first) document.getElementById(`lead-${first}`)?.focus()
       return
     }
@@ -217,6 +252,30 @@ const LeadDialog = ({ open, lead, readOnly, onClose, onSaved }: LeadDialogProps)
             ))}
           </TextField>
         </Box>
+        {form.source === 'website' && (
+          <TextField id="lead-source_url" label="Website URL" required fullWidth value={form.source_url}
+            onChange={set('source_url')} onBlur={blur('source_url')} error={Boolean(shown('source_url'))}
+            placeholder="https://example.com/page" type="url" autoComplete="off"
+            helperText={shown('source_url') || 'Which website the lead came from'}
+            inputProps={{ maxLength: 500, inputMode: 'url' }}
+            InputProps={{
+              readOnly,
+              endAdornment: safeLeadHref(normalizeLeadUrl(form.source_url)) ? (
+                <IconButton
+                  component="a"
+                  href={safeLeadHref(normalizeLeadUrl(form.source_url)) || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="small"
+                  edge="end"
+                  aria-label="Open the website in a new tab"
+                >
+                  <OpenInNewIcon fontSize="small" />
+                </IconButton>
+              ) : undefined,
+            }}
+          />
+        )}
         <Divider textAlign="left" sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 800 }}>Contact (optional)</Divider>
         <TextField id="lead-company" label="Company" fullWidth value={form.company} onChange={set('company')} onBlur={blur('company')}
           error={Boolean(shown('company'))} helperText={shown('company')} InputProps={{ readOnly }} inputProps={{ maxLength: 200 }} />
@@ -390,7 +449,7 @@ const Leads = () => {
                   {lead.company && <ClippedTooltipText value={lead.company} variant="caption" color="#475467" fontWeight={700} />}
                   <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
                     <StatusChip status={lead.status} />
-                    <Typography component="span" sx={{ fontSize: 12.5, fontWeight: 700, color: '#475467' }}>{sourceLabel(lead.source)}</Typography>
+                    <Box sx={{ minWidth: 0, flex: '1 1 120px' }}><SourceCell lead={lead} /></Box>
                   </Box>
                   <ClippedTooltipText value={contactLine(lead)} variant="caption" color="#6B7280" fontWeight={600} />
                   <Typography sx={{ fontSize: 12, color: '#8B95A7', fontWeight: 700 }}>Added {formatLeadDate(lead.created_at)}</Typography>
@@ -426,7 +485,7 @@ const Leads = () => {
                   <ClippedTooltipText value={lead.email || (lead.phone ? '' : '—')} fontWeight={600} />
                   {lead.phone && <ClippedTooltipText value={lead.phone} variant="caption" color="#6B7280" fontWeight={600} />}
                 </TableCell>
-                <TableCell><ClippedTooltipText value={sourceLabel(lead.source)} fontWeight={700} /></TableCell>
+                <TableCell><SourceCell lead={lead} /></TableCell>
                 <TableCell sx={{ overflow: 'hidden' }}><StatusChip status={lead.status} /></TableCell>
                 <TableCell sx={hideBelow('md')}>
                   <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#344054', whiteSpace: 'nowrap' }}>{formatLeadDate(lead.created_at)}</Typography>

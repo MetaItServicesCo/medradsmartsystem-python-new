@@ -1,8 +1,9 @@
 import re
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.lead import LEAD_SOURCES, LEAD_STATUSES
 
@@ -55,6 +56,33 @@ def _notes(value: Optional[str]) -> Optional[str]:
     return cleaned or None
 
 
+_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+URL_REQUIRED = "Enter the website the lead came from"
+
+
+def _url(value: Optional[str]) -> Optional[str]:
+    """A web address as typed ("acme.com/contact" or "https://acme.com"), kept with its scheme.
+
+    Only http and https are kept, so a stored link can never run a script.
+    """
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return None
+    if not _SCHEME.match(cleaned):
+        cleaned = f"https://{cleaned}"
+    parsed = urlparse(cleaned)
+    host = parsed.hostname or ""
+    if (
+        parsed.scheme.lower() not in ("http", "https")
+        or not host
+        or "." not in host.strip(".")
+        or any(char.isspace() for char in cleaned)
+        or len(cleaned) > 500
+    ):
+        raise ValueError("Enter a valid website address, such as https://example.com")
+    return cleaned
+
+
 def _source(value: Optional[str]) -> str:
     key = (value or "").strip().lower()
     if key not in LEAD_SOURCES:
@@ -76,6 +104,7 @@ class LeadCreate(BaseModel):
     phone: Optional[str] = None
     # Checked even when missing, so the reason reads as the rule, not "Field required".
     source: str = Field(default=None, validate_default=True)
+    source_url: Optional[str] = None
     status: str = "new"
     notes: Optional[str] = None
 
@@ -86,6 +115,16 @@ class LeadCreate(BaseModel):
     _notes_v = field_validator("notes", mode="before")(_notes)
     _source_v = field_validator("source", mode="before")(_source)
     _status_v = field_validator("status", mode="before")(_status)
+    _url_v = field_validator("source_url", mode="before")(_url)
+
+    @model_validator(mode="after")
+    def _website_needs_its_url(self) -> "LeadCreate":
+        # A website lead says which website; any other source keeps no URL.
+        if self.source == "website" and not self.source_url:
+            raise ValueError(URL_REQUIRED)
+        if self.source != "website":
+            self.source_url = None
+        return self
 
 
 class LeadUpdate(BaseModel):
@@ -96,6 +135,7 @@ class LeadUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     source: Optional[str] = None
+    source_url: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
 
@@ -106,6 +146,7 @@ class LeadUpdate(BaseModel):
     _notes_v = field_validator("notes", mode="before")(_notes)
     _source_v = field_validator("source", mode="before")(_source)
     _status_v = field_validator("status", mode="before")(_status)
+    _url_v = field_validator("source_url", mode="before")(_url)
 
 
 class LeadResponse(BaseModel):
@@ -115,6 +156,7 @@ class LeadResponse(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     source: str
+    source_url: Optional[str] = None
     status: str
     notes: Optional[str] = None
     created_by_id: Optional[int] = None
