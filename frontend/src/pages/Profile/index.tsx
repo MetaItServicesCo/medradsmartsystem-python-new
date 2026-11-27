@@ -26,6 +26,32 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { formatUSPhoneInput } from '@/utils/formatters'
 
+/**
+ * The server's answer as one readable sentence. A rejected field comes back as
+ * a list ([{ loc, msg }]); showing that list as it is crashed the page.
+ */
+const profileErrorText = (error: any, fallback: string): string => {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const text = detail
+      .map((item: any) => {
+        const message = String(item?.msg || item?.message || '').replace(/^Value error,\s*/i, '')
+        const field = Array.isArray(item?.loc) ? item.loc[item.loc.length - 1] : ''
+        if (!message) return ''
+        return field === 'email' ? `Email: ${message}` : message
+      })
+      .filter(Boolean)
+      .join(' ')
+    return text || fallback
+  }
+  return fallback
+}
+
+// The server's password rule (app/schemas/user.py), checked here first.
+const PASSWORD_MIN_LENGTH = 12
+const PASSWORD_MAX_BYTES = 72
+
 const Profile = () => {
   const queryClient = useQueryClient()
   const setUser = useAuthStore((s) => s.setUser)
@@ -67,7 +93,7 @@ const Profile = () => {
       setMessage({ type: 'success', text: 'Profile updated successfully.' })
     },
     onError: (error: any) => {
-      setMessage({ type: 'error', text: error?.response?.data?.detail || 'Could not update profile.' })
+      setMessage({ type: 'error', text: profileErrorText(error, 'Could not update profile.') })
     },
   })
 
@@ -79,7 +105,7 @@ const Profile = () => {
       setMessage({ type: 'success', text: 'Profile picture updated.' })
     },
     onError: (error: any) => {
-      setMessage({ type: 'error', text: error?.response?.data?.detail || 'Could not upload profile picture.' })
+      setMessage({ type: 'error', text: profileErrorText(error, 'Could not upload profile picture.') })
     },
   })
 
@@ -95,10 +121,22 @@ const Profile = () => {
       setMessage({ type: 'error', text: 'Enter your current password to set a new one.' })
       return
     }
+    if (form.password && form.password.length < PASSWORD_MIN_LENGTH) {
+      setMessage({ type: 'error', text: `Password must contain at least ${PASSWORD_MIN_LENGTH} characters.` })
+      return
+    }
+    if (form.password && new TextEncoder().encode(form.password).length > PASSWORD_MAX_BYTES) {
+      setMessage({ type: 'error', text: 'Password is too long.' })
+      return
+    }
 
+    // The email is sent only when it was changed: some imported accounts carry a
+    // placeholder address the server would refuse, and that must not stop them
+    // changing their name, phone or password. A new address is still checked.
+    const email = form.email.trim()
     updateMutation.mutate({
       full_name: form.full_name.trim(),
-      email: form.email.trim(),
+      ...(email !== (profile?.email || '') ? { email } : {}),
       phone: formatUSPhoneInput(form.phone.trim()),
       ...(form.password ? { password: form.password, current_password: form.current_password } : {}),
     })
@@ -245,7 +283,7 @@ const Profile = () => {
                     value={form.current_password} onChange={(e) => setForm((prev) => ({ ...prev, current_password: e.target.value }))} />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <TextField label="New password" type="password" fullWidth value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} />
+                  <TextField label="New password" type="password" fullWidth autoComplete="new-password" helperText={`At least ${PASSWORD_MIN_LENGTH} characters`} value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} />
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField label="Confirm password" type="password" fullWidth value={form.confirm_password} onChange={(e) => setForm((prev) => ({ ...prev, confirm_password: e.target.value }))} />
